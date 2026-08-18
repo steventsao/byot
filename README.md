@@ -5,9 +5,10 @@ BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source
 [**Download on the App Store**](https://apps.apple.com/us/app/byot/id6782403920) · [byot.app](https://byot.app)
 
 <p align="center">
-  <img src="docs/screenshots/01-connect-your-opencode-server.png" alt="Connect screen: add the HTTPS address of your OpenCode server" width="30%">
-  <img src="docs/screenshots/02-add-server-details.png" alt="Adding a server: name, HTTPS URL over Tailscale, credentials, and a connection test" width="30%">
-  <img src="docs/screenshots/06-review-session-diff.png" alt="Reviewing the session diff on the phone" width="30%">
+  <img src="docs/screenshots/02-live-turn-streaming.png" alt="A live turn: reasoning, completed write and edit tool calls, a queued follow-up, and OpenCode working" width="24%">
+  <img src="docs/screenshots/03-turn-complete-tests-pass.png" alt="The finished turn: all tests pass, with a summary of the files the agent changed" width="24%">
+  <img src="docs/screenshots/06-review-session-diff.png" alt="Reviewing the session diff on the phone" width="24%">
+  <img src="docs/screenshots/01-connect-your-opencode-server.png" alt="Connect screen: add the HTTPS address of your OpenCode server" width="24%">
 </p>
 
 ## What it does
