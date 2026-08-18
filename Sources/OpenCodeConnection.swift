@@ -81,6 +81,7 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
 enum OpenCodeConnectionError: LocalizedError, Sendable {
     case invalidProfile(String)
     case invalidResponse
+    case unexpectedContentType(path: String, contentType: String?)
     case unexpectedEventContentType
     case httpStatus(Int, String?)
     case emptyResponse
@@ -93,6 +94,8 @@ enum OpenCodeConnectionError: LocalizedError, Sendable {
         switch self {
         case .invalidProfile(let message): message
         case .invalidResponse: "The OpenCode server returned an invalid response."
+        case .unexpectedContentType(let path, let contentType):
+            "OpenCode returned \(contentType ?? "a non-JSON response") instead of JSON for \(path). If this server runs the OpenCode 2 beta, it is not supported yet."
         case .unexpectedEventContentType:
             "The OpenCode event endpoint did not return an event stream."
         case .httpStatus(401, _): "OpenCode rejected the username or password."

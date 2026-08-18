@@ -181,21 +181,60 @@ struct OpenCodeClient: Sendable {
     }
 
     func probeCompatibility() async throws -> OpenCodeCompatibilitySummary {
-        let health = try await health()
-        let verdict = OpenCodeCompatibilityEvaluator.evaluate(health: health)
+        let probe = try await OpenCodeProtocolDetector(client: self).probe()
+        let verdict = OpenCodeCompatibilityEvaluator.evaluate(
+            health: probe.health,
+            serverProtocol: probe.protocol
+        )
         if case .unsupported = verdict {
             return OpenCodeCompatibilitySummary(
                 verdict: verdict,
-                health: health,
+                health: probe.health,
                 capabilityProbe: .unavailable
             )
         }
         let capabilityProbe = try await experimentalCapabilities()
         return OpenCodeCompatibilitySummary(
             verdict: verdict,
-            health: health,
+            health: probe.health,
             capabilityProbe: capabilityProbe
         )
+    }
+
+    // Raw JSON probe for protocol detection. Returns the decoded object only
+    // when the route answers 2xx with a JSON-parseable object body; a declared
+    // non-JSON content type (e.g. the OpenCode 2 web UI's text/html fallback)
+    // short-circuits to nil. Used by OpenCodeProtocolDetector only.
+    func probeJSON(_ path: [String]) async throws -> [String: Any]? {
+        let request = try makeRequest(path: path, query: [], method: "GET", body: nil)
+        let (data, response) = try await session.data(
+            for: request,
+            delegate: redirectDelegate
+        )
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else { return nil }
+        if declaredNonJSONMIME(http) != nil {
+            return nil
+        }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    static func isJSONMIME(_ mimeType: String) -> Bool {
+        mimeType == "application/json" || mimeType.hasSuffix("+json")
+    }
+
+    // Returns the response's MIME type only when the server actually declared
+    // a non-JSON one. HTTPURLResponse.mimeType falls back to an inferred
+    // "text/plain" when no Content-Type header is present, so that value is
+    // treated as "undeclared" rather than as a real type.
+    private func declaredNonJSONMIME(_ http: HTTPURLResponse) -> String? {
+        guard let raw = http.value(forHTTPHeaderField: "Content-Type")?.lowercased()
+        else { return nil }
+        let mime = raw.split(separator: ";").first?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+        guard !mime.isEmpty, !Self.isJSONMIME(mime) else { return nil }
+        return mime
     }
 
     func listProjects() async throws -> [OpenCodeProject] {
@@ -616,12 +655,38 @@ struct OpenCodeClient: Sendable {
         guard (200..<300).contains(http.statusCode) else {
             throw OpenCodeConnectionError.httpStatus(http.statusCode, serverMessage(from: data))
         }
+        // #19: OpenCode 2 answers legacy v1 routes with a 200 text/html web-app
+        // fallback, so a successful status code proves nothing about the body.
+        // Note: Foundation reports an inferred "text/plain" when the response
+        // has no Content-Type header at all, so only a *declared* non-JSON
+        // type short-circuits here.
+        if let mimeType = declaredNonJSONMIME(http) {
+            throw OpenCodeConnectionError.unexpectedContentType(
+                path: request.url?.path ?? "",
+                contentType: mimeType
+            )
+        }
         guard !data.isEmpty else { throw OpenCodeConnectionError.emptyResponse }
         do {
             return try JSONDecoder().decode(Response.self, from: data)
         } catch {
+            if Self.looksLikeHTML(data) {
+                throw OpenCodeConnectionError.unexpectedContentType(
+                    path: request.url?.path ?? "",
+                    contentType: http.mimeType
+                )
+            }
             throw OpenCodeConnectionError.server("OpenCode returned data this app could not read: \(error.localizedDescription)")
         }
+    }
+
+    private static func looksLikeHTML(_ data: Data) -> Bool {
+        var index = data.startIndex
+        while index < data.endIndex,
+              data[index] == 0x20 || data[index] == 0x09 || data[index] == 0x0A || data[index] == 0x0D {
+            index += 1
+        }
+        return index < data.endIndex && data[index] == 0x3C // "<"
     }
 
     private func instanceQuery(
