@@ -1,0 +1,57 @@
+# BYOT
+
+BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source coding agent. It connects to the OpenCode server running on your own computer and lets you drive real coding sessions from your iPhone.
+
+Your machine does the work. Your phone drives it.
+
+[**Download on the App Store**](https://apps.apple.com/us/app/byot/id6782403920) · [byot.app](https://byot.app)
+
+## "Wait, what are you selling me?"
+
+Nothing. BYOT is a client and nothing more. There is no account, no sign-up, no relay, and no backend. The app talks only to servers you configure, over HTTPS. Your server password lives in the iOS Keychain and is sent to your own server alone. No analytics, no tracking, and no code runs on your phone.
+
+## What it does
+
+- Browse the projects and sessions on your server
+- Send prompts and watch the full turn stream live — assistant text, reasoning, files, patches
+- See every tool call with its input, progress, output, and errors
+- Review session diffs before you trust the result
+- Answer permission requests: allow once, always allow, or reject
+- Answer questions with choices or your own text
+- Queue follow-up prompts while a turn runs, or steer the current one
+- Pick the model per prompt from your server's own catalog
+
+## Requirements
+
+- An OpenCode server (1.18+) on a machine you control — `opencode serve`
+- Reachable from your phone over **HTTPS** with Basic auth. [Tailscale](https://tailscale.com) (`tailscale serve`) is the usual path; any valid TLS endpoint works. The app refuses plain HTTP.
+
+## Why it doesn't flake
+
+- **Handshake** — probes the server's health and capabilities before connecting; verified against OpenCode 1.18, degrades gracefully when versions drift.
+- **Framing** — a byte-level SSE parser with hard line and record caps, instead of trusting platform line-splitting with the event stream.
+- **Reconcile** — if the stream overflows or disconnects, the app reloads state from the server instead of guessing. What the phone shows is what the machine has.
+- **HTTPS only** — credentials are never attached to an insecure request.
+
+## Development
+
+Requires Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+
+```bash
+xcodegen
+open BYOT.xcodeproj
+```
+
+Run the tests with the BYOT scheme, or:
+
+```bash
+xcodebuild test -project BYOT.xcodeproj -scheme BYOT -destination 'platform=iOS Simulator,name=iPhone 16'
+```
+
+## Status
+
+Early, and the surface is intentionally small. Expect rough edges — [issues](https://github.com/steventsao/byot/issues) welcome.
+
+## License
+
+[MIT](./LICENSE). Bundled [Open Runde](https://github.com/lauridskern/open-runde) fonts keep their own license — see [Sources/Resources/THIRD-PARTY-NOTICES.txt](./Sources/Resources/THIRD-PARTY-NOTICES.txt).

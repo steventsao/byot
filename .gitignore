@@ -1,0 +1,7 @@
+BYOT.xcodeproj/
+DerivedData/
+build/
+*.ipa
+*.xcarchive
+xcuserdata/
+.DS_Store
