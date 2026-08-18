@@ -10,10 +10,6 @@ BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source
   <img src="docs/screenshots/06-review-session-diff.png" alt="Reviewing the session diff on the phone" width="30%">
 </p>
 
-## "Wait, what are you selling me?"
-
-Nothing. BYOT is a client and nothing more. There is no account, no sign-up, no relay, and no backend. The app talks only to servers you configure, over HTTPS. Your server password lives in the iOS Keychain and is sent to your own server alone. No analytics, no tracking, and no code runs on your phone.
-
 ## What it does
 
 - Browse the projects and sessions on your server
