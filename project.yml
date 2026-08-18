@@ -42,6 +42,13 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Sources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: Apple Development
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: 1D462C7D89B2F934CDB8255C2533A44BF02745DF
+          PROVISIONING_PROFILE_SPECIFIER: BYOT Fresh Store com.steventsao.byot 202606200945
     scheme:
       testTargets:
         - BYOTTests
