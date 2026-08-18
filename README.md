@@ -6,6 +6,13 @@ Your machine does the work. Your phone drives it.
 
 [**Download on the App Store**](https://apps.apple.com/us/app/byot/id6782403920) · [byot.app](https://byot.app)
 
+<p align="center">
+  <img src="docs/screenshots/03-streaming-session-with-tools.png" alt="A live turn streaming: prompt, reasoning, a completed shell tool call, and assistant text" width="24%">
+  <img src="docs/screenshots/04-approve-tool-permissions.png" alt="A permission card for an edit: reject, allow once, or always allow" width="24%">
+  <img src="docs/screenshots/06-review-session-diff.png" alt="Reviewing the session diff on the phone" width="24%">
+  <img src="docs/screenshots/01-connect-your-opencode-server.png" alt="Connect screen: add the HTTPS address of your OpenCode server, or try the demo session" width="24%">
+</p>
+
 ## "Wait, what are you selling me?"
 
 Nothing. BYOT is a client and nothing more. There is no account, no sign-up, no relay, and no backend. The app talks only to servers you configure, over HTTPS. Your server password lives in the iOS Keychain and is sent to your own server alone. No analytics, no tracking, and no code runs on your phone.
