@@ -5,8 +5,8 @@ options:
     iOS: "17.0"
 settings:
   base:
-    MARKETING_VERSION: 0.2.7
-    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: "1.0.2"
+    CURRENT_PROJECT_VERSION: 20260818153602
     SWIFT_VERSION: 6.0
 targets:
   BYOT:
