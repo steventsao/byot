@@ -5,8 +5,8 @@ options:
     iOS: "17.0"
 settings:
   base:
-    MARKETING_VERSION: "1.0.2"
-    CURRENT_PROJECT_VERSION: 20260818153602
+    MARKETING_VERSION: 0.2.7
+    CURRENT_PROJECT_VERSION: 1
     SWIFT_VERSION: 6.0
 targets:
   BYOT:
@@ -36,19 +36,11 @@ targets:
     settings:
       base:
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: 449BD89VDV
         PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot
         PRODUCT_NAME: byot
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Sources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-      configs:
-        Debug:
-          CODE_SIGN_IDENTITY: Apple Development
-        Release:
-          CODE_SIGN_STYLE: Manual
-          CODE_SIGN_IDENTITY: 1D462C7D89B2F934CDB8255C2533A44BF02745DF
-          PROVISIONING_PROFILE_SPECIFIER: BYOT Fresh Store com.steventsao.byot 202606200945
     scheme:
       testTargets:
         - BYOTTests
