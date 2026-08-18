@@ -2,8 +2,6 @@
 
 BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source coding agent. It connects to the OpenCode server running on your own computer and lets you drive real coding sessions from your iPhone.
 
-Your machine does the work. Your phone drives it.
-
 [**Download on the App Store**](https://apps.apple.com/us/app/byot/id6782403920) · [byot.app](https://byot.app)
 
 <p align="center">
