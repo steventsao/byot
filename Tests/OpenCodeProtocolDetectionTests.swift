@@ -78,6 +78,61 @@ struct OpenCodeProtocolDetectionTests {
         }
     }
 
+    @Test("401 on both health routes surfaces a credentials error, not invalid response")
+    func authFailureSurfacesCredentialsError() async throws {
+        let (client, _) = makeStubbedClient(responses: [
+            "/global/health": .init(statusCode: 401, body: Data(), contentType: nil),
+            "/api/health": .json(
+                #"{"_tag":"UnauthorizedError","message":"Authentication required"}"#,
+                statusCode: 401
+            ),
+        ])
+
+        do {
+            _ = try await OpenCodeProtocolDetector(client: client).probe()
+            Issue.record("Expected httpStatus(401)")
+        } catch let error as OpenCodeConnectionError {
+            guard case .httpStatus(401, _) = error else {
+                Issue.record("Expected httpStatus(401), got \(error)")
+                return
+            }
+            #expect(error.errorDescription == "OpenCode rejected the username or password.")
+        }
+    }
+
+    @Test("server errors on both health routes surface the HTTP status")
+    func serverErrorSurfacesStatus() async throws {
+        let (client, _) = makeStubbedClient(responses: [
+            "/global/health": .json(#"{"message":"boom"}"#, statusCode: 500),
+            "/api/health": .json(#"{"message":"boom"}"#, statusCode: 500),
+        ])
+
+        do {
+            _ = try await OpenCodeProtocolDetector(client: client).probe()
+            Issue.record("Expected httpStatus(500)")
+        } catch let error as OpenCodeConnectionError {
+            guard case .httpStatus(500, _) = error else {
+                Issue.record("Expected httpStatus(500), got \(error)")
+                return
+            }
+        }
+    }
+
+    @Test("v2 /api/health wrapped in a data envelope still detects v2")
+    func detectsV2FromWrappedHealthEnvelope() async throws {
+        let (client, _) = makeStubbedClient(responses: [
+            "/global/health": .html("<!doctype html><html></html>"),
+            "/api/health": .json(
+                #"{"data":{"healthy":true,"version":"0.0.0-beta-18001","pid":4242}}"#
+            ),
+        ])
+
+        let probe = try await OpenCodeProtocolDetector(client: client).probe()
+
+        #expect(probe.protocol == .v2)
+        #expect(probe.health.version == "0.0.0-beta-18001")
+    }
+
     @Test("probes attach Basic auth credentials")
     func probesAttachCredentials() async throws {
         let (client, stub) = makeStubbedClient(responses: [
