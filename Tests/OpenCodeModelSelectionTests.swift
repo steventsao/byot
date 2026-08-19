@@ -128,4 +128,151 @@ struct OpenCodeModelSelectionTests {
 
         #expect(body["model"] == nil)
     }
+
+    @Test(
+        "Picking a model saves it as the server default for new sessions",
+        .bug(id: "ASC-AABmkFjmRxi7p9YEo0hLHxA")
+    )
+    @MainActor
+    func serverDefaultModelPersistsAcrossSessions() async throws {
+        let suiteName = "opencode-model-default-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let client = makeModelStubClient()
+
+        let first = OpenCodeSessionStore(
+            client: client,
+            session: makeModelTestSession(id: "ses-first"),
+            directory: "/repo",
+            defaults: defaults
+        )
+        await first.reloadModels()
+        let longContext = try #require(
+            first.providerModels.flatMap(\.models)
+                .first { $0.qualifiedID == "kimi-for-coding/k3-256k" }
+        )
+        first.selectModel(longContext)
+
+        let second = OpenCodeSessionStore(
+            client: client,
+            session: makeModelTestSession(id: "ses-second"),
+            directory: "/repo",
+            defaults: defaults
+        )
+        await second.reloadModels()
+        #expect(second.selectedModel?.qualifiedID == "kimi-for-coding/k3-256k")
+
+        // A session's own saved choice still beats the server default.
+        let base = try #require(
+            second.providerModels.flatMap(\.models)
+                .first { $0.qualifiedID == "kimi-for-coding/k3" }
+        )
+        second.selectModel(base)
+        let firstAgain = OpenCodeSessionStore(
+            client: client,
+            session: makeModelTestSession(id: "ses-first"),
+            directory: "/repo",
+            defaults: defaults
+        )
+        await firstAgain.reloadModels()
+        #expect(firstAgain.selectedModel?.qualifiedID == "kimi-for-coding/k3-256k")
+
+        // Choosing Automatic clears the server default for new sessions.
+        second.selectModel(nil)
+        let third = OpenCodeSessionStore(
+            client: client,
+            session: makeModelTestSession(id: "ses-third"),
+            directory: "/repo",
+            defaults: defaults
+        )
+        await third.reloadModels()
+        #expect(third.selectedModel == nil)
+    }
+
+    private func makeModelStubClient() -> OpenCodeClient {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OpenCodeModelCatalogStub.self]
+        let profile = OpenCodeServerProfile(
+            id: UUID(uuidString: "00000000-0000-0000-0000-00000000A11D")!,
+            name: "Model stub",
+            baseURL: "https://models.example.test",
+            username: "opencode"
+        )
+        return OpenCodeClient(
+            profile: profile,
+            password: "probe-secret",
+            session: URLSession(configuration: configuration)
+        )
+    }
+
+    private func makeModelTestSession(id: String) -> OpenCodeSession {
+        OpenCodeSession(
+            id: id,
+            slug: id,
+            projectID: "project",
+            workspaceID: nil,
+            directory: "/repo",
+            parentID: nil,
+            summary: nil,
+            title: id,
+            agent: nil,
+            version: "1.18.10",
+            time: OpenCodeSessionTime(
+                created: 0,
+                updated: 1,
+                compacting: nil,
+                archived: nil
+            )
+        )
+    }
+}
+
+// Stateless stub for the provider catalog route so these tests stay isolated
+// from suites that mutate OpenCodeProtocolStub's shared responses.
+final class OpenCodeModelCatalogStub: URLProtocol, @unchecked Sendable {
+    private static let catalogBody = Data(
+        #"""
+        {
+          "all": [
+            {
+              "id": "kimi-for-coding",
+              "name": "Kimi For Coding",
+              "models": {
+                "k3": { "id": "k3", "name": "Kimi K3", "status": "active" },
+                "k3-256k": { "id": "k3-256k", "name": "Kimi K3-256K", "status": "active" }
+              }
+            }
+          ],
+          "connected": ["kimi-for-coding"],
+          "default": {}
+        }
+        """#.utf8
+    )
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "models.example.test"
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let url = request.url else { return }
+        let isCatalog = url.path == "/provider"
+        let response = HTTPURLResponse(
+            url: url,
+            statusCode: isCatalog ? 200 : 404,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(
+            self,
+            didLoad: isCatalog ? Self.catalogBody : Data(#"{"message":"not found"}"#.utf8)
+        )
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() { }
 }

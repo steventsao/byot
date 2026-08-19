@@ -222,23 +222,32 @@ struct OpenCodeClient: Sendable {
         )
     }
 
-    // Raw JSON probe for protocol detection. Returns the decoded object only
-    // when the route answers 2xx with a JSON-parseable object body; a declared
-    // non-JSON content type (e.g. the OpenCode 2 web UI's text/html fallback)
-    // short-circuits to nil. Used by OpenCodeProtocolDetector only.
-    func probeJSON(_ path: [String]) async throws -> [String: Any]? {
+    // Raw JSON probe for protocol detection. `.object` carries the decoded
+    // body only when the route answers 2xx with a JSON-parseable object; a
+    // declared non-JSON content type (e.g. the OpenCode 2 web UI's text/html
+    // fallback) and non-2xx statuses are reported as distinct outcomes so the
+    // detector can surface an actionable error instead of a generic one.
+    // Used by OpenCodeProtocolDetector only.
+    func probeJSON(_ path: [String]) async throws -> OpenCodeProbeOutcome {
         let request = try makeRequest(path: path, query: [], method: "GET", body: nil)
         let (data, response) = try await session.data(
             for: request,
             delegate: redirectDelegate
         )
-        guard let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode)
-        else { return nil }
-        if declaredNonJSONMIME(http) != nil {
-            return nil
+        guard let http = response as? HTTPURLResponse else {
+            return .undecodable(path: request.url?.path ?? "", contentType: nil)
         }
-        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard (200..<300).contains(http.statusCode) else {
+            return .httpError(status: http.statusCode)
+        }
+        if let mimeType = declaredNonJSONMIME(http) {
+            return .nonJSON(path: request.url?.path ?? "", contentType: mimeType)
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return .undecodable(path: request.url?.path ?? "", contentType: http.mimeType)
+        }
+        return .object(object)
     }
 
     static func isJSONMIME(_ mimeType: String) -> Bool {
@@ -365,6 +374,18 @@ struct OpenCodeClient: Sendable {
             query: instanceQuery(directory: directory, workspace: workspace),
             method: "POST",
             body: data
+        )
+    }
+
+    @discardableResult
+    func abort(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> Bool {
+        try await postWithoutBody(
+            ["session", sessionID, "abort"],
+            query: instanceQuery(directory: directory, workspace: workspace)
         )
     }
 

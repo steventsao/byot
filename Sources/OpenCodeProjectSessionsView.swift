@@ -156,8 +156,22 @@ private struct OpenCodeSessionRow: View {
                 .font(.cleanCaption)
                 .foregroundStyle(.secondary)
             }
+
+            if let statusErrorMessage {
+                Label(statusErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.cleanCaption)
+                    .foregroundStyle(.red)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(.vertical, 5)
+    }
+
+    private var statusErrorMessage: String? {
+        guard case .retry(_, let message, _) = status else { return nil }
+        return message.trimmedNonEmpty
     }
 
     private var updatedText: some View {
