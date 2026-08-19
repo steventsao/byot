@@ -27,13 +27,6 @@ BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source
 - An OpenCode server (1.18+) on a machine you control — `opencode serve`
 - Reachable from your phone over **HTTPS** with Basic auth. [Tailscale](https://tailscale.com) (`tailscale serve`) is the usual path; any valid TLS endpoint works. The app refuses plain HTTP.
 
-## Why it doesn't flake
-
-- **Handshake** — probes the server's health and capabilities before connecting; verified against OpenCode 1.18, degrades gracefully when versions drift.
-- **Framing** — a byte-level SSE parser with hard line and record caps, instead of trusting platform line-splitting with the event stream.
-- **Reconcile** — if the stream overflows or disconnects, the app reloads state from the server instead of guessing. What the phone shows is what the machine has.
-- **HTTPS only** — credentials are never attached to an insecure request.
-
 ## Development
 
 Requires Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
