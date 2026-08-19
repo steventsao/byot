@@ -23,6 +23,7 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var isAwaitingFirstVisibleOutput = false
     @Published private(set) var isLoadingModels = false
     @Published private(set) var modelErrorMessage: String?
+    @Published private(set) var isStoppingTurn = false
     @Published var errorMessage: String?
 
     let session: OpenCodeSession
@@ -31,6 +32,7 @@ final class OpenCodeSessionStore: ObservableObject {
     private let client: OpenCodeClient
     private let defaults: UserDefaults
     private let modelSelectionKey: String
+    private let serverDefaultModelKey: String
     private var persistedModelID: String?
     private var transcript = OpenCodeTranscriptReducer()
     private var promptQueue = OpenCodePromptQueue()
@@ -68,6 +70,7 @@ final class OpenCodeSessionStore: ObservableObject {
         self.directory = directory
         self.defaults = defaults
         modelSelectionKey = "byot.opencode.model.\(client.profile.id.uuidString).\(session.id)"
+        serverDefaultModelKey = "byot.opencode.model.default.\(client.profile.id.uuidString)"
         persistedModelID = defaults.string(forKey: modelSelectionKey)
         workspace = session.workspaceID
     }
@@ -99,6 +102,10 @@ final class OpenCodeSessionStore: ObservableObject {
             && status.isActive == false
             && isSending == false
             && promptQueue.isPaused
+    }
+
+    var canStopTurn: Bool {
+        isRunning && status.isActive && isStoppingTurn == false
     }
 
     func start() async {
@@ -302,6 +309,28 @@ final class OpenCodeSessionStore: ObservableObject {
         schedulePromptDispatch(prompt)
     }
 
+    func stopTurn() async {
+        guard canStopTurn else { return }
+        isStoppingTurn = true
+        defer { isStoppingTurn = false }
+        // Pause before aborting so the idle transition the abort triggers does
+        // not immediately auto-dispatch the next queued prompt — stopping means
+        // the user wants to steer, and paused prompts keep their manual
+        // send-now affordance.
+        promptQueue.pausePendingPrompts()
+        publishPromptQueue()
+        do {
+            try await client.abort(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace
+            )
+            scheduleMessageRefresh()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func runPromptDispatch(
         _ prompt: OpenCodeQueuedPrompt,
         dispatchID: UUID
@@ -375,6 +404,14 @@ final class OpenCodeSessionStore: ObservableObject {
                       !availableModels.contains(where: { $0.id == selectedModel.id }) {
                 self.selectedModel = nil
             }
+            // Sessions without their own saved choice inherit the last model
+            // picked anywhere on this server. The server default is kept even
+            // when the model is temporarily unavailable so a provider outage
+            // does not erase it.
+            if selectedModel == nil,
+               let serverDefaultID = defaults.string(forKey: serverDefaultModelKey) {
+                selectedModel = availableModels.first { $0.qualifiedID == serverDefaultID }
+            }
             modelErrorMessage = nil
         } catch is CancellationError {
             return
@@ -388,8 +425,10 @@ final class OpenCodeSessionStore: ObservableObject {
         persistedModelID = model?.qualifiedID
         if let model {
             defaults.set(model.qualifiedID, forKey: modelSelectionKey)
+            defaults.set(model.qualifiedID, forKey: serverDefaultModelKey)
         } else {
             defaults.removeObject(forKey: modelSelectionKey)
+            defaults.removeObject(forKey: serverDefaultModelKey)
         }
     }
 
