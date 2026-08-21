@@ -6,88 +6,140 @@ struct OpenCodeSessionComposerView: View {
     @State private var isShowingModelPicker = false
     @FocusState private var isFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var canSend: Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            && store.canSubmitPrompt
+    }
+
+    private var composerShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: BYOTBrand.composerRadius, style: .continuous)
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Divider()
-            VStack(alignment: .leading, spacing: 4) {
-                Button(action: showModelPicker) {
-                    Label(
-                        store.selectedModel?.modelName ?? "Automatic model",
-                        systemImage: "cpu"
-                    )
-                    .font(.cleanCaptionBold)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 11)
-                    .frame(minHeight: 44)
-                    .background(
-                        BYOTBrand.controlSurface,
-                        in: Capsule()
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Choose model")
-                .accessibilityValue(
-                    store.selectedModel.map {
-                        "\($0.modelName), \($0.providerName)"
-                    } ?? "Automatic"
+        VStack(alignment: .leading, spacing: BYOTBrand.Space.sm) {
+            if store.canSubmitPrompt == false {
+                statusHint(
+                    title: "Checking session status",
+                    systemImage: "arrow.triangle.2.circlepath"
                 )
+            } else if store.willQueueNextPrompt {
+                statusHint(
+                    title: "Next message will be queued",
+                    systemImage: "clock.arrow.circlepath"
+                )
+            }
 
-                if store.canSubmitPrompt == false {
-                    Label("Checking session status", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.cleanCaption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if store.willQueueNextPrompt {
-                    Label(
-                        "Next message will be queued",
-                        systemImage: "clock.arrow.circlepath"
-                    )
-                    .font(.cleanCaption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                TextField("Message OpenCode", text: $text, axis: .vertical)
+                    .font(.cleanBody)
+                    .foregroundStyle(BYOTBrand.overlayBase.opacity(0.92))
+                    .tint(BYOTBrand.accent)
+                    .focused($isFocused)
+                    .lineLimit(1...8)
+                    .textFieldStyle(.plain)
+                    .submitLabel(.send)
+                    .onSubmit(send)
+                    .accessibilityLabel("Message OpenCode")
 
-                HStack(alignment: .bottom, spacing: 10) {
-                    TextField("Message OpenCode", text: $text, axis: .vertical)
-                        .focused($isFocused)
-                        .lineLimit(1...8)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 11)
-                        .background(
-                            BYOTBrand.controlSurface,
-                            in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius)
-                        )
-                        .submitLabel(.send)
-                        .onSubmit(send)
+                HStack(alignment: .center, spacing: 8) {
+                    modelChip
 
-                    Button(action: send) {
-                        Image(systemName: "arrow.up")
-                            .font(.cleanControlIcon)
-                        .foregroundStyle(BYOTBrand.primaryActionInk)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            BYOTBrand.primaryAction,
-                            in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius)
-                        )
-                    }
-                    .accessibilityLabel(
-                        store.willQueueNextPrompt ? "Queue message" : "Send message"
-                    )
-                    .disabled(
-                        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || store.canSubmitPrompt == false
-                    )
+                    Spacer(minLength: 0)
+
+                    sendButton
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.regularMaterial)
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
+            .background(BYOTBrand.composerWash, in: composerShape)
+            .overlay {
+                composerShape
+                    .strokeBorder(
+                        isFocused ? BYOTBrand.composerBorderFocus : BYOTBrand.composerBorder,
+                        lineWidth: 1
+                    )
+            }
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick),
+                value: isFocused
+            )
         }
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+        .background(BYOTBrand.canvas)
         .sheet(isPresented: $isShowingModelPicker) {
             OpenCodeModelPickerView(store: store)
         }
+    }
+
+    private var modelChip: some View {
+        Button(action: showModelPicker) {
+            Label(
+                store.selectedModel?.modelName ?? "Automatic model",
+                systemImage: "cpu"
+            )
+            .font(.cleanCaptionSemibold)
+            .foregroundStyle(BYOTBrand.overlayBase.opacity(0.55))
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                BYOTBrand.composerChip,
+                in: RoundedRectangle(cornerRadius: BYOTBrand.composerChipRadius, style: .continuous)
+            )
+            .frame(minHeight: 32, alignment: .center)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Choose model")
+        .accessibilityValue(
+            store.selectedModel.map {
+                "\($0.modelName), \($0.providerName)"
+            } ?? "Automatic"
+        )
+    }
+
+    private var sendButton: some View {
+        Button(action: send) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(
+                    canSend
+                        ? BYOTBrand.primaryActionInk
+                        : BYOTBrand.overlayBase.opacity(0.28)
+                )
+                .frame(width: 28, height: 28)
+                .background(
+                    canSend
+                        ? BYOTBrand.primaryAction
+                        : BYOTBrand.overlayBase.opacity(0.08),
+                    in: Circle()
+                )
+                .frame(width: 36, height: 36)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.agentPressFeedback)
+        .accessibilityLabel(
+            store.willQueueNextPrompt ? "Queue message" : "Send message"
+        )
+        .disabled(canSend == false)
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick),
+            value: canSend
+        )
+    }
+
+    private func statusHint(title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.cleanCaption)
+            .foregroundStyle(BYOTBrand.overlayBase.opacity(0.55))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 2)
     }
 
     private func showModelPicker() {
