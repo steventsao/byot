@@ -62,6 +62,8 @@ struct OpenCodeSessionComposerView: View {
                         lineWidth: 1
                     )
             }
+            .contentShape(composerShape)
+            .onTapGesture { isFocused = true }
             .animation(
                 reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick),
                 value: isFocused
