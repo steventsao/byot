@@ -26,6 +26,11 @@ struct OpenCodeProtocolCapabilitiesTests {
         #expect(capabilities.fileRead == .supported)
         #expect(capabilities.fileStatus == .supported)
         #expect(capabilities.fileSearch == .supported)
+        #expect(capabilities.commandCatalog == .supported)
+        #expect(capabilities.commandExecution == .supported)
+        #expect(capabilities.shellExecution == .supported)
+        #expect(capabilities.agentCatalog == .supported)
+        #expect(capabilities.agentSelection == .supported)
     }
 
     @Test("V2 records current upstream gaps instead of claiming parity")
@@ -52,6 +57,11 @@ struct OpenCodeProtocolCapabilitiesTests {
         #expect(!capabilities.fileRead.isSupported)
         #expect(!capabilities.fileStatus.isSupported)
         #expect(capabilities.fileSearch == .supported)
+        #expect(capabilities.commandCatalog == .supported)
+        #expect(!capabilities.commandExecution.isSupported)
+        #expect(!capabilities.shellExecution.isSupported)
+        #expect(capabilities.agentCatalog == .supported)
+        #expect(capabilities.agentSelection == .supported)
     }
 
     @Test("Unavailable session diff remains explainable and presentable")

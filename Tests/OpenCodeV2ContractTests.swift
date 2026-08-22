@@ -750,6 +750,155 @@ final class OpenCodeV2ContractTests: XCTestCase {
         ])
     }
 
+    func testV1CommandsShellAndAgentsUseCurrentRoutesAndBodies() async throws {
+        let message = #"{"info":{"id":"msg_1","sessionID":"ses_1","role":"assistant","time":{"created":1}},"parts":[]}"#
+        let (client, session) = makeClient(serverProtocol: .v1) { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/command"):
+                return .json(#"[{"name":"review","description":"Review changes","template":"Review $ARGUMENTS","source":"command","hints":["scope"]}]"#)
+            case ("GET", "/agent"):
+                return .json(#"[{"name":"build","description":"Build mode","mode":"primary","hidden":false}]"#)
+            case ("POST", "/session/ses_1/prompt_async"):
+                return .empty(statusCode: 204)
+            case ("POST", "/session/ses_1/command"), ("POST", "/session/ses_1/shell"):
+                return .json(message)
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+        let model = OpenCodeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5",
+            modelName: "GPT-5",
+            status: nil
+        )
+
+        let commands = try await client.commands(directory: "/repo", workspace: "wrk_1")
+        let agents = try await client.agents(directory: "/repo", workspace: "wrk_1")
+        try await client.sendMessage(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1",
+            agent: "build",
+            text: "Ship it"
+        )
+        try await client.executeCommand(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1",
+            command: "review",
+            arguments: "staged changes",
+            agent: "build",
+            model: model
+        )
+        try await client.runShell(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1",
+            command: "git status",
+            agent: "build",
+            model: model
+        )
+
+        XCTAssertEqual(commands.map(\.name), ["review"])
+        XCTAssertEqual(agents.map(\.id), ["build"])
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { ($0.httpMethod ?? "") + " " + ($0.url?.path ?? "") }, [
+            "GET /command",
+            "GET /agent",
+            "POST /session/ses_1/prompt_async",
+            "POST /session/ses_1/command",
+            "POST /session/ses_1/shell",
+        ])
+        XCTAssertTrue(requests.allSatisfy {
+            v2QueryValues(for: $0) == ["directory": "/repo", "workspace": "wrk_1"]
+        })
+        XCTAssertEqual(try v2JSONObject(for: requests[2])["agent"] as? String, "build")
+        let commandBody = try v2JSONObject(for: requests[3])
+        XCTAssertEqual(commandBody["command"] as? String, "review")
+        XCTAssertEqual(commandBody["arguments"] as? String, "staged changes")
+        XCTAssertEqual(commandBody["agent"] as? String, "build")
+        XCTAssertEqual(commandBody["model"] as? String, "openai/gpt-5")
+        let shellBody = try v2JSONObject(for: requests[4])
+        XCTAssertEqual(shellBody["command"] as? String, "git status")
+        XCTAssertEqual(shellBody["agent"] as? String, "build")
+        let shellModel = try XCTUnwrap(shellBody["model"] as? [String: Any])
+        XCTAssertEqual(shellModel["providerID"] as? String, "openai")
+        XCTAssertEqual(shellModel["modelID"] as? String, "gpt-5")
+    }
+
+    func testV2CatalogsAndAgentSelectionUseCurrentRoutesWhileExecutionGapsDoNotProbe() async throws {
+        let (client, session) = makeClient { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/api/command"):
+                return .json(#"{"location":{"directory":"/repo","workspaceID":"wrk_1","project":{"id":"proj_1","directory":"/repo"}},"data":[{"name":"review","template":"Review $ARGUMENTS","description":"Review changes"}]}"#)
+            case ("GET", "/api/agent"):
+                return .json(#"{"location":{"directory":"/repo","workspaceID":"wrk_1","project":{"id":"proj_1","directory":"/repo"}},"data":[{"id":"plan","request":{},"mode":"primary","hidden":false,"permissions":[]}]}"#)
+            case ("POST", "/api/session/ses_1/agent"):
+                return .empty(statusCode: 204)
+            case ("POST", "/api/session/ses_1/prompt"):
+                return .json(#"{"data":{"admittedSeq":1,"id":"msg_new","sessionID":"ses_1","prompt":{"text":"Plan it"},"delivery":"queue","timeCreated":1}}"#)
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        let commands = try await client.commands(directory: "/repo", workspace: "wrk_1")
+        let agents = try await client.agents(directory: "/repo", workspace: "wrk_1")
+        try await client.sendMessage(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1",
+            agent: "plan",
+            text: "Plan it"
+        )
+        let requestCount = OpenCodeV2URLProtocolStub.recordedRequests().count
+        do {
+            try await client.executeCommand(
+                sessionID: "ses_1",
+                directory: "/repo",
+                command: "review",
+                arguments: "",
+                agent: "plan",
+                model: nil
+            )
+            XCTFail("Expected v2 command execution to be unavailable")
+        } catch is OpenCodeFeatureUnavailableError { }
+        do {
+            try await client.runShell(
+                sessionID: "ses_1",
+                directory: "/repo",
+                command: "pwd",
+                agent: "plan",
+                model: nil
+            )
+            XCTFail("Expected v2 shell execution to be unavailable")
+        } catch is OpenCodeFeatureUnavailableError { }
+
+        XCTAssertEqual(commands.map(\.name), ["review"])
+        XCTAssertEqual(agents.map(\.id), ["plan"])
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.count, requestCount)
+        XCTAssertEqual(requests.map { $0.url?.path }, [
+            "/api/command",
+            "/api/agent",
+            "/api/session/ses_1/agent",
+            "/api/session/ses_1/prompt",
+        ])
+        XCTAssertEqual(v2QueryValues(for: requests[0]), [
+            "location[directory]": "/repo",
+            "location[workspace]": "wrk_1",
+        ])
+        XCTAssertEqual(v2QueryValues(for: requests[1]), [
+            "location[directory]": "/repo",
+            "location[workspace]": "wrk_1",
+        ])
+        XCTAssertEqual(try v2JSONObject(for: requests[2])["agent"] as? String, "plan")
+    }
+
     private func makeClient(
         serverProtocol: OpenCodeServerProtocol = .v2,
         handler: @escaping @Sendable (URLRequest) -> OpenCodeV2URLProtocolStub.Response

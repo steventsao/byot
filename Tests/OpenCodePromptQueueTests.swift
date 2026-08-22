@@ -287,6 +287,45 @@ struct OpenCodePromptQueueTests {
         #expect(prompt.attachments == [attachment])
         #expect(queue.serverBecameIdle()?.attachments == [attachment])
     }
+
+    @Test("Queued inputs retain command intent and agent selected at submission")
+    func queuedInputCapturesIntentAndAgent() throws {
+        var queue = OpenCodePromptQueue()
+        let intent = OpenCodeSessionInputIntent.command(
+            name: "review",
+            arguments: "staged changes"
+        )
+
+        let result = queue.accept(
+            intent: intent,
+            model: nil,
+            agent: "plan",
+            serverIsActive: true
+        )
+        let prompt = try #require(result.queuedPrompt)
+
+        #expect(prompt.intent == intent)
+        #expect(prompt.agent == "plan")
+        #expect(prompt.text == "/review staged changes")
+    }
+
+    @Test("A synchronous shell response immediately releases the next queued turn")
+    func shellCompletionDrainsQueue() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            intent: .shell("git status"),
+            model: nil,
+            agent: "build",
+            serverIsActive: false
+        )
+        _ = queue.accept(text: "Explain that", model: nil, serverIsActive: false)
+
+        #expect(
+            queue.dispatchSucceeded(completesSynchronously: true)?.text
+                == "Explain that"
+        )
+        #expect(queue.prompts.isEmpty)
+    }
 }
 
 private extension OpenCodePromptSubmission {
