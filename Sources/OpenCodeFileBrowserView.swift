@@ -35,7 +35,7 @@ struct OpenCodeFileBrowserView: View {
                         "Search project files",
                         systemImage: "magnifyingglass",
                         description: Text(
-                            store.policy?.treeUnavailableReason
+                            store.policy?.searchOnlyDescription
                                 ?? "Enter a filename to search this project."
                         )
                     )

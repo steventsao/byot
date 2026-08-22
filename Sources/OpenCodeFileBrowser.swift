@@ -67,6 +67,12 @@ struct OpenCodeFileBrowserPolicy: Equatable, Sendable {
         treeUnavailableReason = capabilities.fileTree.unavailableReason
         readUnavailableReason = capabilities.fileRead.unavailableReason
     }
+
+    var searchOnlyDescription: String {
+        let guidance = "Enter a filename to search this project."
+        guard let treeUnavailableReason else { return guidance }
+        return "\(guidance) \(treeUnavailableReason)"
+    }
 }
 
 enum OpenCodeFileBrowserPath {
