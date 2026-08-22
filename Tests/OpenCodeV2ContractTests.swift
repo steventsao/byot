@@ -57,6 +57,120 @@ final class OpenCodeV2ContractTests: XCTestCase {
         XCTAssertNil(body["title"])
     }
 
+    func testV1SessionLifecycleUsesCurrentRoutesAndBodies() async throws {
+        let sessionJSON = #"{"id":"ses_1","slug":"first","projectID":"proj_1","directory":"/repo","title":"First","version":"1","time":{"created":10,"updated":20}}"#
+        let renamedJSON = #"{"id":"ses_1","slug":"first","projectID":"proj_1","directory":"/repo","title":"Renamed","version":"1","time":{"created":10,"updated":30}}"#
+        let childJSON = #"{"id":"ses_child","slug":"child","projectID":"proj_1","directory":"/repo","parentID":"ses_1","title":"Subagent","version":"1","time":{"created":15,"updated":25}}"#
+        let (client, session) = makeClient(serverProtocol: .v1) { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/session/ses_1"):
+                return .json(sessionJSON)
+            case ("PATCH", "/session/ses_1"):
+                return .json(renamedJSON)
+            case ("GET", "/session/ses_1/children"):
+                return .json("[\(childJSON)]")
+            case ("DELETE", "/session/ses_1"), ("POST", "/session/ses_1/abort"):
+                return .json("true")
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        let fetched = try await client.getSession(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let renamed = try await client.renameSession(
+            sessionID: "ses_1",
+            title: "Renamed",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let children = try await client.childSessions(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        try await client.deleteSession(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        try await client.abortSession(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+
+        XCTAssertEqual(fetched.title, "First")
+        XCTAssertEqual(renamed.title, "Renamed")
+        XCTAssertEqual(children.map(\.id), ["ses_child"])
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { ($0.httpMethod ?? "") + " " + ($0.url?.path ?? "") }, [
+            "GET /session/ses_1",
+            "PATCH /session/ses_1",
+            "GET /session/ses_1/children",
+            "DELETE /session/ses_1",
+            "POST /session/ses_1/abort",
+        ])
+        XCTAssertEqual(try v2JSONObject(for: requests[1])["title"] as? String, "Renamed")
+        XCTAssertNil(requests[3].httpBody)
+        XCTAssertTrue(requests.allSatisfy {
+            v2QueryValues(for: $0) == ["directory": "/repo", "workspace": "wrk_1"]
+        })
+    }
+
+    func testV2GetSessionUsesCurrentDataEnvelope() async throws {
+        let (client, session) = makeClient { _ in
+            .json(
+                #"{"data":{"id":"ses_1","projectID":"proj_1","cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":10,"updated":20},"title":"Current","location":{"directory":"/repo","workspaceID":"wrk_1"}}}"#
+            )
+        }
+        defer { session.invalidateAndCancel() }
+
+        let fetched = try await client.getSession(
+            sessionID: "ses_1",
+            directory: "/not/sent",
+            workspace: "not-sent"
+        )
+
+        XCTAssertEqual(fetched.title, "Current")
+        XCTAssertEqual(fetched.directory, "/repo")
+        let request = try XCTUnwrap(OpenCodeV2URLProtocolStub.recordedRequests().first)
+        XCTAssertEqual(request.url?.path, "/api/session/ses_1")
+        XCTAssertTrue(v2QueryValues(for: request).isEmpty)
+    }
+
+    func testV2UnavailableLifecycleMethodsNeverProbeGuessedRoutes() async throws {
+        let (client, session) = makeClient { _ in
+            .json(#"{"message":"must not request"}"#, statusCode: 500)
+        }
+        defer { session.invalidateAndCancel() }
+
+        do {
+            _ = try await client.renameSession(
+                sessionID: "ses_1",
+                title: "No route",
+                directory: "/repo"
+            )
+            XCTFail("Expected rename to be unavailable")
+        } catch let error as OpenCodeFeatureUnavailableError {
+            XCTAssertEqual(error.feature, "Rename session")
+        }
+        do {
+            try await client.deleteSession(sessionID: "ses_1", directory: "/repo")
+            XCTFail("Expected delete to be unavailable")
+        } catch is OpenCodeFeatureUnavailableError { }
+        do {
+            _ = try await client.childSessions(sessionID: "ses_1", directory: "/repo")
+            XCTFail("Expected children to be unavailable")
+        } catch is OpenCodeFeatureUnavailableError { }
+
+        XCTAssertTrue(OpenCodeV2URLProtocolStub.recordedRequests().isEmpty)
+    }
+
     func testMessageListPaginatesAndNormalizesProjectedContent() async throws {
         let (client, session) = makeClient { request in
             let query = v2QueryValues(for: request)
