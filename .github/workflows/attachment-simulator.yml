@@ -1,0 +1,56 @@
+name: Attachment simulator verification
+
+on:
+  push:
+    branches:
+      - feature/ios-prompt-attachments
+
+permissions:
+  contents: write
+
+jobs:
+  simulator:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install project generator
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Boot simulator and seed photo
+        id: simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime="$(xcrun simctl list runtimes --json | jq -r '.runtimes[] | select(.isAvailable and (.identifier | contains("iOS"))) | .identifier' | tail -1)"
+          device_type="$(xcrun simctl list devicetypes --json | jq -r '.devicetypes[] | select(.name == "iPhone 16 Pro") | .identifier' | head -1)"
+          udid="$(xcrun simctl create 'BYOT Attachment Screenshot' "$device_type" "$runtime")"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl addmedia "$udid" Brand/byot-chatgpt-image-2-concept.png
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+      - name: Run unit and attachment UI tests
+        env:
+          BYOT_SCREENSHOT_OUTPUT: ${{ github.workspace }}/docs/screenshots/07-prompt-attachments.png
+        run: |
+          xcodebuild test \
+            -project BYOT.xcodeproj \
+            -scheme BYOT \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -resultBundlePath TestResults.xcresult
+      - name: Upload test result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attachment-simulator-result
+          path: TestResults.xcresult
+      - name: Commit simulator screenshot
+        run: |
+          test -f docs/screenshots/07-prompt-attachments.png
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/screenshots/07-prompt-attachments.png
+          git commit -m 'Add simulator screenshot for attachments'
+          git push origin "HEAD:${GITHUB_REF_NAME}"

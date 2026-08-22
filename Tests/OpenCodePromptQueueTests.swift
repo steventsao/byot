@@ -206,6 +206,28 @@ struct OpenCodePromptQueueTests {
 
         #expect(prompt.model == model)
     }
+
+    @Test("Queued prompts retain attachments for later dispatch and retry")
+    func queuedPromptCapturesAttachments() throws {
+        var queue = OpenCodePromptQueue()
+        let attachment = OpenCodePromptAttachment(
+            filename: "design.png",
+            mimeType: "image/png",
+            data: Data([0x01, 0x02, 0x03])
+        )
+
+        let result = queue.accept(
+            text: "",
+            model: nil,
+            attachments: [attachment],
+            serverIsActive: true
+        )
+        let prompt = try #require(result.queuedPrompt)
+
+        #expect(prompt.text.isEmpty)
+        #expect(prompt.attachments == [attachment])
+        #expect(queue.serverBecameIdle()?.attachments == [attachment])
+    }
 }
 
 private extension OpenCodePromptSubmission {

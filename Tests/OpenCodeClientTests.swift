@@ -549,6 +549,99 @@ final class OpenCodeClientTests: XCTestCase {
         )
     }
 
+    func testPromptAsyncRequestEncodesFileAttachmentsAsDataURLs() throws {
+        let profile = OpenCodeServerProfile(
+            name: "Mac mini",
+            baseURL: "https://mac.example.test",
+            username: "opencode"
+        )
+        let client = OpenCodeClient(profile: profile, password: "secret")
+        let attachment = OpenCodePromptAttachment(
+            filename: "screen.png",
+            mimeType: "image/png",
+            data: Data([0x89, 0x50, 0x4E, 0x47])
+        )
+
+        let request = try client.makeSendMessageRequest(
+            sessionID: "ses_attachments",
+            directory: "/repo",
+            text: "Review this screenshot",
+            attachments: [attachment]
+        )
+
+        let body = try XCTUnwrap(request.httpBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let parts = try XCTUnwrap(json["parts"] as? [[String: Any]])
+        XCTAssertEqual(parts.count, 2)
+        XCTAssertEqual(parts[0]["type"] as? String, "text")
+        XCTAssertEqual(parts[0]["text"] as? String, "Review this screenshot")
+        XCTAssertEqual(parts[1]["type"] as? String, "file")
+        XCTAssertEqual(parts[1]["mime"] as? String, "image/png")
+        XCTAssertEqual(parts[1]["filename"] as? String, "screen.png")
+        XCTAssertEqual(parts[1]["url"] as? String, "data:image/png;base64,iVBORw==")
+    }
+
+    func testPromptAsyncRequestAllowsAttachmentOnlyPrompt() throws {
+        let profile = OpenCodeServerProfile(
+            name: "Mac mini",
+            baseURL: "https://mac.example.test",
+            username: "opencode"
+        )
+        let client = OpenCodeClient(profile: profile, password: "secret")
+        let attachment = OpenCodePromptAttachment(
+            filename: "notes.txt",
+            mimeType: "text/plain",
+            data: Data("hello".utf8)
+        )
+
+        let request = try client.makeSendMessageRequest(
+            sessionID: "ses_attachments",
+            directory: "/repo",
+            text: "",
+            attachments: [attachment]
+        )
+
+        let body = try XCTUnwrap(request.httpBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let parts = try XCTUnwrap(json["parts"] as? [[String: Any]])
+        XCTAssertEqual(parts.count, 1)
+        XCTAssertNil(parts[0]["text"])
+        XCTAssertEqual(parts[0]["filename"] as? String, "notes.txt")
+    }
+
+    func testPromptAttachmentValidationEnforcesCountAndSizeBudgets() throws {
+        let tiny = OpenCodePromptAttachment(
+            filename: "tiny.txt",
+            mimeType: "text/plain",
+            data: Data([0x41])
+        )
+        XCTAssertThrowsError(
+            try OpenCodePromptAttachment.validate(
+                Array(repeating: tiny, count: OpenCodePromptAttachment.maximumCount + 1)
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? OpenCodePromptAttachmentError,
+                .tooMany(maximum: OpenCodePromptAttachment.maximumCount)
+            )
+        }
+
+        let oversized = OpenCodePromptAttachment(
+            filename: "large.bin",
+            mimeType: "application/octet-stream",
+            data: Data(count: OpenCodePromptAttachment.maximumFileBytes + 1)
+        )
+        XCTAssertThrowsError(try OpenCodePromptAttachment.validate([oversized])) { error in
+            XCTAssertEqual(
+                error as? OpenCodePromptAttachmentError,
+                .fileTooLarge(
+                    filename: "large.bin",
+                    maximumBytes: OpenCodePromptAttachment.maximumFileBytes
+                )
+            )
+        }
+    }
+
     func testSendMessageTransportAcceptsEmptyNoContentResponse() async throws {
         OpenCodeURLProtocolStub.reset(statusCode: 204)
         let configuration = URLSessionConfiguration.ephemeral
