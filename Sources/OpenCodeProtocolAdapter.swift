@@ -298,7 +298,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
             ["permission"],
             query: instanceQuery(directory: directory, workspace: workspace)
         )
-        return requests.map { request in
+        return requests.filter { $0.sessionID == sessionID }.map { request in
             var request = request
             request.apiVersion = .legacy
             return request
@@ -330,7 +330,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
             ["question"],
             query: instanceQuery(directory: directory, workspace: workspace)
         )
-        return requests.map { request in
+        return requests.filter { $0.sessionID == sessionID }.map { request in
             var request = request
             request.apiVersion = .legacy
             return request
