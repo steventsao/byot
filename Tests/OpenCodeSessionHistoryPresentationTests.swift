@@ -29,6 +29,8 @@ struct OpenCodeSessionHistoryPresentationTests {
             "msg_user_2", "msg_user_3",
         ])
         #expect(presentation.latestRevertTarget?.messageID == "msg_user_1")
+        #expect(presentation.latestRevertTarget?.files == true)
+        #expect(presentation.revertTarget(messageID: "msg_user_1").files == true)
         #expect(presentation.canRestore)
     }
 
