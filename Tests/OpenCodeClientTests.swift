@@ -659,7 +659,8 @@ final class OpenCodeClientTests: XCTestCase {
         let client = OpenCodeClient(
             profile: profile,
             password: "transport-secret",
-            session: session
+            session: session,
+            serverProtocol: .v1
         )
 
         try await client.sendMessage(
@@ -1816,7 +1817,8 @@ final class OpenCodeClientTests: XCTestCase {
             OpenCodeClient(
                 profile: profile,
                 password: "transport-secret",
-                session: session
+                session: session,
+                serverProtocol: .v1
             ),
             session
         )

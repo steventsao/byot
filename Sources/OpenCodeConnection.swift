@@ -95,7 +95,7 @@ enum OpenCodeConnectionError: LocalizedError, Sendable {
         case .invalidProfile(let message): message
         case .invalidResponse: "The OpenCode server returned an invalid response."
         case .unexpectedContentType(let path, let contentType):
-            "OpenCode returned \(contentType ?? "a non-JSON response") instead of JSON for \(path). If this server runs the OpenCode 2 beta, it is not supported yet."
+            "OpenCode returned \(contentType ?? "a non-JSON response") instead of JSON for \(path). Check that this URL points to the OpenCode server API."
         case .unexpectedEventContentType:
             "The OpenCode event endpoint did not return an event stream."
         case .httpStatus(401, _): "OpenCode rejected the username or password."
