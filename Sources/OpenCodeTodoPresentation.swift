@@ -40,6 +40,9 @@ struct OpenCodeTodoPresentation: Equatable, Sendable {
         guard totalCount > 0 else { return 0 }
         return Double(resolvedCount) / Double(totalCount)
     }
+    var progressAccessibilityValue: String {
+        "\(resolvedCount) of \(totalCount) resolved"
+    }
     var headline: String? {
         todos.first(where: { $0.resolvedStatus == .inProgress })?.content
             ?? todos.first(where: { $0.resolvedStatus == .pending })?.content

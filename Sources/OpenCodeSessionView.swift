@@ -58,6 +58,7 @@ struct OpenCodeSessionView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Open session tasks")
+                        .accessibilityValue(store.todoPresentation.progressAccessibilityValue)
                     }
 
                     ForEach(store.messages) { message in
@@ -197,7 +198,7 @@ struct OpenCodeSessionView: View {
                 .accessibilityValue(
                     store.todos.isEmpty
                         ? "Unavailable"
-                        : "\(store.todoPresentation.resolvedCount) of \(store.todoPresentation.totalCount) resolved"
+                        : store.todoPresentation.progressAccessibilityValue
                 )
                 if store.lifecyclePolicy?.canListChildren == true {
                     Button("Subagents", systemImage: "person.2") {
