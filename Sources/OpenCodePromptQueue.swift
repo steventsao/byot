@@ -5,6 +5,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         case idle
         case submitting(observedActive: Bool, observedCompletion: Bool)
         case awaitingActivity
+        case awaitingSynchronousIdle
         case active
         case paused
     }
@@ -25,7 +26,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
 
     var isTurnActive: Bool {
         switch phase {
-        case .submitting, .awaitingActivity, .active: true
+        case .submitting, .awaitingActivity, .awaitingSynchronousIdle, .active: true
         case .idle, .paused: false
         }
     }
@@ -42,14 +43,14 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         switch phase {
         case .submitting(let observedActive, _): observedActive
         case .active: true
-        case .idle, .awaitingActivity, .paused: false
+        case .idle, .awaitingActivity, .awaitingSynchronousIdle, .paused: false
         }
     }
 
     var needsServerReconciliation: Bool {
         guard !prompts.isEmpty else { return false }
         return switch phase {
-        case .awaitingActivity, .active: true
+        case .awaitingActivity, .awaitingSynchronousIdle, .active: true
         case .idle, .submitting, .paused: false
         }
     }
@@ -108,7 +109,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
                 observedActive: true,
                 observedCompletion: observedCompletion
             )
-        case .idle, .awaitingActivity, .active:
+        case .idle, .awaitingActivity, .awaitingSynchronousIdle, .active:
             phase = .active
         case .paused:
             recordPausedServerActive()
@@ -122,6 +123,8 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         case .paused:
             recordPausedServerIdle()
             return nil
+        case .awaitingSynchronousIdle:
+            return takeNextOrBecomeIdle()
         case .submitting(let observedActive, _):
             guard observedActive else { return nil }
             phase = .submitting(observedActive: true, observedCompletion: true)
@@ -138,6 +141,8 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         case .paused:
             recordPausedServerIdle()
             return nil
+        case .awaitingSynchronousIdle:
+            return takeNextOrBecomeIdle()
         case .submitting(let observedActive, _):
             guard observedActive else { return nil }
             phase = .submitting(observedActive: true, observedCompletion: true)
@@ -153,7 +158,15 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         switch phase {
         case .submitting(let observedActive, let observedCompletion):
             if completesSynchronously {
-                return takeNextOrBecomeIdle()
+                if observedActive, observedCompletion {
+                    return takeNextOrBecomeIdle()
+                }
+                if prompts.isEmpty {
+                    phase = .idle
+                } else {
+                    phase = .awaitingSynchronousIdle
+                }
+                return nil
             }
             if observedActive, observedCompletion {
                 return takeNextOrBecomeIdle()
@@ -163,7 +176,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         case .paused:
             recordPausedDispatchSucceeded()
             return nil
-        case .idle, .awaitingActivity, .active:
+        case .idle, .awaitingActivity, .awaitingSynchronousIdle, .active:
             return nil
         }
     }

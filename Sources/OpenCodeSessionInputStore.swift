@@ -7,6 +7,7 @@ final class OpenCodeSessionInputStore: ObservableObject {
     @Published private(set) var commands: [OpenCodeCommandOption] = []
     @Published private(set) var agents: [OpenCodeAgentOption] = []
     @Published private(set) var selectedAgentID: String?
+    @Published private(set) var hasLoadedCommandCatalog = false
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
 
@@ -63,6 +64,7 @@ final class OpenCodeSessionInputStore: ObservableObject {
             guard generation == loadGeneration else { return }
             self.capabilities = capabilities
             let policy = OpenCodeSessionInputPolicy(capabilities: capabilities)
+            hasLoadedCommandCatalog = !policy.canListCommands
             var catalogErrors: [Error] = []
             if policy.canListCommands {
                 do {
@@ -70,10 +72,12 @@ final class OpenCodeSessionInputStore: ObservableObject {
                         directory: directory,
                         workspace: workspace
                     )
+                    hasLoadedCommandCatalog = true
                 } catch is CancellationError {
                     return
                 } catch {
                     commands = []
+                    hasLoadedCommandCatalog = false
                     catalogErrors.append(error)
                 }
             } else {
@@ -113,8 +117,25 @@ final class OpenCodeSessionInputStore: ObservableObject {
         selectedAgentID = agent.id
     }
 
-    func validate(_ intent: OpenCodeSessionInputIntent) -> Bool {
-        if case .prompt = intent { return true }
+    func validate(
+        _ intent: OpenCodeSessionInputIntent,
+        sourceText: String? = nil
+    ) -> Bool {
+        if case .prompt = intent {
+            let looksLikeSlashCommand = sourceText?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .hasPrefix("/") == true
+            if looksLikeSlashCommand,
+               policy?.canListCommands != false,
+               !hasLoadedCommandCatalog {
+                errorMessage = isLoading
+                    ? "OpenCode commands are still loading."
+                    : "OpenCode commands could not be loaded. Refresh before sending slash text."
+                return false
+            }
+            errorMessage = nil
+            return true
+        }
         guard let policy else {
             errorMessage = "OpenCode input capabilities are still loading."
             return false

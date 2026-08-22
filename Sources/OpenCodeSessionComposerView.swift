@@ -330,7 +330,7 @@ struct OpenCodeSessionComposerView: View {
             mode: mode,
             commands: inputStore.commands
         )
-        guard inputStore.validate(intent) else { return }
+        guard inputStore.validate(intent, sourceText: prompt) else { return }
         if case .prompt = intent {
             // Prompt attachments remain valid for an empty text part.
         } else if !attachments.isEmpty {
