@@ -316,30 +316,36 @@ final class OpenCodeV2ContractTests: XCTestCase {
         XCTAssertTrue(requests.allSatisfy { v2QueryValues(for: $0).isEmpty })
     }
 
-    func testV1PendingActionsStayOnLegacyRoutes() async throws {
+    func testV1PendingActionsStayOnLegacyRoutesAndFilterTheSession() async throws {
         let (client, session) = makeClient(serverProtocol: .v1) { request in
             switch request.url?.path {
             case "/permission":
-                return .json("[]")
+                return .json(
+                    #"[{"id":"per_keep","sessionID":"ses_1","permission":"bash","patterns":["git status"],"metadata":{},"always":[]},{"id":"per_other","sessionID":"ses_2","permission":"read","patterns":["README.md"],"metadata":{},"always":[]}]"#
+                )
             case "/question":
-                return .json("[]")
+                return .json(
+                    #"[{"id":"que_keep","sessionID":"ses_1","questions":[{"question":"Ship?","header":"Decision","options":[],"multiple":false}]},{"id":"que_other","sessionID":"ses_2","questions":[{"question":"Other?","header":"Other","options":[],"multiple":false}]}]"#
+                )
             default:
                 return .json(#"{"message":"unexpected"}"#, statusCode: 404)
             }
         }
         defer { session.invalidateAndCancel() }
 
-        _ = try await client.permissions(
+        let permissions = try await client.permissions(
             sessionID: "ses_1",
             directory: "/repo",
             workspace: "wrk_1"
         )
-        _ = try await client.questions(
+        let questions = try await client.questions(
             sessionID: "ses_1",
             directory: "/repo",
             workspace: "wrk_1"
         )
 
+        XCTAssertEqual(permissions.map(\.id), ["per_keep"])
+        XCTAssertEqual(questions.map(\.id), ["que_keep"])
         let requests = OpenCodeV2URLProtocolStub.recordedRequests()
         XCTAssertEqual(requests.map { $0.url?.path }, ["/permission", "/question"])
         XCTAssertTrue(requests.allSatisfy {
