@@ -33,6 +33,7 @@ final class OpenCodeServerContextStore: ObservableObject {
     var canSaveConfiguration: Bool {
         capabilities?.configurationWrite.isSupported == true
             && configuration.value != nil
+            && !isLoading
             && !isSavingConfiguration
     }
 
@@ -41,6 +42,7 @@ final class OpenCodeServerContextStore: ObservableObject {
     }
 
     func load() async {
+        guard !isSavingConfiguration else { return }
         loadGeneration &+= 1
         let generation = loadGeneration
         isLoading = true
@@ -105,6 +107,7 @@ final class OpenCodeServerContextStore: ObservableObject {
         support: OpenCodeFeatureSupport,
         generation: Int
     ) async {
+        guard generation == loadGeneration else { return }
         guard support.isSupported else {
             configuration = .unavailable(reason: support.unavailableReason ?? "Configuration is unavailable.")
             return
@@ -127,6 +130,7 @@ final class OpenCodeServerContextStore: ObservableObject {
     }
 
     private func loadVCS(support: OpenCodeFeatureSupport, generation: Int) async {
+        guard generation == loadGeneration else { return }
         guard support.isSupported else {
             vcs = .unavailable(reason: support.unavailableReason ?? "VCS status is unavailable.")
             return
@@ -145,6 +149,7 @@ final class OpenCodeServerContextStore: ObservableObject {
     }
 
     private func loadPaths(support: OpenCodeFeatureSupport, generation: Int) async {
+        guard generation == loadGeneration else { return }
         guard support.isSupported else {
             paths = .unavailable(reason: support.unavailableReason ?? "Path context is unavailable.")
             return
@@ -163,6 +168,7 @@ final class OpenCodeServerContextStore: ObservableObject {
     }
 
     private func loadMCP(support: OpenCodeFeatureSupport, generation: Int) async {
+        guard generation == loadGeneration else { return }
         guard support.isSupported else {
             mcp = .unavailable(reason: support.unavailableReason ?? "MCP status is unavailable.")
             return
@@ -181,6 +187,7 @@ final class OpenCodeServerContextStore: ObservableObject {
     }
 
     private func loadLSP(support: OpenCodeFeatureSupport, generation: Int) async {
+        guard generation == loadGeneration else { return }
         guard support.isSupported else {
             lsp = .unavailable(reason: support.unavailableReason ?? "LSP status is unavailable.")
             return
@@ -199,6 +206,7 @@ final class OpenCodeServerContextStore: ObservableObject {
     }
 
     private func loadFormatters(support: OpenCodeFeatureSupport, generation: Int) async {
+        guard generation == loadGeneration else { return }
         guard support.isSupported else {
             formatters = .unavailable(reason: support.unavailableReason ?? "Formatter status is unavailable.")
             return

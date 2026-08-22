@@ -34,7 +34,7 @@ struct OpenCodeServerContextView: View {
                     Button("Refresh", systemImage: "arrow.clockwise") {
                         Task { await store.load() }
                     }
-                    .disabled(store.isLoading)
+                    .disabled(store.isLoading || store.isSavingConfiguration)
                 }
             }
             .refreshable { await store.load() }
