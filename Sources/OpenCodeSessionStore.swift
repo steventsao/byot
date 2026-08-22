@@ -245,7 +245,13 @@ final class OpenCodeSessionStore: ObservableObject {
             }
             switch results.3 {
             case .success(let diffs):
-                if diffBaseline == diffMutationGeneration { self.diffs = diffs }
+                if OpenCodeSessionDiffReconciliation.shouldApplyFetchedSnapshot(
+                    support: capabilities.sessionDiff,
+                    mutationBaseline: diffBaseline,
+                    currentMutation: diffMutationGeneration
+                ) {
+                    self.diffs = diffs
+                }
             case .failure(let error):
                 coreErrors.append(error)
             }

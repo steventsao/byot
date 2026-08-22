@@ -66,3 +66,13 @@ struct OpenCodeSessionDiffPresentation: Equatable, Sendable {
         return support?.unavailableReason
     }
 }
+
+enum OpenCodeSessionDiffReconciliation {
+    static func shouldApplyFetchedSnapshot(
+        support: OpenCodeFeatureSupport?,
+        mutationBaseline: Int,
+        currentMutation: Int
+    ) -> Bool {
+        support?.isSupported == true && mutationBaseline == currentMutation
+    }
+}
