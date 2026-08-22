@@ -9,12 +9,14 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var childSessions: [OpenCodeSession] = []
     @Published private(set) var todos: [OpenCodeTodo] = []
     @Published private(set) var diffs: [OpenCodeDiff] = []
+    @Published private(set) var session: OpenCodeSession
     @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
     @Published private(set) var status: OpenCodeSessionStatus = .idle
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false
     @Published private(set) var isSending = false
     @Published private(set) var isAborting = false
+    @Published private(set) var historyActionInFlight: OpenCodeSessionHistoryAction?
     @Published private(set) var isEventConnected = false
     @Published private(set) var eventErrorMessage: String?
     @Published private(set) var actionErrorMessage: String?
@@ -29,7 +31,6 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var modelErrorMessage: String?
     @Published var errorMessage: String?
 
-    let session: OpenCodeSession
     let directory: String
     private let workspace: String?
     private let client: OpenCodeClient
@@ -107,6 +108,38 @@ final class OpenCodeSessionStore: ObservableObject {
             todos: todos,
             support: protocolCapabilities?.sessionTodos
         )
+    }
+
+    var historyPresentation: OpenCodeSessionHistoryPresentation {
+        OpenCodeSessionHistoryPresentation(
+            messages: messages,
+            revert: session.revert,
+            capabilities: protocolCapabilities
+        )
+    }
+
+    var historyPolicy: OpenCodeSessionHistoryPolicy? {
+        protocolCapabilities.map(OpenCodeSessionHistoryPolicy.init)
+    }
+
+    var canRevertLatestPrompt: Bool {
+        historyActionInFlight == nil
+            && historyPolicy?.canRevert == true
+            && historyPresentation.latestRevertTarget != nil
+    }
+
+    var canUnrevertSession: Bool {
+        historyActionInFlight == nil && historyPresentation.canRestore
+    }
+
+    var canSummarizeSession: Bool {
+        historyActionInFlight == nil && canSummarizeForCurrentSelection
+    }
+
+    var canForkSession: Bool {
+        historyActionInFlight == nil
+            && historyPolicy?.canFork == true
+            && !historyPresentation.visibleUserMessages.isEmpty
     }
 
     var canAbortSession: Bool {
@@ -436,6 +469,155 @@ final class OpenCodeSessionStore: ObservableObject {
         return true
     }
 
+    func revertSession(to target: OpenCodeSessionRevertTarget) async -> Bool {
+        guard historyPolicy?.canRevert == true, beginHistoryAction(.revert) else {
+            return false
+        }
+        defer { historyActionInFlight = nil }
+        invalidateHistorySnapshots()
+        do {
+            try await prepareForHistoryRollback()
+            let mutation = try await client.revertSession(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace,
+                target: target
+            )
+            applyHistoryMutation(mutation, clearsRevert: false)
+            await refresh()
+            errorMessage = nil
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func unrevertSession() async -> Bool {
+        guard historyPresentation.canRestore, beginHistoryAction(.unrevert) else {
+            return false
+        }
+        defer { historyActionInFlight = nil }
+        invalidateHistorySnapshots()
+        do {
+            try await prepareForHistoryRollback()
+            let mutation = try await client.unrevertSession(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace
+            )
+            applyHistoryMutation(mutation, clearsRevert: true)
+            await refresh()
+            errorMessage = nil
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func summarizeSession() async -> Bool {
+        guard canSummarizeForCurrentSelection, beginHistoryAction(.summarize) else {
+            return false
+        }
+        defer { historyActionInFlight = nil }
+        do {
+            let summarized = try await client.summarizeSession(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace,
+                model: selectedModel
+            )
+            if summarized { await refresh() }
+            errorMessage = nil
+            return summarized
+        } catch is CancellationError {
+            return false
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func forkSession(at messageID: String?) async -> OpenCodeSession? {
+        guard historyPolicy?.canFork == true, beginHistoryAction(.fork) else {
+            return nil
+        }
+        defer { historyActionInFlight = nil }
+        do {
+            let forked = try await client.forkSession(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace,
+                messageID: messageID
+            )
+            errorMessage = nil
+            return forked
+        } catch is CancellationError {
+            return nil
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    private var canSummarizeForCurrentSelection: Bool {
+        guard historyPolicy?.canSummarize == true,
+              !historyPresentation.visibleUserMessages.isEmpty
+        else { return false }
+        return historyPolicy?.summarizeRequiresModel != true || selectedModel != nil
+    }
+
+    private func beginHistoryAction(_ action: OpenCodeSessionHistoryAction) -> Bool {
+        guard historyActionInFlight == nil else { return false }
+        historyActionInFlight = action
+        return true
+    }
+
+    private func invalidateHistorySnapshots() {
+        refreshGeneration &+= 1
+        messageRequestGeneration &+= 1
+        diffMutationGeneration &+= 1
+    }
+
+    private func prepareForHistoryRollback() async throws {
+        guard status.isActive else { return }
+        isAborting = true
+        defer { isAborting = false }
+        OpenCodeSessionAbortPolicy.prepareQueueForRequest(&promptQueue)
+        publishPromptQueue()
+        cancelQueueRecovery()
+        try await client.abortSession(
+            sessionID: session.id,
+            directory: directory,
+            workspace: workspace
+        )
+        statusMutationGeneration &+= 1
+        status = .idle
+        isStatusReady = true
+        finishCurrentTurnActivityTracking()
+    }
+
+    private func applyHistoryMutation(
+        _ mutation: OpenCodeSessionHistoryMutation,
+        clearsRevert: Bool
+    ) {
+        if let updatedSession = mutation.session {
+            session = updatedSession
+        } else {
+            session.revert = clearsRevert ? nil : mutation.revert
+        }
+        if clearsRevert { session.revert = nil }
+        if let deliveredDiffs = mutation.diffs {
+            diffMutationGeneration &+= 1
+            diffs = deliveredDiffs
+        }
+    }
+
     func removeQueuedPrompt(_ id: UUID) {
         promptQueue.remove(id)
         publishPromptQueue()
@@ -702,6 +884,20 @@ final class OpenCodeSessionStore: ObservableObject {
 
     private func handle(_ event: OpenCodeEvent) {
         if let eventSessionID = event.sessionID, eventSessionID != session.id {
+            return
+        }
+        if let historyMutation = OpenCodeSessionHistoryEventProjection.mutation(from: event) {
+            switch historyMutation {
+            case .staged(let mutation):
+                applyHistoryMutation(mutation, clearsRevert: false)
+            case .cleared:
+                session.revert = nil
+                diffMutationGeneration &+= 1
+                diffs = []
+            case .committed:
+                session.revert = nil
+                scheduleMessageRefresh()
+            }
             return
         }
         switch event.type {

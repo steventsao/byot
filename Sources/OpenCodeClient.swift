@@ -291,6 +291,66 @@ struct OpenCodeClient: Sendable {
         )
     }
 
+    func revertSession(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil,
+        target: OpenCodeSessionRevertTarget
+    ) async throws -> OpenCodeSessionHistoryMutation {
+        try await protocolAdapter().revertSession(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace,
+            target: target
+        )
+    }
+
+    func unrevertSession(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> OpenCodeSessionHistoryMutation {
+        try await protocolAdapter().unrevertSession(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func summarizeSession(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil,
+        model: OpenCodeModelOption?,
+        automatically: Bool? = nil
+    ) async throws -> Bool {
+        try await protocolAdapter().summarizeSession(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace,
+            model: model,
+            automatically: automatically
+        )
+    }
+
+    func forkSession(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil,
+        messageID: String?
+    ) async throws -> OpenCodeSession {
+        try await protocolAdapter().forkSession(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace,
+            messageID: messageID
+        )
+    }
+
     func connectedProviderModels(
         directory: String,
         workspace: String? = nil

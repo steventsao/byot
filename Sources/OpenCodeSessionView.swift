@@ -7,6 +7,9 @@ struct OpenCodeSessionView: View {
     @State private var isShowingChildren = false
     @State private var isShowingTodos = false
     @State private var isAtBottom = true
+    @State private var pendingRevertTarget: OpenCodeSessionRevertTarget?
+    @State private var isConfirmingRestore = false
+    @State private var forkedSession: OpenCodeSession?
     let openAppNavigation: () -> Void
     private let client: OpenCodeClient
 
@@ -48,6 +51,16 @@ struct OpenCodeSessionView: View {
                         ErrorBanner(message: actionErrorMessage)
                     }
 
+                    if !store.historyPresentation.revertedUserMessages.isEmpty {
+                        OpenCodeRevertedHistoryCard(
+                            messages: store.historyPresentation.revertedUserMessages,
+                            isRestoring: store.historyActionInFlight == .unrevert,
+                            canReviewChanges: store.diffPresentation.canPresent,
+                            restore: { isConfirmingRestore = true },
+                            reviewChanges: { isShowingDiff = true }
+                        )
+                    }
+
                     if !store.todos.isEmpty {
                         Button {
                             isShowingTodos = true
@@ -61,8 +74,20 @@ struct OpenCodeSessionView: View {
                         .accessibilityValue(store.todoPresentation.progressAccessibilityValue)
                     }
 
-                    ForEach(store.messages) { message in
-                        OpenCodeMessageView(message: message)
+                    ForEach(store.historyPresentation.visibleMessages) { message in
+                        OpenCodeMessageView(
+                            message: message,
+                            canRevert: store.historyPolicy?.canRevert == true
+                                && store.historyActionInFlight == nil,
+                            canFork: store.historyPolicy?.canFork == true
+                                && store.historyActionInFlight == nil,
+                            revert: { messageID in
+                                pendingRevertTarget = OpenCodeSessionRevertTarget(
+                                    messageID: messageID
+                                )
+                            },
+                            fork: forkSession
+                        )
                             .id(message.id)
                     }
 
@@ -203,6 +228,29 @@ struct OpenCodeSessionView: View {
                     .labelStyle(.iconOnly)
                     .accessibilityValue("\(store.childSessions.count) sessions")
                 }
+                Menu("History", systemImage: "clock.arrow.circlepath") {
+                    Button("Undo latest prompt", systemImage: "arrow.uturn.backward") {
+                        pendingRevertTarget = store.historyPresentation.latestRevertTarget
+                    }
+                    .disabled(!store.canRevertLatestPrompt)
+                    Button("Restore reverted prompts", systemImage: "arrow.uturn.forward") {
+                        isConfirmingRestore = true
+                    }
+                    .disabled(!store.canUnrevertSession)
+                    Divider()
+                    Button("Compact session", systemImage: "rectangle.compress.vertical") {
+                        Task { _ = await store.summarizeSession() }
+                    }
+                    .disabled(!store.canSummarizeSession)
+                    if store.historyPolicy?.canFork == true {
+                        Button("Fork session", systemImage: "arrow.triangle.branch") {
+                            forkSession(store.historyPresentation.latestForkMessageID)
+                        }
+                        .disabled(!store.canForkSession)
+                    }
+                }
+                .labelStyle(.iconOnly)
+                .disabled(store.historyActionInFlight != nil)
             }
         }
         .sheet(isPresented: $isShowingDiff) {
@@ -218,15 +266,72 @@ struct OpenCodeSessionView: View {
         .sheet(isPresented: $isShowingTodos) {
             OpenCodeTodoListView(presentation: store.todoPresentation)
         }
+        .confirmationDialog(
+            "Undo this prompt and everything after it?",
+            isPresented: Binding(
+                get: { pendingRevertTarget != nil },
+                set: { if !$0 { pendingRevertTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Undo messages and file changes", role: .destructive) {
+                guard let target = pendingRevertTarget else { return }
+                pendingRevertTarget = nil
+                Task {
+                    if await store.revertSession(to: target) {
+                        isShowingDiff = true
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingRevertTarget = nil }
+        } message: {
+            Text("OpenCode will roll the conversation back to this boundary. Review the resulting file changes before continuing.")
+        }
+        .confirmationDialog(
+            "Restore reverted prompts?",
+            isPresented: $isConfirmingRestore,
+            titleVisibility: .visible
+        ) {
+            Button("Restore messages and files") {
+                Task { _ = await store.unrevertSession() }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("OpenCode will clear the rollback boundary and restore its file snapshot.")
+        }
+        .navigationDestination(
+            isPresented: Binding(
+                get: { forkedSession != nil },
+                set: { if !$0 { forkedSession = nil } }
+            )
+        ) {
+            if let forkedSession {
+                OpenCodeSessionView(
+                    client: client,
+                    session: forkedSession,
+                    directory: forkedSession.directory,
+                    openAppNavigation: openAppNavigation
+                )
+            }
+        }
         .task { await store.start() }
         .onDisappear { store.stop() }
     }
 
     private var hasConversationContent: Bool {
-        !store.messages.isEmpty
+        !store.historyPresentation.visibleMessages.isEmpty
             || !store.queuedPrompts.isEmpty
             || store.pendingActionCount > 0
             || !store.todos.isEmpty
+            || store.historyPresentation.canRestore
+    }
+
+    private func forkSession(_ messageID: String?) {
+        Task {
+            if let session = await store.forkSession(at: messageID) {
+                forkedSession = session
+            }
+        }
     }
 
     private var showsSessionActivity: Bool {
@@ -523,8 +628,56 @@ private struct OpenCodeSessionChildrenView: View {
     }
 }
 
+private struct OpenCodeRevertedHistoryCard: View {
+    let messages: [OpenCodeMessageEnvelope]
+    let isRestoring: Bool
+    let canReviewChanges: Bool
+    let restore: () -> Void
+    let reviewChanges: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.uturn.backward.circle.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(summary)
+                        .font(.cleanBodySemibold)
+                    if let preview = messages.first?.historyPreview, !preview.isEmpty {
+                        Text(preview)
+                            .font(.cleanCaption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+            }
+            HStack(spacing: 10) {
+                Button("Restore", systemImage: "arrow.uturn.forward", action: restore)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isRestoring)
+                Button("Review changes", systemImage: "doc.text.magnifyingglass", action: reviewChanges)
+                    .buttonStyle(.bordered)
+                    .disabled(!canReviewChanges)
+            }
+        }
+        .padding(14)
+        .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.panelRadius))
+        .accessibilityElement(children: .contain)
+    }
+
+    private var summary: String {
+        "\(messages.count) reverted prompt\(messages.count == 1 ? "" : "s")"
+    }
+}
+
 private struct OpenCodeMessageView: View {
     let message: OpenCodeMessageEnvelope
+    let canRevert: Bool
+    let canFork: Bool
+    let revert: (String) -> Void
+    let fork: (String?) -> Void
 
     var body: some View {
         VStack(alignment: message.info.role == "user" ? .trailing : .leading, spacing: 8) {
@@ -562,6 +715,20 @@ private struct OpenCodeMessageView: View {
         }
         .frame(maxWidth: .infinity, alignment: message.info.role == "user" ? .trailing : .leading)
         .accessibilityElement(children: .contain)
+        .contextMenu {
+            if message.info.role.lowercased() == "user" {
+                if canRevert {
+                    Button("Undo from here", systemImage: "arrow.uturn.backward") {
+                        revert(message.id)
+                    }
+                }
+                if canFork {
+                    Button("Fork from here", systemImage: "arrow.triangle.branch") {
+                        fork(message.id)
+                    }
+                }
+            }
+        }
     }
 
     private var showsMessageHeader: Bool {
