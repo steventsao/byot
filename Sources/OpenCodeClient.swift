@@ -224,6 +224,60 @@ struct OpenCodeClient: Sendable {
         )
     }
 
+    func getSession(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> OpenCodeSession {
+        try await protocolAdapter().getSession(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func renameSession(
+        sessionID: String,
+        title: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> OpenCodeSession {
+        try await protocolAdapter().renameSession(
+            using: transport,
+            sessionID: sessionID,
+            title: title,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func deleteSession(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws {
+        try await protocolAdapter().deleteSession(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func childSessions(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> [OpenCodeSession] {
+        try await protocolAdapter().childSessions(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
     func connectedProviderModels(
         directory: String,
         workspace: String? = nil

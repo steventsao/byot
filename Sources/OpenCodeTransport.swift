@@ -87,6 +87,24 @@ struct OpenCodeTransport: Sendable {
         return try await perform(request)
     }
 
+    func patch<Body: Encodable, Response: Decodable>(
+        _ path: [String],
+        query: [URLQueryItem] = [],
+        body: Body
+    ) async throws -> Response {
+        let data = try JSONEncoder().encode(body)
+        let request = try makeRequest(path: path, query: query, method: "PATCH", body: data)
+        return try await perform(request)
+    }
+
+    func delete<Response: Decodable>(
+        _ path: [String],
+        query: [URLQueryItem] = []
+    ) async throws -> Response {
+        let request = try makeRequest(path: path, query: query, method: "DELETE", body: nil)
+        return try await perform(request)
+    }
+
     func postWithoutBody<Response: Decodable>(
         _ path: [String],
         query: [URLQueryItem]

@@ -25,6 +25,35 @@ protocol OpenCodeProtocolAdapting: Sendable {
         title: String?
     ) async throws -> OpenCodeSession
 
+    func getSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession
+
+    func renameSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        title: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession
+
+    func deleteSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws
+
+    func childSessions(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeSession]
+
     func connectedProviderModels(
         using transport: OpenCodeTransport,
         directory: String,
@@ -176,6 +205,57 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
             ["session"],
             query: instanceQuery(directory: directory),
             body: Body(title: title)
+        )
+    }
+
+    func getSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        try await transport.get(
+            ["session", sessionID],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func renameSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        title: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        struct Body: Encodable { let title: String }
+        return try await transport.patch(
+            ["session", sessionID],
+            query: instanceQuery(directory: directory, workspace: workspace),
+            body: Body(title: title)
+        )
+    }
+
+    func deleteSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws {
+        let _: Bool = try await transport.delete(
+            ["session", sessionID],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func childSessions(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeSession] {
+        try await transport.get(
+            ["session", sessionID, "children"],
+            query: instanceQuery(directory: directory, workspace: workspace)
         )
     }
 
@@ -480,6 +560,56 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         return response.data.normalized
     }
 
+    func getSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        let response: OpenCodeV2DataResponse<OpenCodeV2Session> = try await transport.get(
+            ["api", "session", sessionID],
+            query: []
+        )
+        return response.data.normalized
+    }
+
+    func renameSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        title: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        throw unavailable(
+            feature: "Rename session",
+            support: capabilities.sessionRename
+        )
+    }
+
+    func deleteSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws {
+        throw unavailable(
+            feature: "Delete session",
+            support: capabilities.sessionDelete
+        )
+    }
+
+    func childSessions(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeSession] {
+        throw unavailable(
+            feature: "Child sessions",
+            support: capabilities.sessionChildren
+        )
+    }
+
     func connectedProviderModels(
         using transport: OpenCodeTransport,
         directory: String,
@@ -740,6 +870,16 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
             )
         }
         return next
+    }
+
+    private func unavailable(
+        feature: String,
+        support: OpenCodeFeatureSupport
+    ) -> OpenCodeFeatureUnavailableError {
+        OpenCodeFeatureUnavailableError(
+            feature: feature,
+            reason: support.unavailableReason ?? "The detected protocol does not support it."
+        )
     }
 }
 

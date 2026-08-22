@@ -20,13 +20,23 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
     let providerConnectionState: OpenCodeFeatureSupport
     let modelReasoningMetadata: OpenCodeFeatureSupport
     let modelTemperatureMetadata: OpenCodeFeatureSupport
+    let sessionDetails: OpenCodeFeatureSupport
+    let sessionRename: OpenCodeFeatureSupport
+    let sessionDelete: OpenCodeFeatureSupport
+    let sessionChildren: OpenCodeFeatureSupport
+    let sessionAbort: OpenCodeFeatureSupport
 
     static let v1 = Self(
         sessionDiff: .supported,
         symbolSearch: .supported,
         providerConnectionState: .supported,
         modelReasoningMetadata: .supported,
-        modelTemperatureMetadata: .supported
+        modelTemperatureMetadata: .supported,
+        sessionDetails: .supported,
+        sessionRename: .supported,
+        sessionDelete: .supported,
+        sessionChildren: .supported,
+        sessionAbort: .supported
     )
 
     static let v2 = Self(
@@ -44,8 +54,28 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         ),
         modelTemperatureMetadata: .unavailable(
             reason: "OpenCode v2 does not report the model temperature capability."
-        )
+        ),
+        sessionDetails: .supported,
+        sessionRename: .unavailable(
+            reason: "OpenCode v2 does not expose a session rename route yet."
+        ),
+        sessionDelete: .unavailable(
+            reason: "OpenCode v2 does not expose a session delete route yet."
+        ),
+        sessionChildren: .unavailable(
+            reason: "OpenCode v2 does not expose a child-session route yet."
+        ),
+        sessionAbort: .supported
     )
+}
+
+struct OpenCodeFeatureUnavailableError: LocalizedError, Equatable, Sendable {
+    let feature: String
+    let reason: String
+
+    var errorDescription: String? {
+        "\(feature) is unavailable: \(reason)"
+    }
 }
 
 struct OpenCodeSessionDiffPresentation: Equatable, Sendable {
