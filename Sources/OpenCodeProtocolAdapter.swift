@@ -297,7 +297,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         workspace: String?
     ) async throws -> [OpenCodePermissionRequest] {
         let requests: [OpenCodePermissionRequest] = try await transport.get(
-            ["permission"],
+            OpenCodeV1ActionContract.permissionCollectionPath,
             query: instanceQuery(directory: directory, workspace: workspace)
         )
         return requests.filter { $0.sessionID == sessionID }.map { request in
@@ -316,7 +316,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
     ) async throws {
         struct Body: Encodable { let reply: OpenCodePermissionReply }
         let _: Bool = try await transport.post(
-            ["permission", permission.id, "reply"],
+            OpenCodeV1ActionContract.permissionReplyPath(requestID: permission.id),
             query: instanceQuery(directory: directory, workspace: workspace),
             body: Body(reply: reply)
         )
@@ -329,7 +329,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         workspace: String?
     ) async throws -> [OpenCodeQuestionRequest] {
         let requests: [OpenCodeQuestionRequest] = try await transport.get(
-            ["question"],
+            OpenCodeV1ActionContract.questionCollectionPath,
             query: instanceQuery(directory: directory, workspace: workspace)
         )
         return requests.filter { $0.sessionID == sessionID }.map { request in
@@ -348,7 +348,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
     ) async throws {
         struct Body: Encodable { let answers: [[String]] }
         let _: Bool = try await transport.post(
-            ["question", question.id, "reply"],
+            OpenCodeV1ActionContract.questionReplyPath(requestID: question.id),
             query: instanceQuery(directory: directory, workspace: workspace),
             body: Body(answers: answers)
         )
@@ -361,7 +361,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         workspace: String?
     ) async throws {
         let _: Bool = try await transport.postWithoutBody(
-            ["question", question.id, "reject"],
+            OpenCodeV1ActionContract.questionRejectPath(requestID: question.id),
             query: instanceQuery(directory: directory, workspace: workspace)
         )
     }
