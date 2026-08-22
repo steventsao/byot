@@ -71,7 +71,151 @@ struct OpenCodeServerContextTests {
         #expect(store.configuration == .available(expected))
         #expect(store.configurationErrorMessage == nil)
     }
+
+    @Test("An older load cannot leave a finished newer section stuck loading")
+    func staleLoadCannotOverwriteNewerLoad() async {
+        let service = StaleServerContextService()
+        let store = OpenCodeServerContextStore(
+            service: service,
+            directory: "/repo"
+        )
+
+        let older = Task { await store.load() }
+        await service.waitForFirstConfigurationRequest()
+        await store.load()
+        await service.releaseFirstConfigurationRequest()
+        await older.value
+
+        #expect(store.vcs == .available(OpenCodeVCSInfo(branch: "new", defaultBranch: "main")))
+        #expect(store.paths.value?.directory == "/repo")
+        #expect(!store.isLoading)
+    }
+
+    @Test("Refresh is ignored while a configuration save owns the store")
+    func refreshDoesNotRaceSave() async {
+        let service = SaveRaceServerContextService()
+        let store = OpenCodeServerContextStore(
+            service: service,
+            directory: "/repo"
+        )
+        await store.load()
+        store.configurationText = #"{"model":"saved"}"#
+
+        let save = Task { await store.saveConfiguration() }
+        await service.waitForUpdateRequest()
+        await store.load()
+
+        let configurationRequestCount = await service.configurationRequestCount
+        #expect(configurationRequestCount == 1)
+        await service.releaseUpdateRequest()
+        await save.value
+        #expect(store.configuration == .available(["model": .string("saved")]))
+    }
 }
+
+private actor StaleServerContextService: OpenCodeServerContextServicing {
+    private var configurationRequests = 0
+    private var firstConfigurationContinuation: CheckedContinuation<OpenCodeConfiguration, Never>?
+    private var firstConfigurationWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func waitForFirstConfigurationRequest() async {
+        if configurationRequests > 0 { return }
+        await withCheckedContinuation { firstConfigurationWaiters.append($0) }
+    }
+
+    func releaseFirstConfigurationRequest() {
+        firstConfigurationContinuation?.resume(returning: ["model": .string("old")])
+        firstConfigurationContinuation = nil
+    }
+
+    func protocolCapabilities() async throws -> OpenCodeProtocolCapabilities { .v1 }
+
+    func serverConfiguration(directory: String, workspace: String?) async throws -> OpenCodeConfiguration {
+        configurationRequests += 1
+        if configurationRequests == 1 {
+            firstConfigurationWaiters.forEach { $0.resume() }
+            firstConfigurationWaiters.removeAll()
+            return await withCheckedContinuation { firstConfigurationContinuation = $0 }
+        }
+        return ["model": .string("new")]
+    }
+
+    func updateServerConfiguration(
+        _ configuration: OpenCodeConfiguration,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration { configuration }
+
+    func vcsInfo(directory: String, workspace: String?) async throws -> OpenCodeVCSInfo {
+        OpenCodeVCSInfo(branch: "new", defaultBranch: "main")
+    }
+
+    func pathInfo(directory: String, workspace: String?) async throws -> OpenCodeServerPaths {
+        racePaths
+    }
+
+    func mcpStatuses(directory: String, workspace: String?) async throws -> [String: OpenCodeMCPStatus] { [:] }
+    func lspStatuses(directory: String, workspace: String?) async throws -> [OpenCodeLSPStatus] { [] }
+    func formatterStatuses(directory: String, workspace: String?) async throws -> [OpenCodeFormatterStatus] { [] }
+}
+
+private actor SaveRaceServerContextService: OpenCodeServerContextServicing {
+    private(set) var configurationRequestCount = 0
+    private var updateContinuation: CheckedContinuation<Void, Never>?
+    private var updateWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func waitForUpdateRequest() async {
+        if updateContinuation != nil { return }
+        await withCheckedContinuation { updateWaiters.append($0) }
+    }
+
+    func releaseUpdateRequest() {
+        updateContinuation?.resume()
+        updateContinuation = nil
+    }
+
+    func protocolCapabilities() async throws -> OpenCodeProtocolCapabilities { .v1 }
+
+    func serverConfiguration(directory: String, workspace: String?) async throws -> OpenCodeConfiguration {
+        configurationRequestCount += 1
+        return ["model": .string("server-old")]
+    }
+
+    func updateServerConfiguration(
+        _ configuration: OpenCodeConfiguration,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration {
+        await withCheckedContinuation { continuation in
+            updateContinuation = continuation
+            updateWaiters.forEach { $0.resume() }
+            updateWaiters.removeAll()
+        }
+        return configuration
+    }
+
+    func vcsInfo(directory: String, workspace: String?) async throws -> OpenCodeVCSInfo {
+        OpenCodeVCSInfo(branch: "main", defaultBranch: "main")
+    }
+
+    func pathInfo(directory: String, workspace: String?) async throws -> OpenCodeServerPaths {
+        racePaths
+    }
+
+    func mcpStatuses(directory: String, workspace: String?) async throws -> [String: OpenCodeMCPStatus] { [:] }
+    func lspStatuses(directory: String, workspace: String?) async throws -> [OpenCodeLSPStatus] { [] }
+    func formatterStatuses(directory: String, workspace: String?) async throws -> [OpenCodeFormatterStatus] { [] }
+}
+
+private let racePaths = OpenCodeServerPaths(
+    home: nil,
+    state: nil,
+    config: nil,
+    worktree: "/repo",
+    directory: "/repo",
+    workspaceID: nil,
+    projectID: "proj_1"
+)
 
 private final class MockServerContextService: OpenCodeServerContextServicing, @unchecked Sendable {
     enum Step: Equatable, Sendable {
