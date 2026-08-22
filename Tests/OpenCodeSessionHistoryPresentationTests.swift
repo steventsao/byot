@@ -62,6 +62,45 @@ struct OpenCodeSessionHistoryPresentationTests {
         #expect(!presentation.canRestore)
     }
 
+    @Test("V2 revert events project staged files and clear boundaries")
+    func eventProjection() {
+        let staged = OpenCodeEvent(
+            id: "evt_stage",
+            type: "session.next.revert.staged",
+            properties: [
+                "sessionID": .string("ses_1"),
+                "revert": .object([
+                    "messageID": .string("msg_user_2"),
+                    "snapshot": .string("snap_1"),
+                    "files": .array([
+                        .object([
+                            "path": .string("Sources/App.swift"),
+                            "status": .string("modified"),
+                            "additions": .number(2),
+                            "deletions": .number(1),
+                            "patch": .string("@@"),
+                        ]),
+                    ]),
+                ]),
+            ]
+        )
+        let cleared = OpenCodeEvent(
+            id: "evt_clear",
+            type: "session.next.revert.cleared",
+            properties: ["sessionID": .string("ses_1")]
+        )
+
+        guard case .staged(let mutation) = OpenCodeSessionHistoryEventProjection.mutation(
+            from: staged
+        ) else {
+            Issue.record("Expected staged history mutation")
+            return
+        }
+        #expect(mutation.revert?.messageID == "msg_user_2")
+        #expect(mutation.diffs?.first?.file == "Sources/App.swift")
+        #expect(OpenCodeSessionHistoryEventProjection.mutation(from: cleared) == .cleared)
+    }
+
     private func message(
         id: String,
         role: String,
