@@ -139,6 +139,26 @@ struct OpenCodeProviderConnectionStoreTests {
         #expect(store.authorization == nil)
     }
 
+    @Test("A failed server cancellation cannot trap the OAuth sheet")
+    func cancellationFailureStillLeavesFlow() async {
+        let provider = oauthProvider()
+        let service = MockProviderConnectionService(
+            providers: [provider],
+            cancelError: TestProviderConnectionError.cancelFailed
+        )
+        let store = makeStore(service: service)
+
+        await store.load()
+        store.selectProvider(provider)
+        await store.beginOAuth()
+        await store.cancelOAuth()
+
+        #expect(service.steps.contains(.cancel(attemptID: "attempt_1")))
+        #expect(store.phase == .providerSelection)
+        #expect(store.authorization == nil)
+        #expect(!store.isSubmitting)
+    }
+
     @Test("OAuth submits only currently visible conditional inputs")
     func hiddenInputsAreNotSubmitted() async {
         let method = OpenCodeProviderAuthMethod(
@@ -218,8 +238,14 @@ struct OpenCodeProviderConnectionStoreTests {
 
 private enum TestProviderConnectionError: LocalizedError {
     case startFailed
+    case cancelFailed
 
-    var errorDescription: String? { "Could not start provider sign-in." }
+    var errorDescription: String? {
+        switch self {
+        case .startFailed: "Could not start provider sign-in."
+        case .cancelFailed: "Could not cancel provider sign-in."
+        }
+    }
 }
 
 private actor ProviderConnectionBarrier {
@@ -263,15 +289,18 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
     private let providers: [OpenCodeProviderConnection]
     private let startBarrier: ProviderConnectionBarrier?
     private let startError: TestProviderConnectionError?
+    private let cancelError: TestProviderConnectionError?
 
     init(
         providers: [OpenCodeProviderConnection],
         startBarrier: ProviderConnectionBarrier? = nil,
-        startError: TestProviderConnectionError? = nil
+        startError: TestProviderConnectionError? = nil,
+        cancelError: TestProviderConnectionError? = nil
     ) {
         self.providers = providers
         self.startBarrier = startBarrier
         self.startError = startError
+        self.cancelError = cancelError
     }
 
     var steps: [Step] {
@@ -341,6 +370,7 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
         workspace: String?
     ) async throws {
         record(.cancel(attemptID: attemptID))
+        if let cancelError { throw cancelError }
     }
 
     private func record(_ step: Step) {
