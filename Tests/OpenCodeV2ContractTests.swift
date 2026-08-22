@@ -201,6 +201,24 @@ final class OpenCodeV2ContractTests: XCTestCase {
         XCTAssertEqual(projects[0].time, OpenCodeProjectTime(created: 10, updated: 40))
     }
 
+    func testV2CoreDoesNotProbePendingActionRoutesBeforeActionAdapterLands() async throws {
+        let (client, session) = makeClient { _ in
+            .json(#"{"message":"pending actions belong to issue 14"}"#, statusCode: 500)
+        }
+        defer { session.invalidateAndCancel() }
+
+        let legacyPermissions = try await client.permissions(directory: "/repo")
+        let legacyQuestions = try await client.questions(directory: "/repo")
+        let v2Permissions = try await client.v2Permissions(sessionID: "ses_1")
+        let v2Questions = try await client.v2Questions(sessionID: "ses_1")
+
+        XCTAssertTrue(legacyPermissions.isEmpty)
+        XCTAssertTrue(legacyQuestions.isEmpty)
+        XCTAssertTrue(v2Permissions.isEmpty)
+        XCTAssertTrue(v2Questions.isEmpty)
+        XCTAssertTrue(OpenCodeV2URLProtocolStub.recordedRequests().isEmpty)
+    }
+
     func testV2EventSemanticsReconcileCurrentSessionNextFamilies() {
         XCTAssertEqual(OpenCodeEventSemantics.effect(for: "session.next.prompted"), .busyAndMessages)
         XCTAssertEqual(OpenCodeEventSemantics.effect(for: "session.next.text.delta"), .messages)
