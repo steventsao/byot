@@ -3,6 +3,7 @@ import SwiftUI
 struct OpenCodeSessionView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
+    @StateObject private var inputStore: OpenCodeSessionInputStore
     @State private var isShowingDiff = false
     @State private var isShowingChildren = false
     @State private var isShowingTodos = false
@@ -29,6 +30,14 @@ struct OpenCodeSessionView: View {
                 client: client,
                 session: session,
                 directory: directory
+            )
+        )
+        _inputStore = StateObject(
+            wrappedValue: OpenCodeSessionInputStore(
+                client: client,
+                directory: directory,
+                workspace: session.workspaceID,
+                initialAgentID: session.agent
             )
         )
     }
@@ -200,7 +209,7 @@ struct OpenCodeSessionView: View {
         .navigationTitle(store.session.title)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
-            OpenCodeSessionComposerView(store: store)
+            OpenCodeSessionComposerView(store: store, inputStore: inputStore)
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -327,6 +336,7 @@ struct OpenCodeSessionView: View {
             }
         }
         .task { await store.start() }
+        .task { await inputStore.load() }
         .onDisappear { store.stop() }
     }
 

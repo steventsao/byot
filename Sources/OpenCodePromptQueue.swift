@@ -65,10 +65,29 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         serverIsActive: Bool,
         id: UUID = UUID()
     ) -> OpenCodePromptSubmission {
+        accept(
+            intent: .prompt(text),
+            model: model,
+            agent: nil,
+            attachments: attachments,
+            serverIsActive: serverIsActive,
+            id: id
+        )
+    }
+
+    mutating func accept(
+        intent: OpenCodeSessionInputIntent,
+        model: OpenCodeModelOption?,
+        agent: String?,
+        attachments: [OpenCodePromptAttachment] = [],
+        serverIsActive: Bool,
+        id: UUID = UUID()
+    ) -> OpenCodePromptSubmission {
         let prompt = OpenCodeQueuedPrompt(
             id: id,
-            text: text,
+            intent: intent,
             model: model,
+            agent: agent,
             attachments: attachments
         )
         if phase == .idle, serverIsActive {
@@ -128,9 +147,14 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         }
     }
 
-    mutating func dispatchSucceeded() -> OpenCodeQueuedPrompt? {
+    mutating func dispatchSucceeded(
+        completesSynchronously: Bool = false
+    ) -> OpenCodeQueuedPrompt? {
         switch phase {
         case .submitting(let observedActive, let observedCompletion):
+            if completesSynchronously {
+                return takeNextOrBecomeIdle()
+            }
             if observedActive, observedCompletion {
                 return takeNextOrBecomeIdle()
             }

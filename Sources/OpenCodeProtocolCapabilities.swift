@@ -35,6 +35,11 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
     let fileRead: OpenCodeFeatureSupport
     let fileStatus: OpenCodeFeatureSupport
     let fileSearch: OpenCodeFeatureSupport
+    let commandCatalog: OpenCodeFeatureSupport
+    let commandExecution: OpenCodeFeatureSupport
+    let shellExecution: OpenCodeFeatureSupport
+    let agentCatalog: OpenCodeFeatureSupport
+    let agentSelection: OpenCodeFeatureSupport
 
     static let v1 = Self(
         sessionDiff: .supported,
@@ -56,7 +61,12 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         fileTree: .supported,
         fileRead: .supported,
         fileStatus: .supported,
-        fileSearch: .supported
+        fileSearch: .supported,
+        commandCatalog: .supported,
+        commandExecution: .supported,
+        shellExecution: .supported,
+        agentCatalog: .supported,
+        agentSelection: .supported
     )
 
     static let v2 = Self(
@@ -105,7 +115,16 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         fileStatus: .unavailable(
             reason: "OpenCode v2 does not expose a changed-file status route yet."
         ),
-        fileSearch: .supported
+        fileSearch: .supported,
+        commandCatalog: .supported,
+        commandExecution: .unavailable(
+            reason: "OpenCode v2 does not expose a command execution route yet."
+        ),
+        shellExecution: .unavailable(
+            reason: "OpenCode v2 does not expose a session shell route yet."
+        ),
+        agentCatalog: .supported,
+        agentSelection: .supported
     )
 }
 

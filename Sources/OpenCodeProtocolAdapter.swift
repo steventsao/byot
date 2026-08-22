@@ -120,6 +120,39 @@ protocol OpenCodeProtocolAdapting: Sendable {
         query: String
     ) async throws -> [OpenCodeFileEntry]
 
+    func commands(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeCommandOption]
+
+    func agents(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeAgentOption]
+
+    func executeCommand(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        command: String,
+        arguments: String,
+        agent: String?,
+        model: OpenCodeModelOption?
+    ) async throws
+
+    func runShell(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        command: String,
+        agent: String,
+        model: OpenCodeModelOption?
+    ) async throws
+
     func connectedProviderModels(
         using transport: OpenCodeTransport,
         directory: String,
@@ -139,6 +172,7 @@ protocol OpenCodeProtocolAdapting: Sendable {
         directory: String,
         workspace: String?,
         model: OpenCodeModelOption?,
+        agent: String?,
         text: String,
         attachments: [OpenCodePromptAttachment]
     ) async throws
@@ -474,6 +508,86 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         }
     }
 
+    func commands(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeCommandOption] {
+        try await transport.get(
+            ["command"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func agents(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeAgentOption] {
+        try await transport.get(
+            ["agent"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func executeCommand(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        command: String,
+        arguments: String,
+        agent: String?,
+        model: OpenCodeModelOption?
+    ) async throws {
+        struct Body: Encodable {
+            let command: String
+            let arguments: String
+            let agent: String?
+            let model: String?
+        }
+        let _: OpenCodeMessageEnvelope = try await transport.post(
+            ["session", sessionID, "command"],
+            query: instanceQuery(directory: directory, workspace: workspace),
+            body: Body(
+                command: command,
+                arguments: arguments,
+                agent: agent,
+                model: model.map { "\($0.providerID)/\($0.modelID)" }
+            )
+        )
+    }
+
+    func runShell(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        command: String,
+        agent: String,
+        model: OpenCodeModelOption?
+    ) async throws {
+        struct Body: Encodable {
+            let command: String
+            let agent: String
+            let model: OpenCodeV1PromptModel?
+        }
+        let _: OpenCodeMessageEnvelope = try await transport.post(
+            ["session", sessionID, "shell"],
+            query: instanceQuery(directory: directory, workspace: workspace),
+            body: Body(
+                command: command,
+                agent: agent,
+                model: model.map {
+                    OpenCodeV1PromptModel(
+                        providerID: $0.providerID,
+                        modelID: $0.modelID
+                    )
+                }
+            )
+        )
+    }
+
     func connectedProviderModels(
         using transport: OpenCodeTransport,
         directory: String,
@@ -505,6 +619,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         directory: String,
         workspace: String?,
         model: OpenCodeModelOption?,
+        agent: String?,
         text: String,
         attachments: [OpenCodePromptAttachment]
     ) async throws {
@@ -514,6 +629,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
             directory: directory,
             workspace: workspace,
             model: model,
+            agent: agent,
             text: text,
             attachments: attachments
         )
@@ -526,6 +642,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         directory: String,
         workspace: String?,
         model: OpenCodeModelOption?,
+        agent: String?,
         text: String,
         attachments: [OpenCodePromptAttachment]
     ) throws -> URLRequest {
@@ -545,6 +662,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         })
         let data = try JSONEncoder().encode(
             OpenCodeV1PromptBody(
+                agent: agent,
                 model: model.map {
                     OpenCodeV1PromptModel(
                         providerID: $0.providerID,
@@ -710,6 +828,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
     }
 
     private struct OpenCodeV1PromptBody: Encodable {
+        let agent: String?
         let model: OpenCodeV1PromptModel?
         let parts: [OpenCodeV1PromptPart]
     }
@@ -947,6 +1066,63 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         return response.data.map(\.normalized)
     }
 
+    func commands(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeCommandOption] {
+        let response: OpenCodeV2LocationDataResponse<[OpenCodeCommandOption]> =
+            try await transport.get(
+                ["api", "command"],
+                query: locationQuery(directory: directory, workspace: workspace)
+            )
+        return response.data
+    }
+
+    func agents(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeAgentOption] {
+        let response: OpenCodeV2LocationDataResponse<[OpenCodeAgentOption]> =
+            try await transport.get(
+                ["api", "agent"],
+                query: locationQuery(directory: directory, workspace: workspace)
+            )
+        return response.data
+    }
+
+    func executeCommand(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        command: String,
+        arguments: String,
+        agent: String?,
+        model: OpenCodeModelOption?
+    ) async throws {
+        throw unavailable(
+            feature: "Execute slash command",
+            support: capabilities.commandExecution
+        )
+    }
+
+    func runShell(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        command: String,
+        agent: String,
+        model: OpenCodeModelOption?
+    ) async throws {
+        throw unavailable(
+            feature: "Run shell command",
+            support: capabilities.shellExecution
+        )
+    }
+
     func connectedProviderModels(
         using transport: OpenCodeTransport,
         directory: String,
@@ -1020,10 +1196,18 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         directory: String,
         workspace: String?,
         model: OpenCodeModelOption?,
+        agent: String?,
         text: String,
         attachments: [OpenCodePromptAttachment]
     ) async throws {
         try OpenCodePromptAttachment.validate(attachments)
+        if let agent {
+            struct AgentBody: Encodable { let agent: String }
+            try await transport.postExpectingEmptyResponse(
+                ["api", "session", sessionID, "agent"],
+                body: AgentBody(agent: agent)
+            )
+        }
         if let model {
             struct ModelBody: Encodable { let model: OpenCodeV2ModelReference }
             try await transport.postExpectingEmptyResponse(
