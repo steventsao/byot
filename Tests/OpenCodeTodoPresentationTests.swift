@@ -19,6 +19,7 @@ struct OpenCodeTodoPresentationTests {
         #expect(presentation.activeCount == 2)
         #expect(presentation.progress == 0.5)
         #expect(presentation.headline == "Implement")
+        #expect(presentation.progressAccessibilityValue == "2 of 4 resolved")
         #expect(presentation.canPresent)
     }
 
