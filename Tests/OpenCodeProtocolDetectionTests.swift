@@ -54,16 +54,17 @@ struct OpenCodeProtocolDetectionTests {
         #expect(probe.protocol == .v2)
     }
 
-    @Test("ambiguous /api/health without pid but healthy:true maps to v1 (mirrors desktop)")
-    func ambiguousAPIHealthMapsToV1() async throws {
+    @Test("current v2 health without pid or version detects v2 when legacy health is absent")
+    func currentV2HealthWithoutPIDDetectsV2() async throws {
         let (client, _) = makeStubbedClient(responses: [
             "/global/health": .html("<!doctype html><html></html>"),
-            "/api/health": .json(#"{"healthy":true,"version":"1.18.18"}"#),
+            "/api/health": .json(#"{"healthy":true}"#),
         ])
 
         let probe = try await OpenCodeProtocolDetector(client: client).probe()
 
-        #expect(probe.protocol == .v1)
+        #expect(probe.protocol == .v2)
+        #expect(probe.health == OpenCodeHealth(healthy: true, version: "v2"))
     }
 
     @Test("server returning HTML for both health routes is not a usable server")
@@ -134,7 +135,7 @@ struct OpenCodeProtocolDetectionTests {
         }
     }
 
-    @Test("compatibility probe against a v2 server reports unsupported with an OpenCode 2 message")
+    @Test("compatibility probe against a v2 server enables the implemented core without v1 capabilities")
     func compatibilityProbeAgainstV2Server() async throws {
         let (client, _) = makeStubbedClient(responses: [
             "/global/health": .html("<!doctype html><html></html>"),
@@ -143,11 +144,12 @@ struct OpenCodeProtocolDetectionTests {
 
         let summary = try await client.probeCompatibility()
 
-        #expect(summary.state == .unsupported)
+        #expect(summary.state == .degraded)
         #expect(summary.serverVersion == "0.0.0-beta-17595")
+        #expect(summary.capabilitiesAvailable == false)
         let detail = try #require(summary.detail)
         #expect(detail.contains("OpenCode 2"))
-        #expect(detail.contains("Upgrade the OpenCode CLI") == false)
+        #expect(detail.contains("core chat") == true)
     }
 
     @Test("evaluator treats 0.x beta versions as OpenCode 2, not as an outdated v1")
