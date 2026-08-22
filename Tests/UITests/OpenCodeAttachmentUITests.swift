@@ -17,20 +17,12 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         composer.typeText("Review this design and suggest the next implementation step")
 
         app.buttons["Add attachment"].tap()
-        let choosePhoto = app.buttons["Choose Photo"]
-        XCTAssertTrue(choosePhoto.waitForExistence(timeout: 5))
-        choosePhoto.tap()
-
-        // PhotosPicker is hosted in a remote view. Element queries do not
-        // expose its grid on current iOS simulators, so drive only that
-        // system-owned surface by stable normalized positions: first grid
-        // item, then the top-right Add button.
-        sleep(2)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.17, dy: 0.63)).tap()
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.91, dy: 0.17)).tap()
+        let addFixture = app.buttons["Add Screenshot Fixture"]
+        XCTAssertTrue(addFixture.waitForExistence(timeout: 5))
+        addFixture.tap()
 
         let removeAttachment = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Remove Photo '")
+            NSPredicate(format: "label == 'Remove byot-design.png'")
         ).firstMatch
         XCTAssertTrue(removeAttachment.waitForExistence(timeout: 10))
 

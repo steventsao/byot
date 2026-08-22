@@ -50,7 +50,14 @@ struct OpenCodeAttachmentScreenshotHarness: View {
             .navigationTitle(store.session.title)
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
-                OpenCodeSessionComposerView(store: store)
+                OpenCodeSessionComposerView(
+                    store: store,
+                    screenshotAttachment: OpenCodePromptAttachment(
+                        filename: "byot-design.png",
+                        mimeType: "image/png",
+                        data: Data("simulator-screenshot-fixture".utf8)
+                    )
+                )
             }
         }
         .onAppear { store.prepareForAttachmentScreenshot() }

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct OpenCodeSessionComposerView: View {
     @ObservedObject var store: OpenCodeSessionStore
+    private let screenshotAttachment: OpenCodePromptAttachment?
     @State private var text = ""
     @State private var attachments: [OpenCodePromptAttachment] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -14,6 +15,14 @@ struct OpenCodeSessionComposerView: View {
     @State private var isShowingModelPicker = false
     @FocusState private var isFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    init(
+        store: OpenCodeSessionStore,
+        screenshotAttachment: OpenCodePromptAttachment? = nil
+    ) {
+        self.store = store
+        self.screenshotAttachment = screenshotAttachment
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -77,6 +86,17 @@ struct OpenCodeSessionComposerView: View {
                         Button("Choose File", systemImage: "doc") {
                             isShowingFileImporter = true
                         }
+#if DEBUG
+                        if let screenshotAttachment {
+                            Button("Add Screenshot Fixture", systemImage: "sparkles") {
+                                do {
+                                    try appendAttachments([screenshotAttachment])
+                                } catch {
+                                    attachmentErrorMessage = error.localizedDescription
+                                }
+                            }
+                        }
+#endif
                     } label: {
                         Group {
                             if isImportingAttachment {

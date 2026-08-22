@@ -19,7 +19,7 @@ jobs:
         run: brew install xcodegen
       - name: Generate Xcode project
         run: xcodegen generate
-      - name: Boot simulator and seed photo
+      - name: Boot simulator
         id: simulator
         shell: bash
         run: |
@@ -29,7 +29,6 @@ jobs:
           udid="$(xcrun simctl create 'BYOT Attachment Screenshot' "$device_type" "$runtime")"
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
-          xcrun simctl addmedia "$udid" Brand/byot-chatgpt-image-2-concept.png
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
       - name: Run unit and attachment UI tests
         env:
