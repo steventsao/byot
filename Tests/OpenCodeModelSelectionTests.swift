@@ -36,6 +36,7 @@ struct OpenCodeModelSelectionTests {
 
         #expect(catalog.connectedProviders.count == 1)
         #expect(provider.providerID == "kimi-for-coding")
+        #expect(provider.connectionState == .confirmed)
         #expect(provider.models.map(\.qualifiedID) == [
             "kimi-for-coding/k3",
             "kimi-for-coding/k3-256k",
