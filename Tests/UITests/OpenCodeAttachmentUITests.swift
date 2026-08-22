@@ -21,14 +21,13 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         XCTAssertTrue(choosePhoto.waitForExistence(timeout: 5))
         choosePhoto.tap()
 
-        let firstPhoto = app.collectionViews.cells.firstMatch
-        XCTAssertTrue(firstPhoto.waitForExistence(timeout: 10))
-        firstPhoto.tap()
-
-        let add = app.buttons["Add"]
-        if add.waitForExistence(timeout: 2) {
-            add.tap()
-        }
+        // PhotosPicker is hosted in a remote view. Element queries do not
+        // expose its grid on current iOS simulators, so drive only that
+        // system-owned surface by stable normalized positions: first grid
+        // item, then the top-right Add button.
+        sleep(2)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.17, dy: 0.63)).tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.91, dy: 0.17)).tap()
 
         let removeAttachment = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH 'Remove Photo '")
@@ -37,13 +36,12 @@ final class OpenCodeAttachmentUITests: XCTestCase {
 
         composer.tap()
         let screenshot = XCUIScreen.main.screenshot()
-        let activity = XCTContext.runActivity(named: "Prompt with photo attachment") { activity in
+        XCTContext.runActivity(named: "Prompt with photo attachment") { activity in
             let attachment = XCTAttachment(screenshot: screenshot)
             attachment.name = "prompt-attachments"
             attachment.lifetime = .keepAlways
             activity.add(attachment)
         }
-        _ = activity
 
         if let output = ProcessInfo.processInfo.environment["BYOT_SCREENSHOT_OUTPUT"] {
             try screenshot.pngRepresentation.write(to: URL(fileURLWithPath: output))
