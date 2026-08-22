@@ -101,6 +101,39 @@ struct OpenCodeSessionInputStoreTests {
         #expect(store.policy?.canExecuteCommands == false)
         #expect(store.errorMessage == nil)
     }
+
+    @Test("Slash text cannot bypass a command catalog that has not loaded")
+    func slashTextWaitsForCatalog() async {
+        let command = OpenCodeCommandOption(
+            name: "review",
+            description: nil,
+            template: "Review",
+            source: nil,
+            agent: nil,
+            subtask: nil,
+            hints: []
+        )
+        let service = MockSessionInputService(
+            capabilities: .v1,
+            commands: [command],
+            agents: []
+        )
+        let store = OpenCodeSessionInputStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil,
+            initialAgentID: nil
+        )
+
+        #expect(!store.validate(.prompt("/review staged"), sourceText: "/review staged"))
+        #expect(!store.hasLoadedCommandCatalog)
+
+        await store.load()
+
+        #expect(store.hasLoadedCommandCatalog)
+        #expect(store.validate(.command(name: "review", arguments: "staged"), sourceText: "/review staged"))
+        #expect(store.validate(.prompt("/unknown literal"), sourceText: "/unknown literal"))
+    }
 }
 
 private final class MockSessionInputService: OpenCodeSessionInputServicing, @unchecked Sendable {

@@ -311,8 +311,8 @@ struct OpenCodePromptQueueTests {
         #expect(prompt.text == "/review staged changes")
     }
 
-    @Test("A synchronous shell response immediately releases the next queued turn")
-    func shellCompletionDrainsQueue() {
+    @Test("A synchronous shell response waits for an idle barrier before the next turn")
+    func shellCompletionWaitsForIdleBarrier() {
         var queue = OpenCodePromptQueue()
         _ = queue.accept(
             intent: .shell("git status"),
@@ -322,11 +322,32 @@ struct OpenCodePromptQueueTests {
         )
         _ = queue.accept(text: "Explain that", model: nil, serverIsActive: false)
 
-        #expect(
-            queue.dispatchSucceeded(completesSynchronously: true)?.text
-                == "Explain that"
-        )
+        #expect(queue.dispatchSucceeded(completesSynchronously: true) == nil)
+        #expect(queue.serverBecameIdle()?.text == "Explain that")
         #expect(queue.prompts.isEmpty)
+    }
+
+    @Test("A delayed shell idle cannot complete the next queued prompt")
+    func delayedShellIdleCannotDrainNextTurn() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            intent: .shell("git status"),
+            model: nil,
+            agent: "build",
+            serverIsActive: false
+        )
+        _ = queue.accept(text: "Second", model: nil, serverIsActive: false)
+        _ = queue.accept(text: "Third", model: nil, serverIsActive: false)
+
+        #expect(queue.dispatchSucceeded(completesSynchronously: true) == nil)
+        #expect(queue.serverBecameIdle()?.text == "Second")
+        #expect(queue.serverBecameIdle() == nil)
+        #expect(queue.dispatchSucceeded() == nil)
+        #expect(queue.serverBecameIdle() == nil)
+        #expect(queue.prompts.map(\.text) == ["Third"])
+
+        queue.serverBecameActive()
+        #expect(queue.serverBecameIdle()?.text == "Third")
     }
 }
 
