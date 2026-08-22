@@ -516,6 +516,144 @@ final class OpenCodeV2ContractTests: XCTestCase {
         })
     }
 
+    func testV1SessionHistoryActionsUseCurrentRoutesBodiesAndResponses() async throws {
+        let sessionJSON = #"{"id":"ses_1","slug":"one","projectID":"proj_1","directory":"/repo","title":"One","version":"1","time":{"created":10,"updated":20}}"#
+        let revertedJSON = #"{"id":"ses_1","slug":"one","projectID":"proj_1","directory":"/repo","title":"One","version":"1","time":{"created":10,"updated":21},"revert":{"messageID":"msg_2","partID":"prt_2","snapshot":"snap_1","diff":"patch"}}"#
+        let forkJSON = #"{"id":"ses_fork","slug":"fork","projectID":"proj_1","directory":"/repo","title":"Fork","version":"1","time":{"created":30,"updated":30}}"#
+        let (client, session) = makeClient(serverProtocol: .v1) { request in
+            switch request.url?.path {
+            case "/session/ses_1/revert": .json(revertedJSON)
+            case "/session/ses_1/unrevert": .json(sessionJSON)
+            case "/session/ses_1/summarize": .json("true")
+            case "/session/ses_1/fork": .json(forkJSON)
+            default: .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+        let model = OpenCodeModelOption(
+            providerID: "anthropic",
+            providerName: "Anthropic",
+            modelID: "claude-sonnet",
+            modelName: "Claude Sonnet",
+            status: nil
+        )
+
+        let reverted = try await client.revertSession(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1",
+            target: OpenCodeSessionRevertTarget(
+                messageID: "msg_2",
+                partID: "prt_2",
+                files: nil
+            )
+        )
+        let restored = try await client.unrevertSession(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let summarized = try await client.summarizeSession(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1",
+            model: model,
+            automatically: true
+        )
+        let forked = try await client.forkSession(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1",
+            messageID: "msg_2"
+        )
+
+        XCTAssertEqual(reverted.session?.revert?.messageID, "msg_2")
+        XCTAssertNil(restored.session?.revert)
+        XCTAssertTrue(summarized)
+        XCTAssertEqual(forked.id, "ses_fork")
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { $0.url?.path }, [
+            "/session/ses_1/revert",
+            "/session/ses_1/unrevert",
+            "/session/ses_1/summarize",
+            "/session/ses_1/fork",
+        ])
+        XCTAssertEqual(Set(try v2JSONObject(for: requests[0]).keys), ["messageID", "partID"])
+        XCTAssertNil(requests[1].httpBody)
+        let summarizeBody = try v2JSONObject(for: requests[2])
+        XCTAssertEqual(summarizeBody["providerID"] as? String, "anthropic")
+        XCTAssertEqual(summarizeBody["modelID"] as? String, "claude-sonnet")
+        XCTAssertEqual(summarizeBody["auto"] as? Bool, true)
+        XCTAssertEqual(try v2JSONObject(for: requests[3])["messageID"] as? String, "msg_2")
+        XCTAssertTrue(requests.allSatisfy {
+            v2QueryValues(for: $0) == ["directory": "/repo", "workspace": "wrk_1"]
+        })
+    }
+
+    func testV2SessionHistoryMapsStageClearAndCompactWithoutGuessingFork() async throws {
+        let (client, session) = makeClient { request in
+            switch request.url?.path {
+            case "/api/session/ses_1/revert/stage":
+                return .json(#"{"data":{"messageID":"msg_2","snapshot":"snap_1","diff":"raw","files":[{"path":"Sources/App.swift","status":"modified","additions":2,"deletions":1,"patch":"@@"}]}}"#)
+            case "/api/session/ses_1/revert/clear", "/api/session/ses_1/compact":
+                return .empty(statusCode: 204)
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        let reverted = try await client.revertSession(
+            sessionID: "ses_1",
+            directory: "/must/not/be/sent",
+            workspace: "must-not-be-sent",
+            target: OpenCodeSessionRevertTarget(
+                messageID: "msg_2",
+                partID: "prt_not_supported_by_v2",
+                files: true
+            )
+        )
+        let restored = try await client.unrevertSession(
+            sessionID: "ses_1",
+            directory: "/must/not/be/sent"
+        )
+        let summarized = try await client.summarizeSession(
+            sessionID: "ses_1",
+            directory: "/must/not/be/sent",
+            model: nil,
+            automatically: nil
+        )
+
+        XCTAssertEqual(reverted.revert?.messageID, "msg_2")
+        XCTAssertEqual(reverted.diffs?.first?.file, "Sources/App.swift")
+        XCTAssertNil(restored.revert)
+        XCTAssertTrue(summarized)
+        do {
+            _ = try await client.forkSession(
+                sessionID: "ses_1",
+                directory: "/must/not/be/sent",
+                messageID: nil
+            )
+            XCTFail("Expected v2 fork to be unavailable")
+        } catch let error as OpenCodeFeatureUnavailableError {
+            XCTAssertEqual(error.feature, "Fork session")
+        }
+
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { $0.url?.path }, [
+            "/api/session/ses_1/revert/stage",
+            "/api/session/ses_1/revert/clear",
+            "/api/session/ses_1/compact",
+        ])
+        let revertBody = try v2JSONObject(for: requests[0])
+        XCTAssertEqual(Set(revertBody.keys), ["messageID", "files"])
+        XCTAssertEqual(revertBody["messageID"] as? String, "msg_2")
+        XCTAssertEqual(revertBody["files"] as? Bool, true)
+        XCTAssertNil(requests[1].httpBody)
+        XCTAssertNil(requests[2].httpBody)
+        XCTAssertTrue(requests.allSatisfy { v2QueryValues(for: $0).isEmpty })
+    }
+
     private func makeClient(
         serverProtocol: OpenCodeServerProtocol = .v2,
         handler: @escaping @Sendable (URLRequest) -> OpenCodeV2URLProtocolStub.Response
