@@ -171,6 +171,41 @@ final class OpenCodeV2ContractTests: XCTestCase {
         XCTAssertTrue(OpenCodeV2URLProtocolStub.recordedRequests().isEmpty)
     }
 
+    func testV1TodosUseCurrentSessionRouteAndLocation() async throws {
+        let (client, session) = makeClient(serverProtocol: .v1) { _ in
+            .json(
+                #"[{"content":"Inspect","status":"completed","priority":"high"},{"content":"Implement","status":"in_progress","priority":"medium"}]"#
+            )
+        }
+        defer { session.invalidateAndCancel() }
+
+        let todos = try await client.todos(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+
+        XCTAssertEqual(todos.map(\.content), ["Inspect", "Implement"])
+        let request = try XCTUnwrap(OpenCodeV2URLProtocolStub.recordedRequests().first)
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.path, "/session/ses_1/todo")
+        XCTAssertEqual(v2QueryValues(for: request), [
+            "directory": "/repo", "workspace": "wrk_1",
+        ])
+    }
+
+    func testV2TodosStayProbeFreeUntilUpstreamAddsARoute() async throws {
+        let (client, session) = makeClient { _ in
+            .json(#"{"message":"must not request"}"#, statusCode: 500)
+        }
+        defer { session.invalidateAndCancel() }
+
+        let todos = try await client.todos(sessionID: "ses_1", directory: "/repo")
+
+        XCTAssertTrue(todos.isEmpty)
+        XCTAssertTrue(OpenCodeV2URLProtocolStub.recordedRequests().isEmpty)
+    }
+
     func testMessageListPaginatesAndNormalizesProjectedContent() async throws {
         let (client, session) = makeClient { request in
             let query = v2QueryValues(for: request)
