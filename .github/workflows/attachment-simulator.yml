@@ -43,7 +43,7 @@ jobs:
           xcrun xcresulttool export attachments \
             --path TestResults.xcresult \
             --output-path ScreenshotAttachments
-          screenshot="$(find ScreenshotAttachments -type f -iname '*prompt-attachments*.png' -print -quit)"
+          screenshot="$(find ScreenshotAttachments -type f -iname '*.png' -print -quit)"
           test -n "$screenshot"
           cp "$screenshot" docs/screenshots/07-prompt-attachments.png
       - name: Upload test result
