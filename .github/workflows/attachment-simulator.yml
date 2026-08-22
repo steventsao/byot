@@ -29,6 +29,7 @@ jobs:
           udid="$(xcrun simctl create 'BYOT Attachment Screenshot' "$device_type" "$runtime")"
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
+          xcrun simctl ui "$udid" appearance dark
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
       - name: Run unit and attachment UI tests
         run: |
