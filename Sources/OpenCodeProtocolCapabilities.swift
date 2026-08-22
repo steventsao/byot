@@ -14,6 +14,16 @@ enum OpenCodeFeatureSupport: Equatable, Sendable {
     }
 }
 
+struct OpenCodeServerContextCapabilities: Equatable, Sendable {
+    let configurationRead: OpenCodeFeatureSupport
+    let configurationWrite: OpenCodeFeatureSupport
+    let vcs: OpenCodeFeatureSupport
+    let paths: OpenCodeFeatureSupport
+    let mcp: OpenCodeFeatureSupport
+    let lsp: OpenCodeFeatureSupport
+    let formatter: OpenCodeFeatureSupport
+}
+
 struct OpenCodeProtocolCapabilities: Equatable, Sendable {
     let sessionDiff: OpenCodeFeatureSupport
     let symbolSearch: OpenCodeFeatureSupport
@@ -26,6 +36,7 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
     let modelTemperatureMetadata: OpenCodeFeatureSupport
     let sessionDetails: OpenCodeFeatureSupport
     let sessionSharing: OpenCodeFeatureSupport
+    let serverContext: OpenCodeServerContextCapabilities
     let sessionRename: OpenCodeFeatureSupport
     let sessionDelete: OpenCodeFeatureSupport
     let sessionChildren: OpenCodeFeatureSupport
@@ -60,6 +71,15 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         modelTemperatureMetadata: .supported,
         sessionDetails: .supported,
         sessionSharing: .supported,
+        serverContext: OpenCodeServerContextCapabilities(
+            configurationRead: .supported,
+            configurationWrite: .supported,
+            vcs: .supported,
+            paths: .supported,
+            mcp: .supported,
+            lsp: .supported,
+            formatter: .supported
+        ),
         sessionRename: .supported,
         sessionDelete: .supported,
         sessionChildren: .supported,
@@ -104,6 +124,27 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         sessionDetails: .supported,
         sessionSharing: .unavailable(
             reason: "OpenCode v2 does not expose session share or unshare routes yet."
+        ),
+        serverContext: OpenCodeServerContextCapabilities(
+            configurationRead: .unavailable(
+                reason: "OpenCode v2 does not expose a configuration read route yet."
+            ),
+            configurationWrite: .unavailable(
+                reason: "OpenCode v2 does not expose a configuration update route yet."
+            ),
+            vcs: .unavailable(
+                reason: "OpenCode v2 does not expose VCS status yet."
+            ),
+            paths: .supported,
+            mcp: .unavailable(
+                reason: "OpenCode v2 does not expose MCP status yet."
+            ),
+            lsp: .unavailable(
+                reason: "OpenCode v2 does not expose LSP status yet."
+            ),
+            formatter: .unavailable(
+                reason: "OpenCode v2 does not expose formatter status yet."
+            )
         ),
         sessionRename: .unavailable(
             reason: "OpenCode v2 does not expose a session rename route yet."

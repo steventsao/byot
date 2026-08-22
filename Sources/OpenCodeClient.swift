@@ -209,6 +209,85 @@ struct OpenCodeClient: Sendable {
         return adapter.capabilities
     }
 
+    func serverConfiguration(
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> OpenCodeConfiguration {
+        try await protocolAdapter().serverConfiguration(
+            using: transport,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func updateServerConfiguration(
+        _ configuration: OpenCodeConfiguration,
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> OpenCodeConfiguration {
+        try await protocolAdapter().updateServerConfiguration(
+            using: transport,
+            configuration: configuration,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func vcsInfo(
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> OpenCodeVCSInfo {
+        try await protocolAdapter().vcsInfo(
+            using: transport,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func pathInfo(
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> OpenCodeServerPaths {
+        try await protocolAdapter().pathInfo(
+            using: transport,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func mcpStatuses(
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> [String: OpenCodeMCPStatus] {
+        try await protocolAdapter().mcpStatuses(
+            using: transport,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func lspStatuses(
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> [OpenCodeLSPStatus] {
+        try await protocolAdapter().lspStatuses(
+            using: transport,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func formatterStatuses(
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> [OpenCodeFormatterStatus] {
+        try await protocolAdapter().formatterStatuses(
+            using: transport,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
     func listSessions(directory: String) async throws -> [OpenCodeSession] {
         try await protocolAdapter().listSessions(
             using: transport,

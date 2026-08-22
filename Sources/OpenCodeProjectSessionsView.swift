@@ -7,6 +7,7 @@ struct OpenCodeProjectSessionsView: View {
     @State private var renameTarget: OpenCodeSession?
     @State private var deleteTarget: OpenCodeSession?
     @State private var isShowingProviders = false
+    @State private var isShowingServerContext = false
     let name: String
     let openAppNavigation: () -> Void
 
@@ -118,6 +119,11 @@ struct OpenCodeProjectSessionsView: View {
                 AppNavigationButton(isToolbarItem: true, action: openAppNavigation)
             }
             ToolbarItem(placement: .topBarTrailing) {
+                Button("Server", systemImage: "server.rack") {
+                    isShowingServerContext = true
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button("Providers", systemImage: "key.horizontal") {
                     isShowingProviders = true
                 }
@@ -153,6 +159,12 @@ struct OpenCodeProjectSessionsView: View {
         }
         .sheet(isPresented: $isShowingProviders) {
             OpenCodeProviderConnectionView(
+                client: store.client,
+                directory: store.directory
+            )
+        }
+        .sheet(isPresented: $isShowingServerContext) {
+            OpenCodeServerContextView(
                 client: store.client,
                 directory: store.directory
             )
