@@ -4,10 +4,12 @@ struct OpenCodeSessionView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
     @StateObject private var inputStore: OpenCodeSessionInputStore
+    @StateObject private var sharingStore: OpenCodeSessionSharingStore
     @State private var isShowingDiff = false
     @State private var isShowingChildren = false
     @State private var isShowingTodos = false
     @State private var isShowingFiles = false
+    @State private var isShowingSharing = false
     @State private var isAtBottom = true
     @State private var pendingRevertTarget: OpenCodeSessionRevertTarget?
     @State private var isConfirmingRestore = false
@@ -38,6 +40,12 @@ struct OpenCodeSessionView: View {
                 directory: directory,
                 workspace: session.workspaceID,
                 initialAgentID: session.agent
+            )
+        )
+        _sharingStore = StateObject(
+            wrappedValue: OpenCodeSessionSharingStore(
+                service: client,
+                session: session
             )
         )
     }
@@ -223,6 +231,10 @@ struct OpenCodeSessionView: View {
                     status: store.status,
                     eventConnected: store.isEventConnected
                 )
+                Button("Share", systemImage: "square.and.arrow.up") {
+                    isShowingSharing = true
+                }
+                .labelStyle(.iconOnly)
                 Button("Changes", systemImage: "doc.text.magnifyingglass") {
                     isShowingDiff = true
                 }
@@ -272,6 +284,9 @@ struct OpenCodeSessionView: View {
         }
         .sheet(isPresented: $isShowingDiff) {
             OpenCodeDiffView(presentation: store.diffPresentation)
+        }
+        .sheet(isPresented: $isShowingSharing) {
+            OpenCodeSessionSharingView(store: sharingStore)
         }
         .sheet(isPresented: $isShowingChildren) {
             OpenCodeSessionChildrenView(
@@ -340,6 +355,7 @@ struct OpenCodeSessionView: View {
         }
         .task { await store.start() }
         .task { await inputStore.load() }
+        .task { await sharingStore.loadCapabilities() }
         .onDisappear { store.stop() }
     }
 

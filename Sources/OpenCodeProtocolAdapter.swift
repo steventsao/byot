@@ -32,6 +32,20 @@ protocol OpenCodeProtocolAdapting: Sendable {
         workspace: String?
     ) async throws -> OpenCodeSession
 
+    func shareSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession
+
+    func unshareSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession
+
     func renameSession(
         using transport: OpenCodeTransport,
         sessionID: String,
@@ -366,6 +380,30 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
     ) async throws -> OpenCodeSession {
         try await transport.get(
             ["session", sessionID],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func shareSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        try await transport.postWithoutBody(
+            ["session", sessionID, "share"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func unshareSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        try await transport.delete(
+            ["session", sessionID, "share"],
             query: instanceQuery(directory: directory, workspace: workspace)
         )
     }
@@ -1117,6 +1155,30 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
             query: []
         )
         return response.data.normalized
+    }
+
+    func shareSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        throw unavailable(
+            feature: "Share session",
+            support: capabilities.sessionSharing
+        )
+    }
+
+    func unshareSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        throw unavailable(
+            feature: "Unshare session",
+            support: capabilities.sessionSharing
+        )
     }
 
     func renameSession(

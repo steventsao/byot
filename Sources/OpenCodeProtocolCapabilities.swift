@@ -25,6 +25,7 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
     let modelReasoningMetadata: OpenCodeFeatureSupport
     let modelTemperatureMetadata: OpenCodeFeatureSupport
     let sessionDetails: OpenCodeFeatureSupport
+    let sessionSharing: OpenCodeFeatureSupport
     let sessionRename: OpenCodeFeatureSupport
     let sessionDelete: OpenCodeFeatureSupport
     let sessionChildren: OpenCodeFeatureSupport
@@ -58,6 +59,7 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         modelReasoningMetadata: .supported,
         modelTemperatureMetadata: .supported,
         sessionDetails: .supported,
+        sessionSharing: .supported,
         sessionRename: .supported,
         sessionDelete: .supported,
         sessionChildren: .supported,
@@ -100,6 +102,9 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
             reason: "OpenCode v2 does not report the model temperature capability."
         ),
         sessionDetails: .supported,
+        sessionSharing: .unavailable(
+            reason: "OpenCode v2 does not expose session share or unshare routes yet."
+        ),
         sessionRename: .unavailable(
             reason: "OpenCode v2 does not expose a session rename route yet."
         ),

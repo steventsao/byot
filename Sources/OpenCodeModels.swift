@@ -94,11 +94,16 @@ struct OpenCodeSession: Codable, Identifiable, Equatable, Sendable {
     let directory: String
     let parentID: String?
     var revert: OpenCodeSessionRevertState? = nil
+    var share: OpenCodeSessionShare? = nil
     let summary: OpenCodeSessionSummary?
     let title: String
     let agent: String?
     let version: String
     let time: OpenCodeSessionTime
+}
+
+struct OpenCodeSessionShare: Codable, Equatable, Sendable {
+    let url: URL
 }
 
 struct OpenCodeSessionRevertState: Codable, Equatable, Sendable {
