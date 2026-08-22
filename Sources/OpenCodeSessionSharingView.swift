@@ -6,27 +6,30 @@ struct OpenCodeSessionSharingView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if store.isLoadingCapabilities {
-                    BYOTActivityView(
-                        .loading,
-                        title: "Checking sharing",
-                        detail: "Reading this server’s session capabilities.",
-                        layout: .blocking
-                    )
-                } else if let reason = store.presentation.unavailableReason {
-                    ContentUnavailableView(
-                        "Sharing unavailable",
-                        systemImage: "square.and.arrow.up",
-                        description: Text(reason)
-                    )
-                } else if let url = store.presentation.shareURL {
-                    published(url: url)
-                } else {
-                    privateSession
+            ScrollView {
+                Group {
+                    if store.isLoadingCapabilities {
+                        BYOTActivityView(
+                            .loading,
+                            title: "Checking sharing",
+                            detail: "Reading this server’s session capabilities.",
+                            layout: .blocking
+                        )
+                    } else if let reason = store.presentation.unavailableReason {
+                        ContentUnavailableView(
+                            "Sharing unavailable",
+                            systemImage: "square.and.arrow.up",
+                            description: Text(reason)
+                        )
+                    } else if let url = store.presentation.shareURL {
+                        published(url: url)
+                    } else {
+                        privateSession
+                    }
                 }
+                .padding(20)
+                .frame(maxWidth: .infinity)
             }
-            .padding(20)
             .navigationTitle("Publish on web")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -35,7 +38,8 @@ struct OpenCodeSessionSharingView: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .task { await store.prepareForPresentation() }
+        .presentationDetents([.medium, .large])
     }
 
     private var privateSession: some View {

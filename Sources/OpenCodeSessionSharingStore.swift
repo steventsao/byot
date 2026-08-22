@@ -28,13 +28,20 @@ final class OpenCodeSessionSharingStore: ObservableObject {
     @Published var errorMessage: String?
 
     private let service: OpenCodeSessionSharingServicing
+    private let sessionDidChange: @MainActor (OpenCodeSession) -> Void
 
     init(
         service: OpenCodeSessionSharingServicing,
-        session: OpenCodeSession
+        session: OpenCodeSession,
+        sessionDidChange: @escaping @MainActor (OpenCodeSession) -> Void = { _ in }
     ) {
         self.service = service
         self.session = session
+        self.sessionDidChange = sessionDidChange
+    }
+
+    func prepareForPresentation() async {
+        await loadCapabilities()
     }
 
     var presentation: OpenCodeSessionSharingPresentation {
@@ -92,6 +99,7 @@ final class OpenCodeSessionSharingStore: ObservableObject {
         defer { isMutating = false }
         do {
             session = try await request(service, current)
+            sessionDidChange(session)
         } catch {
             errorMessage = error.localizedDescription
         }

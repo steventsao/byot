@@ -34,6 +34,10 @@ final class OpenCodeProjectStore: ObservableObject {
         "\(sessionTitle) is already being updated."
     }
 
+    func reconcileSession(_ session: OpenCodeSession) {
+        lifecycleState.upsert(session)
+    }
+
     func load() async {
         let generation = requestVersion.beginLoad()
         isLoading = true

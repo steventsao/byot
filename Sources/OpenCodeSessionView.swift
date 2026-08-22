@@ -16,6 +16,7 @@ struct OpenCodeSessionView: View {
     @State private var forkedSession: OpenCodeSession?
     let openAppNavigation: () -> Void
     private let client: OpenCodeClient
+    private let sessionDidChange: @MainActor (OpenCodeSession) -> Void
 
     private let bottomAnchorID = "opencode-session-bottom"
 
@@ -23,9 +24,11 @@ struct OpenCodeSessionView: View {
         client: OpenCodeClient,
         session: OpenCodeSession,
         directory: String,
+        sessionDidChange: @escaping @MainActor (OpenCodeSession) -> Void = { _ in },
         openAppNavigation: @escaping () -> Void
     ) {
         self.client = client
+        self.sessionDidChange = sessionDidChange
         self.openAppNavigation = openAppNavigation
         _store = StateObject(
             wrappedValue: OpenCodeSessionStore(
@@ -45,7 +48,8 @@ struct OpenCodeSessionView: View {
         _sharingStore = StateObject(
             wrappedValue: OpenCodeSessionSharingStore(
                 service: client,
-                session: session
+                session: session,
+                sessionDidChange: sessionDidChange
             )
         )
     }
@@ -349,6 +353,7 @@ struct OpenCodeSessionView: View {
                     client: client,
                     session: forkedSession,
                     directory: forkedSession.directory,
+                    sessionDidChange: sessionDidChange,
                     openAppNavigation: openAppNavigation
                 )
             }
