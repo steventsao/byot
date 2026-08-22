@@ -345,6 +345,9 @@ final class OpenCodeSessionStore: ObservableObject {
         guard canAbortSession else { return }
         isAborting = true
         defer { isAborting = false }
+        OpenCodeSessionAbortPolicy.prepareQueueForRequest(&promptQueue)
+        publishPromptQueue()
+        cancelQueueRecovery()
         do {
             try await client.abortSession(
                 sessionID: session.id,
@@ -355,8 +358,6 @@ final class OpenCodeSessionStore: ObservableObject {
             status = .idle
             isStatusReady = true
             finishCurrentTurnActivityTracking()
-            promptQueue.pausePendingPrompts()
-            publishPromptQueue()
             scheduleMessageRefresh()
             errorMessage = nil
         } catch is CancellationError {

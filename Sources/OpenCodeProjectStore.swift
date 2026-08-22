@@ -12,7 +12,7 @@ final class OpenCodeProjectStore: ObservableObject {
 
     let client: OpenCodeClient
     let directory: String
-    private var loadGeneration = 0
+    private var requestVersion = OpenCodeSessionLifecycleRequestVersion()
 
     init(client: OpenCodeClient, directory: String) {
         self.client = client
@@ -31,34 +31,33 @@ final class OpenCodeProjectStore: ObservableObject {
     }
 
     func load() async {
-        loadGeneration &+= 1
-        let generation = loadGeneration
+        let generation = requestVersion.beginLoad()
         isLoading = true
         defer {
-            if generation == loadGeneration { isLoading = false }
+            if requestVersion.accepts(load: generation) { isLoading = false }
         }
         do {
             let capabilities = try await client.protocolCapabilities()
             try Task.checkCancellation()
-            guard generation == loadGeneration else { return }
+            guard requestVersion.accepts(load: generation) else { return }
             async let sessionsRequest = client.listSessions(directory: directory)
             async let statusesRequest = client.sessionStatuses(directory: directory)
             let (sessions, statuses) = try await (sessionsRequest, statusesRequest)
-            guard generation == loadGeneration else { return }
+            guard requestVersion.accepts(load: generation) else { return }
             lifecycleState.replace(sessions: sessions, statuses: statuses)
             protocolCapabilities = capabilities
             errorMessage = nil
         } catch is CancellationError {
             return
         } catch {
-            guard generation == loadGeneration else { return }
+            guard requestVersion.accepts(load: generation) else { return }
             errorMessage = error.localizedDescription
         }
     }
 
     func createSession(title: String?) async -> OpenCodeSession? {
         guard !isCreating else { return nil }
-        loadGeneration &+= 1
+        requestVersion.beginMutation()
         isLoading = false
         isCreating = true
         defer { isCreating = false }
@@ -79,6 +78,8 @@ final class OpenCodeProjectStore: ObservableObject {
               !title.isEmpty,
               mutatingSessionIDs.insert(session.id).inserted
         else { return false }
+        requestVersion.beginMutation()
+        isLoading = false
         defer { mutatingSessionIDs.remove(session.id) }
         do {
             let updated = try await client.renameSession(
@@ -102,6 +103,8 @@ final class OpenCodeProjectStore: ObservableObject {
         guard lifecyclePolicy?.canDelete == true,
               mutatingSessionIDs.insert(session.id).inserted
         else { return false }
+        requestVersion.beginMutation()
+        isLoading = false
         defer { mutatingSessionIDs.remove(session.id) }
         do {
             try await client.deleteSession(

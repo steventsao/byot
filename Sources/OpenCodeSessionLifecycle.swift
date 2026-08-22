@@ -44,11 +44,32 @@ struct OpenCodeSessionLifecyclePolicy: Equatable, Sendable {
     var canAbort: Bool { capabilities.sessionAbort.isSupported }
 }
 
+struct OpenCodeSessionLifecycleRequestVersion: Equatable, Sendable {
+    private var value = 0
+
+    mutating func beginLoad() -> Int {
+        value &+= 1
+        return value
+    }
+
+    mutating func beginMutation() {
+        value &+= 1
+    }
+
+    func accepts(load: Int) -> Bool {
+        load == value
+    }
+}
+
 enum OpenCodeSessionAbortPolicy {
     static func canRequest(
         status: OpenCodeSessionStatus,
         isRequesting: Bool
     ) -> Bool {
         status.isActive && !isRequesting
+    }
+
+    static func prepareQueueForRequest(_ queue: inout OpenCodePromptQueue) {
+        queue.pausePendingPrompts()
     }
 }
