@@ -16,6 +16,8 @@ struct OpenCodeFileBrowserTests {
         #expect(!v2.canReadFiles)
         #expect(!v2.canListChanges)
         #expect(v2.canSearch)
+        #expect(v2.searchOnlyDescription.hasPrefix("Enter a filename"))
+        #expect(v2.searchOnlyDescription.contains("does not expose a directory listing"))
     }
 
     @Test("Relative path navigation joins and walks parents deterministically")
