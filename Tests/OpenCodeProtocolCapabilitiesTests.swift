@@ -55,4 +55,33 @@ struct OpenCodeProtocolCapabilitiesTests {
         #expect(presentation.diffs == [diff])
         #expect(presentation.unavailableReason == nil)
     }
+
+    @Test("An unavailable route never replaces a live SSE diff snapshot")
+    func unavailableSnapshotReconciliation() {
+        #expect(
+            !OpenCodeSessionDiffReconciliation.shouldApplyFetchedSnapshot(
+                support: OpenCodeV2Adapter().capabilities.sessionDiff,
+                mutationBaseline: 3,
+                currentMutation: 3
+            )
+        )
+    }
+
+    @Test("A supported unchanged route can reconcile its diff snapshot")
+    func supportedSnapshotReconciliation() {
+        #expect(
+            OpenCodeSessionDiffReconciliation.shouldApplyFetchedSnapshot(
+                support: OpenCodeV1Adapter().capabilities.sessionDiff,
+                mutationBaseline: 3,
+                currentMutation: 3
+            )
+        )
+        #expect(
+            !OpenCodeSessionDiffReconciliation.shouldApplyFetchedSnapshot(
+                support: OpenCodeV1Adapter().capabilities.sessionDiff,
+                mutationBaseline: 3,
+                currentMutation: 4
+            )
+        )
+    }
 }
