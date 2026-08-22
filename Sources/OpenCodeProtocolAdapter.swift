@@ -93,6 +93,33 @@ protocol OpenCodeProtocolAdapting: Sendable {
         messageID: String?
     ) async throws -> OpenCodeSession
 
+    func listFiles(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?,
+        path: String
+    ) async throws -> [OpenCodeFileEntry]
+
+    func readFile(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?,
+        path: String
+    ) async throws -> OpenCodeFileContent
+
+    func fileStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeFileStatus]
+
+    func findFiles(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?,
+        query: String
+    ) async throws -> [OpenCodeFileEntry]
+
     func connectedProviderModels(
         using transport: OpenCodeTransport,
         directory: String,
@@ -383,6 +410,68 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
             query: instanceQuery(directory: directory, workspace: workspace),
             body: Body(messageID: messageID)
         )
+    }
+
+    func listFiles(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?,
+        path: String
+    ) async throws -> [OpenCodeFileEntry] {
+        try await transport.get(
+            ["file"],
+            query: instanceQuery(directory: directory, workspace: workspace) + [
+                URLQueryItem(name: "path", value: path),
+            ]
+        )
+    }
+
+    func readFile(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?,
+        path: String
+    ) async throws -> OpenCodeFileContent {
+        try await transport.get(
+            ["file", "content"],
+            query: instanceQuery(directory: directory, workspace: workspace) + [
+                URLQueryItem(name: "path", value: path),
+            ]
+        )
+    }
+
+    func fileStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeFileStatus] {
+        try await transport.get(
+            ["file", "status"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func findFiles(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?,
+        query: String
+    ) async throws -> [OpenCodeFileEntry] {
+        let paths: [String] = try await transport.get(
+            ["find", "file"],
+            query: instanceQuery(directory: directory, workspace: workspace) + [
+                URLQueryItem(name: "query", value: query),
+                URLQueryItem(name: "type", value: "file"),
+                URLQueryItem(name: "limit", value: "200"),
+            ]
+        )
+        return paths.map { path in
+            OpenCodeFileEntry(
+                name: path.split(separator: "/").last.map(String.init) ?? path,
+                path: path,
+                type: "file"
+            )
+        }
     }
 
     func connectedProviderModels(
@@ -805,6 +894,59 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         )
     }
 
+    func listFiles(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?,
+        path: String
+    ) async throws -> [OpenCodeFileEntry] {
+        throw unavailable(
+            feature: "Browse project files",
+            support: capabilities.fileTree
+        )
+    }
+
+    func readFile(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?,
+        path: String
+    ) async throws -> OpenCodeFileContent {
+        throw unavailable(
+            feature: "Read project file",
+            support: capabilities.fileRead
+        )
+    }
+
+    func fileStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeFileStatus] {
+        throw unavailable(
+            feature: "List changed files",
+            support: capabilities.fileStatus
+        )
+    }
+
+    func findFiles(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?,
+        query: String
+    ) async throws -> [OpenCodeFileEntry] {
+        let response: OpenCodeV2LocationDataResponse<[OpenCodeV2FileSystemEntry]> =
+            try await transport.get(
+                ["api", "fs", "find"],
+                query: locationQuery(directory: directory, workspace: workspace) + [
+                    URLQueryItem(name: "query", value: query),
+                    URLQueryItem(name: "type", value: "file"),
+                    URLQueryItem(name: "limit", value: "200"),
+                ]
+            )
+        return response.data.map(\.normalized)
+    }
+
     func connectedProviderModels(
         using transport: OpenCodeTransport,
         directory: String,
@@ -1214,6 +1356,19 @@ private struct OpenCodeV2RevertState: Decodable {
             partID: partID,
             snapshot: snapshot,
             diff: diff
+        )
+    }
+}
+
+private struct OpenCodeV2FileSystemEntry: Decodable {
+    let path: String
+    let type: String
+
+    var normalized: OpenCodeFileEntry {
+        OpenCodeFileEntry(
+            name: path.split(separator: "/").last.map(String.init) ?? path,
+            path: path,
+            type: type
         )
     }
 }

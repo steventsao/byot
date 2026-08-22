@@ -6,6 +6,7 @@ struct OpenCodeSessionView: View {
     @State private var isShowingDiff = false
     @State private var isShowingChildren = false
     @State private var isShowingTodos = false
+    @State private var isShowingFiles = false
     @State private var isAtBottom = true
     @State private var pendingRevertTarget: OpenCodeSessionRevertTarget?
     @State private var isConfirmingRestore = false
@@ -221,6 +222,10 @@ struct OpenCodeSessionView: View {
                 .labelStyle(.iconOnly)
                 .disabled(!store.todoPresentation.canPresent)
                 .accessibilityValue(store.todoPresentation.toolbarAccessibilityValue)
+                Button("Files", systemImage: "folder") {
+                    isShowingFiles = true
+                }
+                .labelStyle(.iconOnly)
                 if store.lifecyclePolicy?.canListChildren == true {
                     Button("Subagents", systemImage: "person.2") {
                         isShowingChildren = true
@@ -265,6 +270,13 @@ struct OpenCodeSessionView: View {
         }
         .sheet(isPresented: $isShowingTodos) {
             OpenCodeTodoListView(presentation: store.todoPresentation)
+        }
+        .sheet(isPresented: $isShowingFiles) {
+            OpenCodeFileBrowserView(
+                client: client,
+                directory: store.directory,
+                workspace: store.session.workspaceID
+            )
         }
         .confirmationDialog(
             "Undo this prompt and everything after it?",
