@@ -21,6 +21,11 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSBonjourServices:
+          - _http._tcp
+        NSLocalNetworkUsageDescription: BYOT discovers OpenCode servers running on your local network.
         UIAppFonts:
           - OpenRunde-Bold.otf
           - OpenRunde-Regular.otf
