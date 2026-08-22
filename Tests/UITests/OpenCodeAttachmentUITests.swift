@@ -26,6 +26,7 @@ final class OpenCodeAttachmentUITests: XCTestCase {
             NSPredicate(format: "label == 'Remove byot-design.png'")
         ).firstMatch
         XCTAssertTrue(removeAttachment.waitForExistence(timeout: 10))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
         Thread.sleep(forTimeInterval: 1)
 
         let screenshot = XCUIScreen.main.screenshot()
