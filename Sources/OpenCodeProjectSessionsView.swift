@@ -6,6 +6,7 @@ struct OpenCodeProjectSessionsView: View {
     @State private var newSessionTitle = ""
     @State private var renameTarget: OpenCodeSession?
     @State private var deleteTarget: OpenCodeSession?
+    @State private var isShowingProviders = false
     let name: String
     let openAppNavigation: () -> Void
 
@@ -116,6 +117,11 @@ struct OpenCodeProjectSessionsView: View {
                 AppNavigationButton(isToolbarItem: true, action: openAppNavigation)
             }
             ToolbarItem(placement: .topBarTrailing) {
+                Button("Providers", systemImage: "key.horizontal") {
+                    isShowingProviders = true
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button("New session", systemImage: "plus") {
                     isCreatingSession = true
                 }
@@ -143,6 +149,12 @@ struct OpenCodeProjectSessionsView: View {
             OpenCodeRenameSessionView(session: session) { title in
                 Task { _ = await store.renameSession(session, title: title) }
             }
+        }
+        .sheet(isPresented: $isShowingProviders) {
+            OpenCodeProviderConnectionView(
+                client: store.client,
+                directory: store.directory
+            )
         }
         .confirmationDialog(
             "Delete this session permanently?",

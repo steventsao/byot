@@ -18,6 +18,10 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
     let sessionDiff: OpenCodeFeatureSupport
     let symbolSearch: OpenCodeFeatureSupport
     let providerConnectionState: OpenCodeFeatureSupport
+    let providerConnectionCatalog: OpenCodeFeatureSupport
+    let providerKeyAuthentication: OpenCodeFeatureSupport
+    let providerOAuthAuthentication: OpenCodeFeatureSupport
+    let providerOAuthCancellation: OpenCodeFeatureSupport
     let modelReasoningMetadata: OpenCodeFeatureSupport
     let modelTemperatureMetadata: OpenCodeFeatureSupport
     let sessionDetails: OpenCodeFeatureSupport
@@ -45,6 +49,12 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         sessionDiff: .supported,
         symbolSearch: .supported,
         providerConnectionState: .supported,
+        providerConnectionCatalog: .supported,
+        providerKeyAuthentication: .supported,
+        providerOAuthAuthentication: .supported,
+        providerOAuthCancellation: .unavailable(
+            reason: "OpenCode v1 does not expose an OAuth cancellation route."
+        ),
         modelReasoningMetadata: .supported,
         modelTemperatureMetadata: .supported,
         sessionDetails: .supported,
@@ -79,6 +89,10 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         providerConnectionState: .unavailable(
             reason: "OpenCode v2 does not report whether a provider is connected."
         ),
+        providerConnectionCatalog: .supported,
+        providerKeyAuthentication: .supported,
+        providerOAuthAuthentication: .supported,
+        providerOAuthCancellation: .supported,
         modelReasoningMetadata: .unavailable(
             reason: "OpenCode v2 does not report the model reasoning capability."
         ),
