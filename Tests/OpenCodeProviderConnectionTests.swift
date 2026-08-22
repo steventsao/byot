@@ -81,13 +81,178 @@ struct OpenCodeProviderConnectionStoreTests {
         #expect(service.steps.contains(.completeOAuth(attemptID: "attempt_1", code: "device-code")))
         #expect(store.phase == .connected(providerID: "openai"))
     }
+
+    @Test("OAuth start failure returns to a retryable phase with its error visible")
+    func oauthStartFailure() async {
+        let provider = oauthProvider()
+        let service = MockProviderConnectionService(
+            providers: [provider],
+            startError: TestProviderConnectionError.startFailed
+        )
+        let store = makeStore(service: service)
+
+        await store.load()
+        store.selectProvider(provider)
+        await store.beginOAuth()
+
+        #expect(store.phase == .oauthReady)
+        #expect(store.errorMessage == TestProviderConnectionError.startFailed.localizedDescription)
+        #expect(!store.isSubmitting)
+    }
+
+    @Test("Navigation invalidates an in-flight OAuth completion")
+    func navigationInvalidatesSubmission() async {
+        let provider = oauthProvider()
+        let barrier = ProviderConnectionBarrier()
+        let service = MockProviderConnectionService(
+            providers: [provider],
+            startBarrier: barrier
+        )
+        let store = makeStore(service: service)
+
+        await store.load()
+        store.selectProvider(provider)
+        let request = Task { await store.beginOAuth() }
+        await barrier.waitForArrival()
+        store.backToProviders()
+        await barrier.release()
+        await request.value
+
+        #expect(store.phase == .providerSelection)
+        #expect(store.authorization == nil)
+        #expect(!store.isSubmitting)
+    }
+
+    @Test("Leaving an active OAuth flow cancels its server attempt")
+    func leavingOAuthCancelsAttempt() async {
+        let provider = oauthProvider()
+        let service = MockProviderConnectionService(providers: [provider])
+        let store = makeStore(service: service)
+
+        await store.load()
+        store.selectProvider(provider)
+        await store.beginOAuth()
+        await store.leaveToMethods()
+
+        #expect(service.steps.contains(.cancel(attemptID: "attempt_1")))
+        #expect(store.phase == .methodSelection)
+        #expect(store.authorization == nil)
+    }
+
+    @Test("OAuth submits only currently visible conditional inputs")
+    func hiddenInputsAreNotSubmitted() async {
+        let method = OpenCodeProviderAuthMethod(
+            id: "oauth",
+            kind: .oauth,
+            label: "Sign in",
+            prompts: [
+                OpenCodeProviderAuthPrompt(
+                    kind: .select,
+                    key: "account",
+                    message: "Account type",
+                    options: [
+                        OpenCodeProviderAuthPromptOption(label: "Personal", value: "personal"),
+                        OpenCodeProviderAuthPromptOption(label: "Enterprise", value: "enterprise"),
+                    ]
+                ),
+                OpenCodeProviderAuthPrompt(
+                    kind: .text,
+                    key: "hostname",
+                    message: "Hostname",
+                    condition: OpenCodeProviderAuthPromptCondition(
+                        key: "account",
+                        operation: .equal,
+                        value: "enterprise"
+                    )
+                ),
+            ]
+        )
+        let provider = OpenCodeProviderConnection(
+            id: "openai",
+            name: "OpenAI",
+            isConnected: false,
+            methods: [method]
+        )
+        let service = MockProviderConnectionService(providers: [provider])
+        let store = makeStore(service: service)
+
+        await store.load()
+        store.selectProvider(provider)
+        store.setInput("enterprise", for: "account")
+        store.setInput(" stale.example ", for: "hostname")
+        store.setInput("personal", for: "account")
+        await store.beginOAuth()
+
+        #expect(
+            service.steps.contains(
+                .startOAuth(
+                    providerID: "openai",
+                    methodID: "oauth",
+                    inputs: ["account": "personal"]
+                )
+            )
+        )
+    }
+
+    private func oauthProvider() -> OpenCodeProviderConnection {
+        OpenCodeProviderConnection(
+            id: "openai",
+            name: "OpenAI",
+            isConnected: false,
+            methods: [
+                OpenCodeProviderAuthMethod(id: "oauth", kind: .oauth, label: "Sign in")
+            ]
+        )
+    }
+
+    private func makeStore(
+        service: MockProviderConnectionService
+    ) -> OpenCodeProviderConnectionStore {
+        OpenCodeProviderConnectionStore(
+            service: service,
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+    }
+}
+
+private enum TestProviderConnectionError: LocalizedError {
+    case startFailed
+
+    var errorDescription: String? { "Could not start provider sign-in." }
+}
+
+private actor ProviderConnectionBarrier {
+    private var hasArrived = false
+    private var isReleased = false
+    private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func arriveAndWait() async {
+        hasArrived = true
+        arrivalWaiters.forEach { $0.resume() }
+        arrivalWaiters.removeAll()
+        guard !isReleased else { return }
+        await withCheckedContinuation { releaseWaiters.append($0) }
+    }
+
+    func waitForArrival() async {
+        guard !hasArrived else { return }
+        await withCheckedContinuation { arrivalWaiters.append($0) }
+    }
+
+    func release() {
+        isReleased = true
+        releaseWaiters.forEach { $0.resume() }
+        releaseWaiters.removeAll()
+    }
 }
 
 private final class MockProviderConnectionService: OpenCodeProviderConnectionServicing, @unchecked Sendable {
     enum Step: Equatable {
         case load
         case connectKey(providerID: String, key: String)
-        case startOAuth(providerID: String, methodID: String)
+        case startOAuth(providerID: String, methodID: String, inputs: [String: String])
         case completeOAuth(attemptID: String, code: String?)
         case status(attemptID: String)
         case cancel(attemptID: String)
@@ -96,9 +261,17 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
     private let lock = NSLock()
     nonisolated(unsafe) private var recordedSteps: [Step] = []
     private let providers: [OpenCodeProviderConnection]
+    private let startBarrier: ProviderConnectionBarrier?
+    private let startError: TestProviderConnectionError?
 
-    init(providers: [OpenCodeProviderConnection]) {
+    init(
+        providers: [OpenCodeProviderConnection],
+        startBarrier: ProviderConnectionBarrier? = nil,
+        startError: TestProviderConnectionError? = nil
+    ) {
         self.providers = providers
+        self.startBarrier = startBarrier
+        self.startError = startError
     }
 
     var steps: [Step] {
@@ -128,7 +301,9 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
         directory: String,
         workspace: String?
     ) async throws -> OpenCodeProviderOAuthAuthorization {
-        record(.startOAuth(providerID: providerID, methodID: methodID))
+        record(.startOAuth(providerID: providerID, methodID: methodID, inputs: inputs))
+        await startBarrier?.arriveAndWait()
+        if let startError { throw startError }
         return OpenCodeProviderOAuthAuthorization(
             attemptID: "attempt_1",
             url: URL(string: "https://auth.example.test")!,
