@@ -25,6 +25,7 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
     let sessionDelete: OpenCodeFeatureSupport
     let sessionChildren: OpenCodeFeatureSupport
     let sessionAbort: OpenCodeFeatureSupport
+    let sessionTodos: OpenCodeFeatureSupport
 
     static let v1 = Self(
         sessionDiff: .supported,
@@ -36,7 +37,8 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         sessionRename: .supported,
         sessionDelete: .supported,
         sessionChildren: .supported,
-        sessionAbort: .supported
+        sessionAbort: .supported,
+        sessionTodos: .supported
     )
 
     static let v2 = Self(
@@ -65,7 +67,10 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         sessionChildren: .unavailable(
             reason: "OpenCode v2 does not expose a child-session route yet."
         ),
-        sessionAbort: .supported
+        sessionAbort: .supported,
+        sessionTodos: .unavailable(
+            reason: "OpenCode v2 does not expose a session todo route yet."
+        )
     )
 }
 

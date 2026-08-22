@@ -5,6 +5,7 @@ struct OpenCodeSessionView: View {
     @StateObject private var store: OpenCodeSessionStore
     @State private var isShowingDiff = false
     @State private var isShowingChildren = false
+    @State private var isShowingTodos = false
     @State private var isAtBottom = true
     let openAppNavigation: () -> Void
     private let client: OpenCodeClient
@@ -45,6 +46,18 @@ struct OpenCodeSessionView: View {
                        actionErrorMessage != store.errorMessage,
                        actionErrorMessage != store.eventErrorMessage {
                         ErrorBanner(message: actionErrorMessage)
+                    }
+
+                    if !store.todos.isEmpty {
+                        Button {
+                            isShowingTodos = true
+                        } label: {
+                            OpenCodeTodoProgressCard(
+                                presentation: store.todoPresentation
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open session tasks")
                     }
 
                     ForEach(store.messages) { message in
@@ -176,6 +189,16 @@ struct OpenCodeSessionView: View {
                 }
                 .labelStyle(.iconOnly)
                 .disabled(!store.diffPresentation.canPresent)
+                Button("Tasks", systemImage: "checklist") {
+                    isShowingTodos = true
+                }
+                .labelStyle(.iconOnly)
+                .disabled(!store.todoPresentation.canPresent)
+                .accessibilityValue(
+                    store.todos.isEmpty
+                        ? "Unavailable"
+                        : "\(store.todoPresentation.resolvedCount) of \(store.todoPresentation.totalCount) resolved"
+                )
                 if store.lifecyclePolicy?.canListChildren == true {
                     Button("Subagents", systemImage: "person.2") {
                         isShowingChildren = true
@@ -195,6 +218,9 @@ struct OpenCodeSessionView: View {
                 openAppNavigation: openAppNavigation
             )
         }
+        .sheet(isPresented: $isShowingTodos) {
+            OpenCodeTodoListView(presentation: store.todoPresentation)
+        }
         .task { await store.start() }
         .onDisappear { store.stop() }
     }
@@ -203,6 +229,7 @@ struct OpenCodeSessionView: View {
         !store.messages.isEmpty
             || !store.queuedPrompts.isEmpty
             || store.pendingActionCount > 0
+            || !store.todos.isEmpty
     }
 
     private var showsSessionActivity: Bool {
@@ -308,6 +335,141 @@ struct OpenCodeSessionView: View {
         store.retryQueuedPrompt(id)
     }
 
+}
+
+private struct OpenCodeTodoProgressCard: View {
+    let presentation: OpenCodeTodoPresentation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("Session tasks", systemImage: "checklist")
+                    .font(.cleanBodySemibold)
+                Spacer()
+                Text("\(presentation.resolvedCount)/\(presentation.totalCount)")
+                    .font(.cleanCaptionBold)
+                    .foregroundStyle(.secondary)
+            }
+            ProgressView(value: presentation.progress)
+                .tint(BYOTBrand.accent)
+            if let headline = presentation.headline {
+                Text(headline)
+                    .font(.cleanCaption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(14)
+        .background(
+            BYOTBrand.elevatedSurface,
+            in: RoundedRectangle(cornerRadius: BYOTBrand.panelRadius)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(
+            "\(presentation.resolvedCount) of \(presentation.totalCount) resolved"
+        )
+    }
+}
+
+private struct OpenCodeTodoListView: View {
+    @Environment(\.dismiss) private var dismiss
+    let presentation: OpenCodeTodoPresentation
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let reason = presentation.unavailableReason {
+                    ContentUnavailableView(
+                        "Session tasks unavailable",
+                        systemImage: "checklist",
+                        description: Text(reason)
+                    )
+                } else if presentation.todos.isEmpty {
+                    ContentUnavailableView(
+                        "No session tasks",
+                        systemImage: "checklist",
+                        description: Text("OpenCode has not published a task list for this session.")
+                    )
+                } else {
+                    List {
+                        Section {
+                            ProgressView(value: presentation.progress) {
+                                Text("\(presentation.resolvedCount) of \(presentation.totalCount) resolved")
+                            }
+                            .tint(BYOTBrand.accent)
+                        }
+                        Section("Tasks") {
+                            ForEach(Array(presentation.todos.enumerated()), id: \.offset) { _, todo in
+                                OpenCodeTodoRow(todo: todo)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Session tasks")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+private struct OpenCodeTodoRow: View {
+    let todo: OpenCodeTodo
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .foregroundStyle(statusColor)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(todo.content)
+                    .font(.cleanBody)
+                    .strikethrough(todo.resolvedStatus == .completed)
+                HStack(spacing: 8) {
+                    Text(statusLabel)
+                    Text(todo.priority.capitalized + " priority")
+                }
+                .font(.cleanCaption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 3)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var systemImage: String {
+        switch todo.resolvedStatus {
+        case .pending: "circle"
+        case .inProgress: "arrow.triangle.2.circlepath.circle"
+        case .completed: "checkmark.circle.fill"
+        case .cancelled: "xmark.circle"
+        case .unknown: "questionmark.circle"
+        }
+    }
+
+    private var statusColor: Color {
+        switch todo.resolvedStatus {
+        case .pending, .unknown: .secondary
+        case .inProgress: BYOTBrand.accent
+        case .completed: .green
+        case .cancelled: .orange
+        }
+    }
+
+    private var statusLabel: String {
+        switch todo.resolvedStatus {
+        case .pending: "Pending"
+        case .inProgress: "In progress"
+        case .completed: "Completed"
+        case .cancelled: "Cancelled"
+        case .unknown: todo.status.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
 }
 
 private struct OpenCodeSessionChildrenView: View {
