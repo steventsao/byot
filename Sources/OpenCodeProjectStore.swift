@@ -3,10 +3,11 @@ import Foundation
 
 @MainActor
 final class OpenCodeProjectStore: ObservableObject {
-    @Published private(set) var sessions: [OpenCodeSession] = []
-    @Published private(set) var statuses: [String: OpenCodeSessionStatus] = [:]
+    @Published private(set) var lifecycleState = OpenCodeSessionLifecycleState()
+    @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
     @Published private(set) var isLoading = false
     @Published private(set) var isCreating = false
+    @Published private(set) var mutatingSessionIDs: Set<String> = []
     @Published var errorMessage: String?
 
     let client: OpenCodeClient
@@ -18,6 +19,17 @@ final class OpenCodeProjectStore: ObservableObject {
         self.directory = directory
     }
 
+    var sessions: [OpenCodeSession] { lifecycleState.sessions }
+    var statuses: [String: OpenCodeSessionStatus] { lifecycleState.statuses }
+
+    var lifecyclePolicy: OpenCodeSessionLifecyclePolicy? {
+        protocolCapabilities.map(OpenCodeSessionLifecyclePolicy.init)
+    }
+
+    func isMutating(sessionID: String) -> Bool {
+        mutatingSessionIDs.contains(sessionID)
+    }
+
     func load() async {
         loadGeneration &+= 1
         let generation = loadGeneration
@@ -26,12 +38,15 @@ final class OpenCodeProjectStore: ObservableObject {
             if generation == loadGeneration { isLoading = false }
         }
         do {
+            let capabilities = try await client.protocolCapabilities()
+            try Task.checkCancellation()
+            guard generation == loadGeneration else { return }
             async let sessionsRequest = client.listSessions(directory: directory)
             async let statusesRequest = client.sessionStatuses(directory: directory)
             let (sessions, statuses) = try await (sessionsRequest, statusesRequest)
             guard generation == loadGeneration else { return }
-            self.sessions = sessions.sorted { $0.time.updated > $1.time.updated }
-            self.statuses = statuses
+            lifecycleState.replace(sessions: sessions, statuses: statuses)
+            protocolCapabilities = capabilities
             errorMessage = nil
         } catch is CancellationError {
             return
@@ -49,14 +64,59 @@ final class OpenCodeProjectStore: ObservableObject {
         defer { isCreating = false }
         do {
             let session = try await client.createSession(directory: directory, title: title)
-            sessions.removeAll { $0.id == session.id }
-            sessions.insert(session, at: 0)
-            statuses[session.id] = .idle
+            lifecycleState.upsert(session)
             errorMessage = nil
             return session
         } catch {
             errorMessage = error.localizedDescription
             return nil
+        }
+    }
+
+    func renameSession(_ session: OpenCodeSession, title: String) async -> Bool {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard lifecyclePolicy?.canRename == true,
+              !title.isEmpty,
+              mutatingSessionIDs.insert(session.id).inserted
+        else { return false }
+        defer { mutatingSessionIDs.remove(session.id) }
+        do {
+            let updated = try await client.renameSession(
+                sessionID: session.id,
+                title: title,
+                directory: session.directory,
+                workspace: session.workspaceID
+            )
+            lifecycleState.upsert(updated)
+            errorMessage = nil
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func deleteSession(_ session: OpenCodeSession) async -> Bool {
+        guard lifecyclePolicy?.canDelete == true,
+              mutatingSessionIDs.insert(session.id).inserted
+        else { return false }
+        defer { mutatingSessionIDs.remove(session.id) }
+        do {
+            try await client.deleteSession(
+                sessionID: session.id,
+                directory: session.directory,
+                workspace: session.workspaceID
+            )
+            lifecycleState.remove(sessionID: session.id)
+            errorMessage = nil
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 }

@@ -6,12 +6,14 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var messages: [OpenCodeMessageEnvelope] = []
     @Published private(set) var permissions: [OpenCodePermissionRequest] = []
     @Published private(set) var questions: [OpenCodeQuestionRequest] = []
+    @Published private(set) var childSessions: [OpenCodeSession] = []
     @Published private(set) var diffs: [OpenCodeDiff] = []
     @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
     @Published private(set) var status: OpenCodeSessionStatus = .idle
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false
     @Published private(set) var isSending = false
+    @Published private(set) var isAborting = false
     @Published private(set) var isEventConnected = false
     @Published private(set) var eventErrorMessage: String?
     @Published private(set) var actionErrorMessage: String?
@@ -92,6 +94,18 @@ final class OpenCodeSessionStore: ObservableObject {
             diffs: diffs,
             support: protocolCapabilities?.sessionDiff
         )
+    }
+
+    var lifecyclePolicy: OpenCodeSessionLifecyclePolicy? {
+        protocolCapabilities.map(OpenCodeSessionLifecyclePolicy.init)
+    }
+
+    var canAbortSession: Bool {
+        lifecyclePolicy?.canAbort == true
+            && OpenCodeSessionAbortPolicy.canRequest(
+                status: status,
+                isRequesting: isAborting
+            )
     }
 
     var willQueueNextPrompt: Bool {
@@ -219,13 +233,24 @@ final class OpenCodeSessionStore: ObservableObject {
                     workspace: actionWorkspace
                 )
             }
+            async let childResult = Self.capture {
+                guard capabilities.sessionChildren.isSupported else {
+                    return [OpenCodeSession]()
+                }
+                return try await actionClient.childSessions(
+                    sessionID: actionSessionID,
+                    directory: actionDirectory,
+                    workspace: actionWorkspace
+                )
+            }
 
             let results = await (
                 messageResult,
                 permissionResult,
                 questionResult,
                 diffResult,
-                statusResult
+                statusResult,
+                childResult
             )
             try Task.checkCancellation()
             guard generation == refreshGeneration else { return }
@@ -260,6 +285,12 @@ final class OpenCodeSessionStore: ObservableObject {
                 if statusBaseline == statusMutationGeneration {
                     applyReconciledStatus(statuses[session.id] ?? .idle)
                 }
+            case .failure(let error):
+                coreErrors.append(error)
+            }
+            switch results.5 {
+            case .success(let children):
+                childSessions = children.sorted { $0.time.updated > $1.time.updated }
             case .failure(let error):
                 coreErrors.append(error)
             }
@@ -307,6 +338,31 @@ final class OpenCodeSessionStore: ObservableObject {
         case .dispatch(let prompt):
             schedulePromptDispatch(prompt)
             return true
+        }
+    }
+
+    func abortSession() async {
+        guard canAbortSession else { return }
+        isAborting = true
+        defer { isAborting = false }
+        do {
+            try await client.abortSession(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace
+            )
+            statusMutationGeneration &+= 1
+            status = .idle
+            isStatusReady = true
+            finishCurrentTurnActivityTracking()
+            promptQueue.pausePendingPrompts()
+            publishPromptQueue()
+            scheduleMessageRefresh()
+            errorMessage = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

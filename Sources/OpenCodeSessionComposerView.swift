@@ -130,6 +130,28 @@ struct OpenCodeSessionComposerView: View {
                         .submitLabel(.send)
                         .onSubmit(send)
 
+                    if store.status.isActive,
+                       store.lifecyclePolicy?.canAbort == true {
+                        Button {
+                            Task { await store.abortSession() }
+                        } label: {
+                            if store.isAborting {
+                                ProgressView()
+                                    .tint(.primary)
+                            } else {
+                                Image(systemName: "stop.fill")
+                                    .font(.cleanControlIcon)
+                            }
+                        }
+                        .frame(width: 44, height: 44)
+                        .background(
+                            BYOTBrand.controlSurface,
+                            in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius)
+                        )
+                        .accessibilityLabel("Stop OpenCode")
+                        .disabled(!store.canAbortSession)
+                    }
+
                     Button(action: send) {
                         Image(systemName: "arrow.up")
                             .font(.cleanControlIcon)
