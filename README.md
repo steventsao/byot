@@ -27,6 +27,9 @@ BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source
 - An OpenCode server (1.18+) on a machine you control — `opencode serve`
 - Reachable from your phone over **HTTPS** with Basic auth. [Tailscale](https://tailscale.com) (`tailscale serve`) is the usual path; any valid TLS endpoint works. The app refuses plain HTTP.
 
+See the [Mac mini connection runbook](docs/milestone-ios-opencode-connection.md)
+for v1, v2 beta service pairing, and Tailscale setup.
+
 ## Development
 
 Requires Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
