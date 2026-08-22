@@ -782,6 +782,7 @@ final class OpenCodeClientTests: XCTestCase {
             defer { session.invalidateAndCancel() }
 
             let permissions = try await client.permissions(
+                sessionID: "ses_transport",
                 directory: "/repo",
                 workspace: "ws_transport"
             )
@@ -807,6 +808,7 @@ final class OpenCodeClientTests: XCTestCase {
             defer { session.invalidateAndCancel() }
 
             let questions = try await client.questions(
+                sessionID: "ses_transport",
                 directory: "/repo",
                 workspace: "ws_transport"
             )
@@ -888,8 +890,84 @@ final class OpenCodeClientTests: XCTestCase {
         XCTAssertEqual(minimal.resolvedAPIVersion, .v2)
     }
 
+    func testV2PermissionListUsesLocationScopedWrapperRoute() async throws {
+        let response = #"""
+        {"location":{"directory":"/repo","project":{"id":"proj_1","directory":"/repo"}},"data":[{
+          "id":"per_v2",
+          "sessionID":"ses_transport",
+          "action":"read",
+          "resources":["/repo/**"],
+          "save":["/repo/**"],
+          "source":{"type":"tool","messageID":"msg_1","callID":"call_1"}
+        }]}
+        """#
+        let (client, session) = makeStubbedClient(
+            responseBody: response,
+            serverProtocol: .v2
+        )
+        defer {
+            session.invalidateAndCancel()
+            OpenCodeURLProtocolStub.reset(statusCode: 204)
+        }
+
+        let permissions = try await client.permissions(
+            sessionID: "ses_transport",
+            directory: "/repo"
+        )
+
+        XCTAssertEqual(permissions.count, 1)
+        XCTAssertEqual(permissions.first?.resolvedAPIVersion, .v2)
+        XCTAssertEqual(permissions.first?.source?.callID, "call_1")
+        let request = try XCTUnwrap(OpenCodeURLProtocolStub.recordedRequest())
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.path, "/api/permission/request")
+        XCTAssertEqual(queryValues(for: request)["location[directory]"], "/repo")
+    }
+
+    func testV2QuestionListUsesLocationScopedWrapperRoute() async throws {
+        let response = #"""
+        {"location":{"directory":"/repo","project":{"id":"proj_1","directory":"/repo"}},"data":[{
+          "id":"que_v2",
+          "sessionID":"ses_transport",
+          "questions":[{
+            "question":"Which target?",
+            "header":"Target",
+            "options":[],
+            "multiple":false,
+            "custom":true
+          }],
+          "tool":{"messageID":"msg_1","callID":"call_1"}
+        }]}
+        """#
+        let (client, session) = makeStubbedClient(
+            responseBody: response,
+            serverProtocol: .v2
+        )
+        defer {
+            session.invalidateAndCancel()
+            OpenCodeURLProtocolStub.reset(statusCode: 204)
+        }
+
+        let questions = try await client.questions(
+            sessionID: "ses_transport",
+            directory: "/repo"
+        )
+
+        XCTAssertEqual(questions.count, 1)
+        XCTAssertEqual(questions.first?.resolvedAPIVersion, .v2)
+        XCTAssertEqual(questions.first?.tool?.callID, "call_1")
+        let request = try XCTUnwrap(OpenCodeURLProtocolStub.recordedRequest())
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.path, "/api/question/request")
+        XCTAssertEqual(queryValues(for: request)["location[directory]"], "/repo")
+    }
+
     func testV2PermissionReplyUsesSessionScopedRouteAndNoContentResponse() async throws {
-        let (client, session) = makeStubbedClient(responseBody: "", statusCode: 204)
+        let (client, session) = makeStubbedClient(
+            responseBody: "",
+            statusCode: 204,
+            serverProtocol: .v2
+        )
         defer {
             session.invalidateAndCancel()
             OpenCodeURLProtocolStub.reset(statusCode: 204)
@@ -924,7 +1002,11 @@ final class OpenCodeClientTests: XCTestCase {
     }
 
     func testV2QuestionReplyUsesSessionScopedRouteAndNoContentResponse() async throws {
-        let (client, session) = makeStubbedClient(responseBody: "", statusCode: 204)
+        let (client, session) = makeStubbedClient(
+            responseBody: "",
+            statusCode: 204,
+            serverProtocol: .v2
+        )
         defer {
             session.invalidateAndCancel()
             OpenCodeURLProtocolStub.reset(statusCode: 204)
@@ -956,7 +1038,11 @@ final class OpenCodeClientTests: XCTestCase {
     }
 
     func testV2QuestionRejectUsesSessionScopedRouteAndNoContentResponse() async throws {
-        let (client, session) = makeStubbedClient(responseBody: "", statusCode: 204)
+        let (client, session) = makeStubbedClient(
+            responseBody: "",
+            statusCode: 204,
+            serverProtocol: .v2
+        )
         defer {
             session.invalidateAndCancel()
             OpenCodeURLProtocolStub.reset(statusCode: 204)
@@ -984,64 +1070,35 @@ final class OpenCodeClientTests: XCTestCase {
         XCTAssertNil(request.httpBody)
     }
 
-    func testPendingActionMergeRetainsLegacyAndV2RequestsWithSameRawID() {
-        let legacyPermission = OpenCodePermissionRequest(
-            id: "per_same",
-            sessionID: "ses_1",
-            permission: "bash",
-            patterns: ["git status"],
-            metadata: [:],
-            always: ["git *"]
-        )
-        let v2Permission = OpenCodePermissionRequest(
-            id: "per_same",
-            sessionID: "ses_1",
-            permission: "bash",
-            patterns: ["git status"],
-            metadata: [:],
-            always: ["git *"],
-            apiVersion: .v2
-        )
-        let legacyQuestion = OpenCodeQuestionRequest(
-            id: "que_same",
-            sessionID: "ses_1",
-            questions: [makeQuestion(multiple: false, custom: true)]
-        )
-        let v2Question = OpenCodeQuestionRequest(
-            id: "que_same",
-            sessionID: "ses_1",
-            questions: [makeQuestion(multiple: false, custom: true)],
-            apiVersion: .v2
-        )
-
-        let permissions = OpenCodeSessionStore.mergePermissions(
-            legacy: [legacyPermission],
-            v2: [v2Permission],
-            sessionID: "ses_1"
-        )
-        let questions = OpenCodeSessionStore.mergeQuestions(
-            legacy: [legacyQuestion],
-            v2: [v2Question],
-            sessionID: "ses_1"
-        )
-
-        XCTAssertEqual(permissions.map(\.id), ["per_same", "per_same"])
-        XCTAssertEqual(permissions.map(\.resolvedAPIVersion), [.legacy, .v2])
-        XCTAssertEqual(questions.map(\.id), ["que_same", "que_same"])
-        XCTAssertEqual(questions.map(\.resolvedAPIVersion), [.legacy, .v2])
+    func testV2ActionListRoutesPropagateHTTPFailures() async throws {
+        defer { OpenCodeURLProtocolStub.reset(statusCode: 204) }
+        for statusCode in [404, 405, 500] {
+            let (client, session) = makeStubbedClient(
+                responseBody: #"{"message":"do not swallow"}"#,
+                statusCode: statusCode,
+                serverProtocol: .v2
+            )
+            defer { session.invalidateAndCancel() }
+            do {
+                _ = try await client.permissions(
+                    sessionID: "ses_transport",
+                    directory: "/repo"
+                )
+                XCTFail("Expected v2 action list failure")
+            } catch let error as OpenCodeConnectionError {
+                guard case .httpStatus(let actualStatus, let message) = error,
+                      actualStatus == statusCode
+                else {
+                    return XCTFail("Unexpected error: \(error)")
+                }
+                XCTAssertEqual(message, "do not swallow")
+            }
+        }
     }
 
-    func testCapturedActionFamilyFailureRetainsFallbackAlongsideSuccessfulFamily() async {
-        let refreshedLegacy = OpenCodePermissionRequest(
-            id: "per_legacy_refreshed",
-            sessionID: "ses_1",
-            permission: "bash",
-            patterns: ["git status"],
-            metadata: [:],
-            always: ["git *"]
-        )
-        let retainedV2 = OpenCodePermissionRequest(
-            id: "per_v2_retained",
+    func testCapturedActionFailureRetainsCurrentProtocolFallback() async {
+        let retainedPermission = OpenCodePermissionRequest(
+            id: "per_retained",
             sessionID: "ses_1",
             permission: "read",
             patterns: ["/repo/**"],
@@ -1050,35 +1107,23 @@ final class OpenCodeClientTests: XCTestCase {
             apiVersion: .v2
         )
 
-        let legacyResult: Result<[OpenCodePermissionRequest], Error> =
-            await OpenCodeSessionStore.capture { [refreshedLegacy] }
-        let v2Result: Result<[OpenCodePermissionRequest], Error> =
+        let result: Result<[OpenCodePermissionRequest], Error> =
             await OpenCodeSessionStore.capture {
                 throw OpenCodeConnectionError.httpStatus(503, nil)
             }
-        let legacyOutcome = OpenCodeSessionStore.recoverActionValues(
-            from: legacyResult,
-            fallback: []
-        )
-        let v2Outcome = OpenCodeSessionStore.recoverActionValues(
-            from: v2Result,
-            fallback: [retainedV2]
-        )
-        let merged = OpenCodeSessionStore.mergePermissions(
-            legacy: legacyOutcome.values,
-            v2: v2Outcome.values,
-            sessionID: "ses_1"
+        let outcome = OpenCodeSessionStore.recoverActionValues(
+            from: result,
+            fallback: [retainedPermission]
         )
 
-        XCTAssertNil(legacyOutcome.error)
-        guard let v2Error = v2Outcome.error as? OpenCodeConnectionError,
-              case .httpStatus(503, nil) = v2Error
+        guard let error = outcome.error as? OpenCodeConnectionError,
+              case .httpStatus(503, nil) = error
         else {
-            return XCTFail("Expected the failed v2 family error to be preserved")
+            return XCTFail("Expected the action refresh error to be preserved")
         }
         XCTAssertEqual(
-            merged.map(\.presentationID),
-            ["legacy:per_legacy_refreshed", "v2:per_v2_retained"]
+            outcome.values.map(\.presentationID),
+            ["v2:per_retained"]
         )
     }
 
@@ -1700,7 +1745,8 @@ final class OpenCodeClientTests: XCTestCase {
 
     private func makeStubbedClient(
         responseBody: String,
-        statusCode: Int = 200
+        statusCode: Int = 200,
+        serverProtocol: OpenCodeServerProtocol = .v1
     ) -> (OpenCodeClient, URLSession) {
         OpenCodeURLProtocolStub.reset(
             statusCode: statusCode,
@@ -1719,7 +1765,7 @@ final class OpenCodeClientTests: XCTestCase {
                 profile: profile,
                 password: "transport-secret",
                 session: session,
-                serverProtocol: .v1
+                serverProtocol: serverProtocol
             ),
             session
         )
