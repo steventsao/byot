@@ -29,6 +29,7 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
     private let directory: String
     private let workspace: String?
     private var loadGeneration = 0
+    private var flowGeneration = 0
 
     init(client: OpenCodeClient, directory: String, workspace: String?) {
         service = client
@@ -87,6 +88,7 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
 
     func selectProvider(_ provider: OpenCodeProviderConnection) {
         guard providers.contains(where: { $0.id == provider.id }) else { return }
+        invalidateFlow()
         selectedProviderID = provider.id
         selectedMethodID = nil
         inputs = [:]
@@ -100,6 +102,7 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
 
     func selectMethod(_ method: OpenCodeProviderAuthMethod) {
         guard selectedProvider?.methods.contains(where: { $0.id == method.id }) == true else { return }
+        invalidateFlow()
         selectedMethodID = method.id
         inputs = [:]
         authorization = nil
@@ -123,13 +126,14 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
             errorMessage = OpenCodeProviderConnectionError.missingKey.localizedDescription
             return
         }
-        await submit {
+        if let _: Void = await submit({
             try await service.connectProviderKey(
                 providerID: provider.id,
                 key: key,
                 directory: directory,
                 workspace: workspace
             )
+        }) {
             finishConnection(providerID: provider.id)
         }
     }
@@ -144,18 +148,28 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
             phase = .oauthPrompts
             return
         }
+        let retryPhase: OpenCodeProviderConnectionPhase = method.prompts.isEmpty
+            ? .oauthReady
+            : .oauthPrompts
+        let generation = flowGeneration
+        let inputs = normalizedVisibleInputs(for: method)
         phase = .startingOAuth
-        await submit {
-            let authorization = try await service.startProviderOAuth(
+        let authorization: OpenCodeProviderOAuthAuthorization? = await submit {
+            try await service.startProviderOAuth(
                 providerID: provider.id,
                 methodID: method.id,
-                inputs: normalizedInputs,
+                inputs: inputs,
                 directory: directory,
                 workspace: workspace
             )
-            self.authorization = authorization
-            phase = authorization.mode == .code ? .oauthCode : .oauthWaiting
         }
+        guard generation == flowGeneration else { return }
+        guard let authorization else {
+            phase = retryPhase
+            return
+        }
+        self.authorization = authorization
+        phase = authorization.mode == .code ? .oauthCode : .oauthWaiting
     }
 
     func completeOAuth(code: String?) async {
@@ -165,7 +179,7 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
             errorMessage = OpenCodeProviderConnectionError.missingCode.localizedDescription
             return
         }
-        await submit {
+        if let _: Void = await submit({
             try await service.completeProviderOAuth(
                 providerID: provider.id,
                 attemptID: authorization.attemptID,
@@ -173,19 +187,23 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
                 directory: directory,
                 workspace: workspace
             )
+        }) {
             finishConnection(providerID: provider.id)
         }
     }
 
     func pollOAuthOnce() async {
         guard let provider = selectedProvider, let authorization else { return }
+        let generation = flowGeneration
         do {
-            switch try await service.providerOAuthStatus(
+            let status = try await service.providerOAuthStatus(
                 providerID: provider.id,
                 attemptID: authorization.attemptID,
                 directory: directory,
                 workspace: workspace
-            ) {
+            )
+            guard generation == flowGeneration else { return }
+            switch status {
             case .pending:
                 phase = .oauthWaiting
             case .complete:
@@ -198,14 +216,95 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            guard generation == flowGeneration else { return }
             errorMessage = error.localizedDescription
         }
     }
 
     func cancelOAuth() async {
-        guard let provider = selectedProvider, let authorization else {
+        guard await cancelActiveOAuthIfNeeded() else { return }
+        backToProviders()
+    }
+
+    func leaveToMethods() async {
+        guard await cancelActiveOAuthIfNeeded() else { return }
+        backToMethods()
+    }
+
+    func leaveToProviders() async {
+        guard await cancelActiveOAuthIfNeeded() else { return }
+        backToProviders()
+    }
+
+    func prepareToDismiss() async -> Bool {
+        await cancelActiveOAuthIfNeeded()
+    }
+
+    func backToMethods() {
+        guard selectedProvider != nil else {
             backToProviders()
             return
+        }
+        guard authorization == nil else { return }
+        invalidateFlow()
+        selectedMethodID = nil
+        inputs = [:]
+        authorization = nil
+        errorMessage = nil
+        phase = .methodSelection
+    }
+
+    func backToProviders() {
+        guard authorization == nil else { return }
+        invalidateFlow()
+        resetSelection()
+        errorMessage = nil
+    }
+
+    private func normalizedVisibleInputs(
+        for method: OpenCodeProviderAuthMethod
+    ) -> [String: String] {
+        let visibleKeys = Set(method.visiblePrompts(inputs: inputs).map(\.key))
+        return inputs.reduce(into: [:]) { result, element in
+            guard visibleKeys.contains(element.key) else { return }
+            result[element.key] = element.value.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    private func submit<Value: Sendable>(
+        _ operation: () async throws -> Value
+    ) async -> Value? {
+        guard !isSubmitting else { return nil }
+        let generation = flowGeneration
+        isSubmitting = true
+        errorMessage = nil
+        defer {
+            if generation == flowGeneration { isSubmitting = false }
+        }
+        do {
+            let value = try await operation()
+            guard generation == flowGeneration else { return nil }
+            return value
+        } catch is CancellationError {
+            return nil
+        } catch {
+            guard generation == flowGeneration else { return nil }
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    private func cancelActiveOAuthIfNeeded() async -> Bool {
+        guard let provider = selectedProvider, let authorization else {
+            invalidateFlow()
+            return true
+        }
+        invalidateFlow()
+        let generation = flowGeneration
+        isSubmitting = true
+        errorMessage = nil
+        defer {
+            if generation == flowGeneration { isSubmitting = false }
         }
         do {
             try await service.cancelProviderOAuth(
@@ -215,51 +314,22 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
                 workspace: workspace
             )
         } catch is OpenCodeFeatureUnavailableError {
-            // V1 has no cancellation route; leaving the flow is the only supported action.
+            // V1 has no cancellation route; leaving the flow is the supported fallback.
         } catch is CancellationError {
-            return
+            return false
         } catch {
+            guard generation == flowGeneration else { return false }
             errorMessage = error.localizedDescription
-            return
+            return false
         }
-        backToProviders()
+        guard generation == flowGeneration else { return false }
+        self.authorization = nil
+        return true
     }
 
-    func backToMethods() {
-        guard selectedProvider != nil else {
-            backToProviders()
-            return
-        }
-        selectedMethodID = nil
-        inputs = [:]
-        authorization = nil
-        errorMessage = nil
-        phase = .methodSelection
-    }
-
-    func backToProviders() {
-        resetSelection()
-        errorMessage = nil
-    }
-
-    private var normalizedInputs: [String: String] {
-        inputs.reduce(into: [:]) { result, element in
-            result[element.key] = element.value.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-    }
-
-    private func submit(_ operation: () async throws -> Void) async {
-        guard !isSubmitting else { return }
-        isSubmitting = true
-        errorMessage = nil
-        defer { isSubmitting = false }
-        do {
-            try await operation()
-        } catch is CancellationError {
-            return
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+    private func invalidateFlow() {
+        flowGeneration &+= 1
+        isSubmitting = false
     }
 
     private func finishConnection(providerID: String) {

@@ -26,20 +26,29 @@ struct OpenCodeProviderConnectionView: View {
                             EmptyView()
                         } else if store.selectedMethod != nil {
                             Button("Methods", systemImage: "chevron.left") {
-                                store.backToMethods()
+                                Task { await store.leaveToMethods() }
                             }
                         } else if store.selectedProvider != nil {
                             Button("Providers", systemImage: "chevron.left") {
-                                store.backToProviders()
+                                Task { await store.leaveToProviders() }
                             }
                         }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
+                        Button("Done") {
+                            Task {
+                                if await store.prepareToDismiss() { dismiss() }
+                            }
+                        }
                     }
                 }
         }
         .task { await store.load() }
+        .interactiveDismissDisabled(
+            store.authorization != nil
+                || store.phase == .startingOAuth
+                || store.isSubmitting
+        )
     }
 
     @ViewBuilder
