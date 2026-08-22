@@ -58,6 +58,34 @@ struct OpenCodeSessionLifecycleStateTests {
         #expect(!OpenCodeSessionAbortPolicy.canRequest(status: .busy, isRequesting: true))
     }
 
+    @Test("Beginning a mutation invalidates an older session reload")
+    func mutationInvalidatesLoad() {
+        var version = OpenCodeSessionLifecycleRequestVersion()
+        let staleLoad = version.beginLoad()
+
+        version.beginMutation()
+
+        #expect(!version.accepts(load: staleLoad))
+        let currentLoad = version.beginLoad()
+        #expect(version.accepts(load: currentLoad))
+    }
+
+    @Test("Stop pauses follow-ups before an idle event can dispatch them")
+    func stopPausesBeforeIdle() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            text: "Do not send after stop",
+            model: nil,
+            serverIsActive: true
+        )
+
+        OpenCodeSessionAbortPolicy.prepareQueueForRequest(&queue)
+
+        #expect(queue.isPaused)
+        #expect(queue.serverBecameIdle() == nil)
+        #expect(queue.prompts.map(\.text) == ["Do not send after stop"])
+    }
+
     private func makeSession(
         id: String,
         title: String,
