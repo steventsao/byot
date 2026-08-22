@@ -316,11 +316,14 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
         } catch is OpenCodeFeatureUnavailableError {
             // V1 has no cancellation route; leaving the flow is the supported fallback.
         } catch is CancellationError {
-            return false
+            guard generation == flowGeneration else { return false }
+            self.authorization = nil
+            return true
         } catch {
             guard generation == flowGeneration else { return false }
             errorMessage = error.localizedDescription
-            return false
+            self.authorization = nil
+            return true
         }
         guard generation == flowGeneration else { return false }
         self.authorization = nil
