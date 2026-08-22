@@ -126,10 +126,6 @@ struct OpenCodeSSELineFramer: Sendable {
     }
 }
 
-private struct OpenCodeDataResponse<Value: Decodable>: Decodable {
-    let data: Value
-}
-
 struct OpenCodeClient: Sendable {
     static let eventBufferLimit = 16
 
@@ -326,6 +322,8 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodePermissionRequest] {
+        let adapter = try await protocolAdapter()
+        guard adapter.serverProtocol == .v1 else { return [] }
         let requests: [OpenCodePermissionRequest] = try await get(
             ["permission"],
             query: instanceQuery(directory: directory, workspace: workspace)
@@ -363,6 +361,8 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodeQuestionRequest] {
+        let adapter = try await protocolAdapter()
+        guard adapter.serverProtocol == .v1 else { return [] }
         let requests: [OpenCodeQuestionRequest] = try await get(
             ["question"],
             query: instanceQuery(directory: directory, workspace: workspace)
@@ -375,33 +375,13 @@ struct OpenCodeClient: Sendable {
     }
 
     func v2Permissions(sessionID: String) async throws -> [OpenCodePermissionRequest] {
-        do {
-            let response: OpenCodeDataResponse<[OpenCodePermissionV2Request]> = try await get(
-                ["api", "session", sessionID, "permission"],
-                query: []
-            )
-            return response.data.map(\.normalized)
-        } catch let error as OpenCodeConnectionError {
-            if error.isUnsupportedV2ListRoute { return [] }
-            throw error
-        }
+        // Current pending-action routes are implemented by the issue #14
+        // adapter. Core v2 deliberately makes no speculative request here.
+        []
     }
 
     func v2Questions(sessionID: String) async throws -> [OpenCodeQuestionRequest] {
-        do {
-            let response: OpenCodeDataResponse<[OpenCodeQuestionRequest]> = try await get(
-                ["api", "session", sessionID, "question"],
-                query: []
-            )
-            return response.data.map { request in
-                var request = request
-                request.apiVersion = .v2
-                return request
-            }
-        } catch let error as OpenCodeConnectionError {
-            if error.isUnsupportedV2ListRoute { return [] }
-            throw error
-        }
+        []
     }
 
     func answer(

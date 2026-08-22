@@ -126,10 +126,6 @@ extension OpenCodeConnectionError {
             false
         }
     }
-
-    var isUnsupportedV2ListRoute: Bool {
-        isUnsupportedRoute
-    }
 }
 
 @MainActor

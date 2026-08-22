@@ -888,66 +888,6 @@ final class OpenCodeClientTests: XCTestCase {
         XCTAssertEqual(minimal.resolvedAPIVersion, .v2)
     }
 
-    func testV2PermissionListUsesExactSessionScopedWrapperRoute() async throws {
-        let response = #"""
-        {"data":[{
-          "id":"per_v2",
-          "sessionID":"ses_transport",
-          "action":"read",
-          "resources":["/repo/**"],
-          "save":["/repo/**"],
-          "source":{"type":"tool","messageID":"msg_1","callID":"call_1"}
-        }]}
-        """#
-        let (client, session) = makeStubbedClient(responseBody: response)
-        defer {
-            session.invalidateAndCancel()
-            OpenCodeURLProtocolStub.reset(statusCode: 204)
-        }
-
-        let permissions = try await client.v2Permissions(sessionID: "ses_transport")
-
-        XCTAssertEqual(permissions.count, 1)
-        XCTAssertEqual(permissions.first?.resolvedAPIVersion, .v2)
-        XCTAssertEqual(permissions.first?.source?.callID, "call_1")
-        let request = try XCTUnwrap(OpenCodeURLProtocolStub.recordedRequest())
-        XCTAssertEqual(request.httpMethod, "GET")
-        XCTAssertEqual(request.url?.path, "/api/session/ses_transport/permission")
-        XCTAssertTrue(queryValues(for: request).isEmpty)
-    }
-
-    func testV2QuestionListUsesExactSessionScopedWrapperRoute() async throws {
-        let response = #"""
-        {"data":[{
-          "id":"que_v2",
-          "sessionID":"ses_transport",
-          "questions":[{
-            "question":"Which target?",
-            "header":"Target",
-            "options":[],
-            "multiple":false,
-            "custom":true
-          }],
-          "tool":{"messageID":"msg_1","callID":"call_1"}
-        }]}
-        """#
-        let (client, session) = makeStubbedClient(responseBody: response)
-        defer {
-            session.invalidateAndCancel()
-            OpenCodeURLProtocolStub.reset(statusCode: 204)
-        }
-
-        let questions = try await client.v2Questions(sessionID: "ses_transport")
-
-        XCTAssertEqual(questions.count, 1)
-        XCTAssertEqual(questions.first?.resolvedAPIVersion, .v2)
-        XCTAssertEqual(questions.first?.tool?.callID, "call_1")
-        let request = try XCTUnwrap(OpenCodeURLProtocolStub.recordedRequest())
-        XCTAssertEqual(request.httpMethod, "GET")
-        XCTAssertEqual(request.url?.path, "/api/session/ses_transport/question")
-        XCTAssertTrue(queryValues(for: request).isEmpty)
-    }
-
     func testV2PermissionReplyUsesSessionScopedRouteAndNoContentResponse() async throws {
         let (client, session) = makeStubbedClient(responseBody: "", statusCode: 204)
         defer {
@@ -1042,45 +982,6 @@ final class OpenCodeClientTests: XCTestCase {
         )
         XCTAssertTrue(queryValues(for: request).isEmpty)
         XCTAssertNil(request.httpBody)
-    }
-
-    func testV2ListRoutesFallBackOnlyForNotFoundAndMethodNotAllowed() async throws {
-        defer { OpenCodeURLProtocolStub.reset(statusCode: 204) }
-        for statusCode in [404, 405] {
-            let (client, session) = makeStubbedClient(
-                responseBody: #"{"message":"unsupported"}"#,
-                statusCode: statusCode
-            )
-            let permissions = try await client.v2Permissions(sessionID: "ses_transport")
-            let questions = try await client.v2Questions(sessionID: "ses_transport")
-            XCTAssertTrue(permissions.isEmpty)
-            XCTAssertTrue(questions.isEmpty)
-            session.invalidateAndCancel()
-        }
-
-        let (client, session) = makeStubbedClient(
-            responseBody: #"{"message":"do not swallow"}"#,
-            statusCode: 500
-        )
-        defer { session.invalidateAndCancel() }
-        do {
-            _ = try await client.v2Permissions(sessionID: "ses_transport")
-            XCTFail("Expected the v2 permission list to propagate HTTP 500")
-        } catch let error as OpenCodeConnectionError {
-            guard case .httpStatus(500, let message) = error else {
-                return XCTFail("Unexpected error: \(error)")
-            }
-            XCTAssertEqual(message, "do not swallow")
-        }
-        do {
-            _ = try await client.v2Questions(sessionID: "ses_transport")
-            XCTFail("Expected the v2 question list to propagate HTTP 500")
-        } catch let error as OpenCodeConnectionError {
-            guard case .httpStatus(500, let message) = error else {
-                return XCTFail("Unexpected error: \(error)")
-            }
-            XCTAssertEqual(message, "do not swallow")
-        }
     }
 
     func testPendingActionMergeRetainsLegacyAndV2RequestsWithSameRawID() {
