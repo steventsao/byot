@@ -710,7 +710,7 @@ final class OpenCodeV2ContractTests: XCTestCase {
         ])
         XCTAssertEqual(v2QueryValues(for: requests[3]), [
             "directory": "/repo", "workspace": "wrk_1", "query": "App",
-            "type": "file", "limit": "100",
+            "type": "file", "limit": "200",
         ])
     }
 
@@ -746,7 +746,7 @@ final class OpenCodeV2ContractTests: XCTestCase {
             "location[workspace]": "wrk_1",
             "query": "App",
             "type": "file",
-            "limit": "100",
+            "limit": "200",
         ])
     }
 
