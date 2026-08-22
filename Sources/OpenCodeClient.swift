@@ -135,6 +135,27 @@ private struct OpenCodePromptTextPart: Encodable {
     let text: String
 }
 
+private struct OpenCodePromptFilePart: Encodable {
+    let type = "file"
+    let mime: String
+    let filename: String
+    let url: String
+}
+
+private enum OpenCodePromptPart: Encodable {
+    case text(OpenCodePromptTextPart)
+    case file(OpenCodePromptFilePart)
+
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case .text(let part):
+            try part.encode(to: encoder)
+        case .file(let part):
+            try part.encode(to: encoder)
+        }
+    }
+}
+
 private struct OpenCodePromptModel: Encodable {
     let providerID: String
     let modelID: String
@@ -142,7 +163,7 @@ private struct OpenCodePromptModel: Encodable {
 
 private struct OpenCodePromptBody: Encodable {
     let model: OpenCodePromptModel?
-    let parts: [OpenCodePromptTextPart]
+    let parts: [OpenCodePromptPart]
 }
 
 struct OpenCodeClient: Sendable {
@@ -292,14 +313,16 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil,
         model: OpenCodeModelOption? = nil,
-        text: String
+        text: String,
+        attachments: [OpenCodePromptAttachment] = []
     ) async throws {
         let request = try makeSendMessageRequest(
             sessionID: sessionID,
             directory: directory,
             workspace: workspace,
             model: model,
-            text: text
+            text: text,
+            attachments: attachments
         )
         try await performExpectingEmptyResponse(request)
     }
@@ -309,8 +332,23 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil,
         model: OpenCodeModelOption? = nil,
-        text: String
+        text: String,
+        attachments: [OpenCodePromptAttachment] = []
     ) throws -> URLRequest {
+        try OpenCodePromptAttachment.validate(attachments)
+        var parts: [OpenCodePromptPart] = []
+        if !text.isEmpty {
+            parts.append(.text(OpenCodePromptTextPart(text: text)))
+        }
+        parts.append(contentsOf: attachments.map { attachment in
+            .file(
+                OpenCodePromptFilePart(
+                    mime: attachment.mimeType,
+                    filename: attachment.filename,
+                    url: attachment.dataURL
+                )
+            )
+        })
         let data = try JSONEncoder().encode(
             OpenCodePromptBody(
                 model: model.map {
@@ -319,7 +357,7 @@ struct OpenCodeClient: Sendable {
                         modelID: $0.modelID
                     )
                 },
-                parts: [OpenCodePromptTextPart(text: text)]
+                parts: parts
             )
         )
         return try makeRequest(

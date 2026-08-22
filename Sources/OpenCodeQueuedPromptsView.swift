@@ -57,10 +57,18 @@ struct OpenCodeQueuedPromptsView: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(prompt.text)
-                    .font(.cleanBody)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 8 : 4)
-                    .fixedSize(horizontal: false, vertical: true)
+                if !prompt.text.isEmpty {
+                    Text(prompt.text)
+                        .font(.cleanBody)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 8 : 4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !prompt.attachments.isEmpty {
+                    Label(attachmentLabel(for: prompt), systemImage: "paperclip")
+                        .font(.cleanCaption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
                 Text(queueLabel(for: index, prompt: prompt))
                     .font(.cleanCaption)
                     .foregroundStyle(.secondary)
@@ -112,5 +120,12 @@ struct OpenCodeQueuedPromptsView: View {
             : "Queued \(index + 1) · sends after the current turn"
         guard let model = prompt.model else { return state }
         return "\(state) · \(model.modelName)"
+    }
+
+    private func attachmentLabel(for prompt: OpenCodeQueuedPrompt) -> String {
+        if prompt.attachments.count == 1 {
+            return prompt.attachments[0].filename
+        }
+        return "\(prompt.attachments.count) attachments"
     }
 }

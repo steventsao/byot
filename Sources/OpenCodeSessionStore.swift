@@ -269,12 +269,22 @@ final class OpenCodeSessionStore: ObservableObject {
         }
     }
 
-    func send(_ text: String) -> Bool {
+    func send(
+        _ text: String,
+        attachments: [OpenCodePromptAttachment] = []
+    ) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, canSubmitPrompt else { return false }
+        guard (!trimmed.isEmpty || !attachments.isEmpty), canSubmitPrompt else { return false }
+        do {
+            try OpenCodePromptAttachment.validate(attachments)
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
         let submission = promptQueue.accept(
             text: trimmed,
             model: selectedModel,
+            attachments: attachments,
             serverIsActive: status.isActive || isSending
         )
         publishPromptQueue()
@@ -316,7 +326,8 @@ final class OpenCodeSessionStore: ObservableObject {
                 directory: directory,
                 workspace: workspace,
                 model: prompt.model,
-                text: prompt.text
+                text: prompt.text,
+                attachments: prompt.attachments
             )
             try Task.checkCancellation()
             guard isCurrentPromptDispatch(dispatchID) else { return }
@@ -1024,4 +1035,13 @@ final class OpenCodeSessionStore: ObservableObject {
         else { return nil }
         return try? JSONDecoder().decode(Value.self, from: data)
     }
+
+#if DEBUG
+    func prepareForAttachmentScreenshot() {
+        isRunning = true
+        isStatusReady = true
+        status = .idle
+        errorMessage = nil
+    }
+#endif
 }

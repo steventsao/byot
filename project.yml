@@ -44,11 +44,14 @@ targets:
     scheme:
       testTargets:
         - BYOTTests
+        - BYOTUITests
   BYOTTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - Tests
+      - path: Tests
+        excludes:
+          - UITests
     dependencies:
       - target: BYOT
     settings:
@@ -57,3 +60,15 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot.tests
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/byot.app/byot"
+  BYOTUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - Tests/UITests
+    dependencies:
+      - target: BYOT
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot.uitests
+        TEST_TARGET_NAME: BYOT

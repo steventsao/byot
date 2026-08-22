@@ -4,10 +4,23 @@ import SwiftUI
 struct BYOTApp: App {
     var body: some Scene {
         WindowGroup {
-            BYOTRootView()
+            appRoot
                 .tint(BYOTBrand.accent)
                 .environment(\.font, .cleanBody)
         }
+    }
+
+    @ViewBuilder
+    private var appRoot: some View {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--attachment-screenshot") {
+            OpenCodeAttachmentScreenshotHarness()
+        } else {
+            BYOTRootView()
+        }
+#else
+        BYOTRootView()
+#endif
     }
 }
 

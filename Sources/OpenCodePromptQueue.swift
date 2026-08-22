@@ -50,10 +50,16 @@ struct OpenCodePromptQueue: Equatable, Sendable {
     mutating func accept(
         text: String,
         model: OpenCodeModelOption?,
+        attachments: [OpenCodePromptAttachment] = [],
         serverIsActive: Bool,
         id: UUID = UUID()
     ) -> OpenCodePromptSubmission {
-        let prompt = OpenCodeQueuedPrompt(id: id, text: text, model: model)
+        let prompt = OpenCodeQueuedPrompt(
+            id: id,
+            text: text,
+            model: model,
+            attachments: attachments
+        )
         if phase == .idle, serverIsActive {
             phase = .active
         }
