@@ -82,7 +82,7 @@ struct OpenCodeSessionView: View {
                             canFork: store.historyPolicy?.canFork == true
                                 && store.historyActionInFlight == nil,
                             revert: { messageID in
-                                pendingRevertTarget = OpenCodeSessionRevertTarget(
+                                pendingRevertTarget = store.historyPresentation.revertTarget(
                                     messageID: messageID
                                 )
                             },

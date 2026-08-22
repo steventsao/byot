@@ -36,6 +36,8 @@ protocol-specific routes.
 
 - The History menu exposes undo, restore, compact, and capability-gated fork.
 - A user prompt's context menu can undo or fork at that exact boundary.
+- Undo targets explicitly request file rollback; v1 ignores that adapter-only
+  field while v2 sends `files: true` to the staged revert route.
 - Active execution is interrupted before undo or restore, and queued follow-ups
   are paused before the interrupt request.
 - Reverted prompts appear in a restore card modeled after OpenCode desktop's

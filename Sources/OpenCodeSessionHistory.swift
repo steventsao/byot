@@ -158,9 +158,11 @@ struct OpenCodeSessionHistoryPresentation: Equatable, Sendable {
     }
 
     var latestRevertTarget: OpenCodeSessionRevertTarget? {
-        visibleUserMessages.last.map {
-            OpenCodeSessionRevertTarget(messageID: $0.id)
-        }
+        visibleUserMessages.last.map { revertTarget(messageID: $0.id) }
+    }
+
+    func revertTarget(messageID: String) -> OpenCodeSessionRevertTarget {
+        OpenCodeSessionRevertTarget(messageID: messageID, files: true)
     }
 
     var latestForkMessageID: String? {
