@@ -20,11 +20,13 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         let addFixture = app.buttons["Add Screenshot Fixture"]
         XCTAssertTrue(addFixture.waitForExistence(timeout: 5))
         addFixture.tap()
+        XCTAssertTrue(addFixture.waitForNonExistence(timeout: 5))
 
         let removeAttachment = app.buttons.matching(
             NSPredicate(format: "label == 'Remove byot-design.png'")
         ).firstMatch
         XCTAssertTrue(removeAttachment.waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 1)
 
         let screenshot = XCUIScreen.main.screenshot()
         XCTContext.runActivity(named: "Prompt with photo attachment") { activity in
