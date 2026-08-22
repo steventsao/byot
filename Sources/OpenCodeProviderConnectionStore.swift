@@ -336,6 +336,7 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
         if let index = providers.firstIndex(where: { $0.id == providerID }) {
             providers[index] = providers[index].markingConnected()
         }
+        authorization = nil
         errorMessage = nil
         phase = .connected(providerID: providerID)
     }
