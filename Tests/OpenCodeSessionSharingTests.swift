@@ -47,6 +47,44 @@ struct OpenCodeSessionSharingTests {
         #expect(service.steps == [.capabilities])
     }
 
+    @Test("Presenting sharing retries capabilities after a transient failure")
+    func retriesCapabilitiesOnPresentation() async {
+        let service = FlakySessionSharingService()
+        let store = OpenCodeSessionSharingStore(
+            service: service,
+            session: makeSession(shareURL: nil)
+        )
+
+        await store.prepareForPresentation()
+        #expect(store.support == nil)
+        #expect(store.errorMessage != nil)
+
+        await store.prepareForPresentation()
+        #expect(store.support == .supported)
+        #expect(store.errorMessage == nil)
+        #expect(service.capabilityRequestCount == 2)
+    }
+
+    @Test("Server-returned sharing changes propagate to the owning session list")
+    func propagatesSessionChanges() async {
+        let service = MockSessionSharingService()
+        var updates: [OpenCodeSession] = []
+        let store = OpenCodeSessionSharingStore(
+            service: service,
+            session: makeSession(shareURL: nil),
+            sessionDidChange: { updates.append($0) }
+        )
+
+        await store.loadCapabilities()
+        await store.publish()
+        await store.unpublish()
+
+        #expect(updates.map { $0.share?.url.absoluteString } == [
+            "https://share.example.test/ses_1",
+            nil,
+        ])
+    }
+
     private func makeSession(shareURL: URL?) -> OpenCodeSession {
         OpenCodeSession(
             id: "ses_1",
@@ -67,6 +105,42 @@ struct OpenCodeSessionSharingTests {
                 archived: nil
             )
         )
+    }
+}
+
+private final class FlakySessionSharingService: OpenCodeSessionSharingServicing, @unchecked Sendable {
+    private let lock = NSLock()
+    nonisolated(unsafe) private var requestCount = 0
+
+    var capabilityRequestCount: Int {
+        lock.withLock { requestCount }
+    }
+
+    func protocolCapabilities() async throws -> OpenCodeProtocolCapabilities {
+        let attempt = lock.withLock {
+            requestCount += 1
+            return requestCount
+        }
+        if attempt == 1 {
+            throw OpenCodeConnectionError.server("Temporary capability failure")
+        }
+        return .v1
+    }
+
+    func shareSession(
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        throw OpenCodeConnectionError.invalidResponse
+    }
+
+    func unshareSession(
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        throw OpenCodeConnectionError.invalidResponse
     }
 }
 
