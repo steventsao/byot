@@ -31,14 +31,21 @@ jobs:
           xcrun simctl bootstatus "$udid" -b
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
       - name: Run unit and attachment UI tests
-        env:
-          BYOT_SCREENSHOT_OUTPUT: ${{ github.workspace }}/docs/screenshots/07-prompt-attachments.png
         run: |
           xcodebuild test \
             -project BYOT.xcodeproj \
             -scheme BYOT \
             -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
             -resultBundlePath TestResults.xcresult
+      - name: Export simulator screenshot
+        run: |
+          mkdir -p ScreenshotAttachments
+          xcrun xcresulttool export attachments \
+            --path TestResults.xcresult \
+            --output-path ScreenshotAttachments
+          screenshot="$(find ScreenshotAttachments -type f -iname '*prompt-attachments*.png' -print -quit)"
+          test -n "$screenshot"
+          cp "$screenshot" docs/screenshots/07-prompt-attachments.png
       - name: Upload test result
         if: always()
         uses: actions/upload-artifact@v4

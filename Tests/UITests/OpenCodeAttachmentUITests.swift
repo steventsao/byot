@@ -26,7 +26,6 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(removeAttachment.waitForExistence(timeout: 10))
 
-        composer.tap()
         let screenshot = XCUIScreen.main.screenshot()
         XCTContext.runActivity(named: "Prompt with photo attachment") { activity in
             let attachment = XCTAttachment(screenshot: screenshot)
@@ -35,8 +34,5 @@ final class OpenCodeAttachmentUITests: XCTestCase {
             activity.add(attachment)
         }
 
-        if let output = ProcessInfo.processInfo.environment["BYOT_SCREENSHOT_OUTPUT"] {
-            try screenshot.pngRepresentation.write(to: URL(fileURLWithPath: output))
-        }
     }
 }
