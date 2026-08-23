@@ -103,10 +103,22 @@ struct OpenCodeSessionHistoryPresentationTests {
         )
 
         #expect(
-            OpenCodeSessionHistoryContinuationPolicy.refreshScope(revert: revert) == .session
+            OpenCodeSessionHistoryContinuationPolicy.refreshScope(
+                requested: .messages,
+                revert: revert
+            ) == .session
         )
         #expect(
-            OpenCodeSessionHistoryContinuationPolicy.refreshScope(revert: nil) == .messages
+            OpenCodeSessionHistoryContinuationPolicy.refreshScope(
+                requested: .messages,
+                revert: nil
+            ) == .messages
+        )
+        #expect(
+            OpenCodeSessionHistoryContinuationPolicy.refreshScope(
+                requested: .session,
+                revert: nil
+            ) == .session
         )
     }
 
