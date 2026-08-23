@@ -5,6 +5,7 @@ struct OpenCodeRootView: View {
 
     @StateObject private var profileStore = OpenCodeProfileStore()
     @State private var isShowingProfileEditor = false
+    @State private var isShowingDiscovery = false
     @State private var profileBeingEdited: OpenCodeServerProfile?
     @State private var profilePendingRemoval: OpenCodeServerProfile?
     @State private var profileRemovalError: String?
@@ -23,12 +24,16 @@ struct OpenCodeRootView: View {
                     ContentUnavailableView {
                         Label("Connect OpenCode", systemImage: "network")
                     } description: {
-                        Text("Add the secure HTTPS address for the OpenCode server on your Mac.")
+                        Text("Discover OpenCode on this network or add its secure HTTPS address.")
                     } actions: {
+                        Button("Find nearby", systemImage: "dot.radiowaves.left.and.right") {
+                            isShowingDiscovery = true
+                        }
+                        .buttonStyle(.borderedProminent)
                         Button("Add server", systemImage: "plus") {
                             edit(nil)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.bordered)
                     }
                 }
             }
@@ -51,6 +56,15 @@ struct OpenCodeRootView: View {
                 existingPassword: profileBeingEdited.map(profileStore.password(for:)) ?? ""
             ) { profile, password in
                 try profileStore.save(profile, password: password)
+            }
+        }
+        .sheet(isPresented: $isShowingDiscovery) {
+            OpenCodeDiscoveryView { profile in
+                isShowingDiscovery = false
+                Task { @MainActor in
+                    await Task.yield()
+                    edit(profile)
+                }
             }
         }
         .confirmationDialog(
@@ -121,6 +135,9 @@ struct OpenCodeRootView: View {
             Button("Add server", systemImage: "plus") {
                 edit(nil)
             }
+            Button("Find nearby", systemImage: "dot.radiowaves.left.and.right") {
+                isShowingDiscovery = true
+            }
         }
     }
 
@@ -143,6 +160,7 @@ private struct OpenCodeProfileEditorView: View {
     @State private var username: String
     @State private var password: String
     @State private var directory: String
+    @State private var allowsLocalHTTP: Bool
     @State private var isTesting = false
     @State private var isSaving = false
     @State private var statusMessage: String?
@@ -164,6 +182,7 @@ private struct OpenCodeProfileEditorView: View {
         _username = State(initialValue: profile?.username ?? "opencode")
         _password = State(initialValue: existingPassword)
         _directory = State(initialValue: profile?.directory ?? "")
+        _allowsLocalHTTP = State(initialValue: profile?.allowsLocalHTTP ?? false)
         _compatibilitySummary = State(initialValue: profile?.compatibility)
         if let profile, profile.compatibility != nil {
             _probedFingerprint = State(
@@ -205,6 +224,14 @@ private struct OpenCodeProfileEditorView: View {
                     Text("Working directory (optional)")
                 } footer: {
                     Text("Leave blank to browse projects already known to this OpenCode server.")
+                }
+
+                if allowsLocalHTTP {
+                    Section {
+                        Label("Local HTTP", systemImage: "wifi")
+                    } footer: {
+                        Text("This numeric local-network address was resolved through Bonjour. Manually added servers remain HTTPS-only.")
+                    }
                 }
 
                 Section {
@@ -282,7 +309,8 @@ private struct OpenCodeProfileEditorView: View {
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             baseURL: baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
             username: username.trimmingCharacters(in: .whitespacesAndNewlines),
-            directory: directory.trimmingCharacters(in: .whitespacesAndNewlines)
+            directory: directory.trimmingCharacters(in: .whitespacesAndNewlines),
+            allowsLocalHTTP: allowsLocalHTTP
         )
     }
 

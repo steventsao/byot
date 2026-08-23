@@ -3,10 +3,12 @@ import Foundation
 final class OpenCodeRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let allowedHost: String?
     private let allowedPort: Int
+    private let allowedScheme: String?
 
     init(baseURL: URL?) {
         allowedHost = baseURL?.host?.lowercased()
         allowedPort = Self.effectivePort(for: baseURL)
+        allowedScheme = baseURL?.scheme?.lowercased()
     }
 
     func urlSession(
@@ -23,7 +25,7 @@ final class OpenCodeRedirectDelegate: NSObject, URLSessionTaskDelegate, @uncheck
 
     func allowsRedirect(to url: URL?) -> Bool {
         guard let url else { return false }
-        return url.scheme?.lowercased() == "https"
+        return url.scheme?.lowercased() == allowedScheme
             && url.host?.lowercased() == allowedHost
             && Self.effectivePort(for: url) == allowedPort
     }

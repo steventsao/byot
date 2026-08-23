@@ -6,6 +6,7 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
     var baseURL: String
     var username: String
     var directory: String
+    var allowsLocalHTTP: Bool
     var compatibility: OpenCodeCompatibilitySummary?
 
     init(
@@ -14,6 +15,7 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
         baseURL: String,
         username: String = "opencode",
         directory: String = "",
+        allowsLocalHTTP: Bool = false,
         compatibility: OpenCodeCompatibilitySummary? = nil
     ) {
         self.id = id
@@ -21,7 +23,35 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
         self.baseURL = baseURL
         self.username = username
         self.directory = directory
+        self.allowsLocalHTTP = allowsLocalHTTP
         self.compatibility = compatibility
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case baseURL
+        case username
+        case directory
+        case allowsLocalHTTP
+        case compatibility
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        baseURL = try container.decode(String.self, forKey: .baseURL)
+        username = try container.decode(String.self, forKey: .username)
+        directory = try container.decode(String.self, forKey: .directory)
+        allowsLocalHTTP = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .allowsLocalHTTP
+        ) ?? false
+        compatibility = try container.decodeIfPresent(
+            OpenCodeCompatibilitySummary.self,
+            forKey: .compatibility
+        )
     }
 
     var normalizedURL: URL? {
@@ -39,9 +69,20 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
               components.password == nil,
               components.query == nil,
               components.fragment == nil,
-              components.scheme?.lowercased() == "https",
               components.host?.isEmpty == false
         else {
+            throw OpenCodeConnectionError.invalidProfile(
+                "Enter a complete HTTPS server URL."
+            )
+        }
+        let scheme = components.scheme?.lowercased()
+        if scheme == "http", allowsLocalHTTP {
+            guard OpenCodeLocalEndpointPolicy.isLocalHost(components.host ?? "") else {
+                throw OpenCodeConnectionError.invalidProfile(
+                    "Discovered HTTP servers must use a local network address."
+                )
+            }
+        } else if scheme != "https" {
             throw OpenCodeConnectionError.invalidProfile(
                 "Enter a complete HTTPS server URL."
             )
