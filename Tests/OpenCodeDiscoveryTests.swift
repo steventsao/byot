@@ -190,6 +190,52 @@ struct OpenCodeDiscoveryTests {
         #expect(browser.stopCount == 1)
     }
 
+    @Test("Discovery generations reject stale browser and service callbacks")
+    func staleCallbackGeneration() {
+        let firstBrowser = NSObject()
+        let nextBrowser = NSObject()
+        let staleService = NSObject()
+        let currentService = NSObject()
+        let key = "local.|_http._tcp.|opencode-4096"
+        var generation = OpenCodeBonjourCallbackGeneration()
+
+        generation.begin(browser: firstBrowser)
+        let registeredInitialService = generation.register(
+            service: staleService,
+            key: key,
+            browser: firstBrowser
+        )
+        #expect(registeredInitialService)
+        #expect(generation.accepts(browser: firstBrowser))
+        #expect(generation.accepts(service: staleService, key: key))
+
+        generation.begin(browser: nextBrowser)
+        #expect(!generation.accepts(browser: firstBrowser))
+        #expect(!generation.accepts(service: staleService, key: key))
+        let registeredFromStaleBrowser = generation.register(
+            service: staleService,
+            key: key,
+            browser: firstBrowser
+        )
+        #expect(!registeredFromStaleBrowser)
+        let registeredCurrentService = generation.register(
+            service: currentService,
+            key: key,
+            browser: nextBrowser
+        )
+        #expect(registeredCurrentService)
+        let removedStaleService = generation.remove(
+            service: staleService,
+            key: key
+        )
+        #expect(!removedStaleService)
+        #expect(generation.accepts(service: currentService, key: key))
+
+        generation.end()
+        #expect(!generation.accepts(browser: nextBrowser))
+        #expect(!generation.accepts(service: currentService, key: key))
+    }
+
     @Test("Initial discovery settles only after the browse batch and its resolutions finish")
     func initialSearchSettlement() {
         var pending = OpenCodeDiscoveryInitialSearch()
