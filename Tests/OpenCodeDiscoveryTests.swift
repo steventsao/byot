@@ -125,8 +125,11 @@ struct OpenCodeDiscoveryTests {
         #expect(browser.startCount == 1)
 
         browser.send(.services([]))
-        #expect(!store.isSearching)
+        #expect(store.isSearching)
         #expect(store.servers.isEmpty)
+
+        browser.send(.settled)
+        #expect(!store.isSearching)
 
         browser.send(.services([
             OpenCodeBonjourServiceRecord(
@@ -146,6 +149,24 @@ struct OpenCodeDiscoveryTests {
         store.stop()
         #expect(!store.isSearching)
         #expect(browser.stopCount == 1)
+    }
+
+    @Test("Initial discovery settles only after the browse batch and its resolutions finish")
+    func initialSearchSettlement() {
+        var pending = OpenCodeDiscoveryInitialSearch()
+        #expect(!pending.serviceFound(key: "local|_http._tcp.|opencode-4096", moreComing: false))
+        #expect(!pending.emptyWindowElapsed())
+        #expect(!pending.isSettled)
+        #expect(pending.resolutionFinished(key: "local|_http._tcp.|opencode-4096"))
+        #expect(pending.isSettled)
+
+        var empty = OpenCodeDiscoveryInitialSearch()
+        #expect(empty.emptyWindowElapsed())
+        #expect(empty.isSettled)
+
+        var genericHTTPOnly = OpenCodeDiscoveryInitialSearch()
+        #expect(genericHTTPOnly.serviceFound(key: nil, moreComing: false))
+        #expect(genericHTTPOnly.isSettled)
     }
 
     @Test("Info plist declares scoped local networking without arbitrary loads")
