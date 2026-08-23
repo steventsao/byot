@@ -474,6 +474,96 @@ struct OpenCodeClient: Sendable {
         )
     }
 
+    func providerConnections(
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> [OpenCodeProviderConnection] {
+        try await protocolAdapter().providerConnections(
+            using: transport,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func connectProviderKey(
+        providerID: String,
+        key: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws {
+        try await protocolAdapter().connectProviderKey(
+            using: transport,
+            providerID: providerID,
+            key: key,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func startProviderOAuth(
+        providerID: String,
+        methodID: String,
+        inputs: [String: String],
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> OpenCodeProviderOAuthAuthorization {
+        try await protocolAdapter().startProviderOAuth(
+            using: transport,
+            providerID: providerID,
+            methodID: methodID,
+            inputs: inputs,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func completeProviderOAuth(
+        providerID: String,
+        attemptID: String,
+        code: String?,
+        directory: String,
+        workspace: String? = nil
+    ) async throws {
+        try await protocolAdapter().completeProviderOAuth(
+            using: transport,
+            providerID: providerID,
+            attemptID: attemptID,
+            code: code,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func providerOAuthStatus(
+        providerID: String,
+        attemptID: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> OpenCodeProviderOAuthStatus {
+        try await protocolAdapter().providerOAuthStatus(
+            using: transport,
+            providerID: providerID,
+            attemptID: attemptID,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func cancelProviderOAuth(
+        providerID: String,
+        attemptID: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws {
+        try await protocolAdapter().cancelProviderOAuth(
+            using: transport,
+            providerID: providerID,
+            attemptID: attemptID,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
     func messages(
         sessionID: String,
         directory: String,

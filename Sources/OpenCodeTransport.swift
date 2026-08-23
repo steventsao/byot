@@ -97,6 +97,16 @@ struct OpenCodeTransport: Sendable {
         return try await perform(request)
     }
 
+    func put<Body: Encodable, Response: Decodable>(
+        _ path: [String],
+        query: [URLQueryItem] = [],
+        body: Body
+    ) async throws -> Response {
+        let data = try JSONEncoder().encode(body)
+        let request = try makeRequest(path: path, query: query, method: "PUT", body: data)
+        return try await perform(request)
+    }
+
     func delete<Response: Decodable>(
         _ path: [String],
         query: [URLQueryItem] = []
@@ -128,6 +138,14 @@ struct OpenCodeTransport: Sendable {
         query: [URLQueryItem] = []
     ) async throws {
         let request = try makeRequest(path: path, query: query, method: "POST", body: nil)
+        try await performExpectingEmptyResponse(request)
+    }
+
+    func deleteExpectingEmptyResponse(
+        _ path: [String],
+        query: [URLQueryItem] = []
+    ) async throws {
+        let request = try makeRequest(path: path, query: query, method: "DELETE", body: nil)
         try await performExpectingEmptyResponse(request)
     }
 

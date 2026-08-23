@@ -159,6 +159,54 @@ protocol OpenCodeProtocolAdapting: Sendable {
         workspace: String?
     ) async throws -> [OpenCodeProviderModels]
 
+    func providerConnections(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeProviderConnection]
+
+    func connectProviderKey(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        key: String,
+        directory: String,
+        workspace: String?
+    ) async throws
+
+    func startProviderOAuth(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        methodID: String,
+        inputs: [String: String],
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeProviderOAuthAuthorization
+
+    func completeProviderOAuth(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        attemptID: String,
+        code: String?,
+        directory: String,
+        workspace: String?
+    ) async throws
+
+    func providerOAuthStatus(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        attemptID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeProviderOAuthStatus
+
+    func cancelProviderOAuth(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        attemptID: String,
+        directory: String,
+        workspace: String?
+    ) async throws
+
     func messages(
         using transport: OpenCodeTransport,
         sessionID: String,
@@ -268,6 +316,8 @@ final class OpenCodeProtocolCache: @unchecked Sendable {
 }
 
 struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
+    static let automaticOAuthCallbackTimeout: TimeInterval = 10 * 60
+
     let serverProtocol = OpenCodeServerProtocol.v1
     let capabilities = OpenCodeProtocolCapabilities.v1
 
@@ -598,6 +648,168 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
             query: instanceQuery(directory: directory, workspace: workspace)
         )
         return catalog.connectedProviders
+    }
+
+    func providerConnections(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeProviderConnection] {
+        let query = instanceQuery(directory: directory, workspace: workspace)
+        let catalog: OpenCodeV1ProviderConnectionCatalog = try await transport.get(
+            ["provider"],
+            query: query
+        )
+        let methods: [String: [OpenCodeV1ProviderAuthMethod]] = try await transport.get(
+            ["provider", "auth"],
+            query: query
+        )
+        let providersByID = Dictionary(uniqueKeysWithValues: catalog.providers.map { ($0.id, $0) })
+        let providerIDs = Set(providersByID.keys).union(methods.keys)
+        return providerIDs.map { providerID in
+            let provider = providersByID[providerID]
+            let normalizedMethods = methods[providerID, default: []].enumerated().map { index, method in
+                method.normalized(id: String(index))
+            }
+            return OpenCodeProviderConnection(
+                id: providerID,
+                name: provider?.name ?? providerID,
+                isConnected: catalog.connected.contains(providerID),
+                methods: normalizedMethods.isEmpty
+                    ? [OpenCodeProviderAuthMethod(id: "key", kind: .key, label: "API key")]
+                    : normalizedMethods
+            )
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    func connectProviderKey(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        key: String,
+        directory: String,
+        workspace: String?
+    ) async throws {
+        struct Body: Encodable {
+            let type = "api"
+            let key: String
+        }
+        let _: Bool = try await transport.put(
+            ["auth", providerID],
+            body: Body(key: key)
+        )
+        let _: Bool = try await transport.postWithoutBody(
+            ["instance", "dispose"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func startProviderOAuth(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        methodID: String,
+        inputs: [String: String],
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeProviderOAuthAuthorization {
+        guard let method = Int(methodID) else {
+            throw OpenCodeProviderConnectionError.invalidMethod
+        }
+        struct Body: Encodable {
+            let method: Int
+            let inputs: [String: String]
+        }
+        let response: OpenCodeV1ProviderOAuthAuthorization = try await transport.post(
+            ["provider", providerID, "oauth", "authorize"],
+            query: instanceQuery(directory: directory, workspace: workspace),
+            body: Body(method: method, inputs: inputs)
+        )
+        let url = try OpenCodeProviderAuthorizationURLPolicy.validate(response.url)
+        let createdAt = Date().timeIntervalSince1970 * 1_000
+        return OpenCodeProviderOAuthAuthorization(
+            attemptID: "\(providerID):\(method)",
+            url: url,
+            instructions: response.instructions,
+            mode: response.method == "auto" ? .automatic : .code,
+            createdAt: createdAt,
+            expiresAt: createdAt + 10 * 60 * 1_000
+        )
+    }
+
+    func completeProviderOAuth(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        attemptID: String,
+        code: String?,
+        directory: String,
+        workspace: String?
+    ) async throws {
+        try await performProviderOAuthCallback(
+            using: transport,
+            providerID: providerID,
+            attemptID: attemptID,
+            code: code,
+            directory: directory,
+            workspace: workspace,
+            timeout: nil
+        )
+    }
+
+    private func performProviderOAuthCallback(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        attemptID: String,
+        code: String?,
+        directory: String,
+        workspace: String?,
+        timeout: TimeInterval?
+    ) async throws {
+        guard let method = Int(attemptID.split(separator: ":").last ?? "") else {
+            throw OpenCodeProviderConnectionError.invalidMethod
+        }
+        struct Body: Encodable {
+            let method: Int
+            let code: String?
+        }
+        let _: Bool = try await transport.post(
+            ["provider", providerID, "oauth", "callback"],
+            query: instanceQuery(directory: directory, workspace: workspace),
+            body: Body(method: method, code: code),
+            timeout: timeout
+        )
+    }
+
+    func providerOAuthStatus(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        attemptID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeProviderOAuthStatus {
+        try await performProviderOAuthCallback(
+            using: transport,
+            providerID: providerID,
+            attemptID: attemptID,
+            code: nil,
+            directory: directory,
+            workspace: workspace,
+            timeout: Self.automaticOAuthCallbackTimeout
+        )
+        return .complete
+    }
+
+    func cancelProviderOAuth(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        attemptID: String,
+        directory: String,
+        workspace: String?
+    ) async throws {
+        throw OpenCodeFeatureUnavailableError(
+            feature: "Cancel provider OAuth",
+            reason: capabilities.providerOAuthCancellation.unavailableReason
+                ?? "OpenCode v1 does not expose this route."
+        )
     }
 
     func messages(
@@ -1165,6 +1377,113 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
             }
     }
 
+    func providerConnections(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeProviderConnection] {
+        let response: OpenCodeV2LocationDataResponse<[OpenCodeV2Integration]> =
+            try await transport.get(
+                ["api", "integration"],
+                query: locationQuery(directory: directory, workspace: workspace)
+            )
+        return response.data.map(\.normalized)
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    func connectProviderKey(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        key: String,
+        directory: String,
+        workspace: String?
+    ) async throws {
+        struct Body: Encodable { let key: String }
+        try await transport.postExpectingEmptyResponse(
+            ["api", "integration", providerID, "connect", "key"],
+            query: locationQuery(directory: directory, workspace: workspace),
+            body: Body(key: key)
+        )
+    }
+
+    func startProviderOAuth(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        methodID: String,
+        inputs: [String: String],
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeProviderOAuthAuthorization {
+        struct Body: Encodable {
+            let methodID: String
+            let inputs: [String: String]
+        }
+        let response: OpenCodeV2LocationDataResponse<OpenCodeV2IntegrationAttempt> =
+            try await transport.post(
+                ["api", "integration", providerID, "connect", "oauth"],
+                query: locationQuery(directory: directory, workspace: workspace),
+                body: Body(methodID: methodID, inputs: inputs)
+            )
+        do {
+            return try response.data.normalized
+        } catch let error as OpenCodeProviderConnectionError {
+            if error == .invalidAuthorizationURL {
+                try? await cancelProviderOAuth(
+                    using: transport,
+                    providerID: providerID,
+                    attemptID: response.data.attemptID,
+                    directory: directory,
+                    workspace: workspace
+                )
+            }
+            throw error
+        }
+    }
+
+    func completeProviderOAuth(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        attemptID: String,
+        code: String?,
+        directory: String,
+        workspace: String?
+    ) async throws {
+        struct Body: Encodable { let code: String? }
+        try await transport.postExpectingEmptyResponse(
+            ["api", "integration", "attempt", attemptID, "complete"],
+            query: locationQuery(directory: directory, workspace: workspace),
+            body: Body(code: code)
+        )
+    }
+
+    func providerOAuthStatus(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        attemptID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeProviderOAuthStatus {
+        let response: OpenCodeV2LocationDataResponse<OpenCodeV2IntegrationAttemptStatus> =
+            try await transport.get(
+                ["api", "integration", "attempt", attemptID],
+                query: locationQuery(directory: directory, workspace: workspace)
+            )
+        return response.data.normalized
+    }
+
+    func cancelProviderOAuth(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        attemptID: String,
+        directory: String,
+        workspace: String?
+    ) async throws {
+        try await transport.deleteExpectingEmptyResponse(
+            ["api", "integration", "attempt", attemptID],
+            query: locationQuery(directory: directory, workspace: workspace)
+        )
+    }
+
     func messages(
         using transport: OpenCodeTransport,
         sessionID: String,
@@ -1401,6 +1720,146 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
             feature: feature,
             reason: support.unavailableReason ?? "The detected protocol does not support it."
         )
+    }
+}
+
+private struct OpenCodeV1ProviderConnectionCatalog: Decodable {
+    let providers: [OpenCodeV1ProviderIdentity]
+    let connected: Set<String>
+
+    private enum CodingKeys: String, CodingKey {
+        case all
+        case connected
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawProviders = try container.decode([OpenCodeJSONValue].self, forKey: .all)
+        providers = rawProviders.compactMap { value in
+            guard case .object(let object) = value,
+                  let id = object["id"]?.stringValue
+            else { return nil }
+            return OpenCodeV1ProviderIdentity(
+                id: id,
+                name: object["name"]?.stringValue ?? id
+            )
+        }
+        connected = Set(try container.decode([String].self, forKey: .connected))
+    }
+}
+
+private struct OpenCodeV1ProviderIdentity: Sendable {
+    let id: String
+    let name: String
+}
+
+private struct OpenCodeV1ProviderAuthMethod: Decodable {
+    let type: String
+    let label: String
+    let prompts: [OpenCodeProviderAuthPrompt]?
+
+    func normalized(id: String) -> OpenCodeProviderAuthMethod {
+        OpenCodeProviderAuthMethod(
+            id: id,
+            kind: type == "oauth" ? .oauth : .key,
+            label: label,
+            prompts: prompts ?? []
+        )
+    }
+}
+
+private struct OpenCodeV1ProviderOAuthAuthorization: Decodable {
+    let url: String
+    let method: String
+    let instructions: String
+}
+
+private struct OpenCodeV2Integration: Decodable {
+    let id: String
+    let name: String
+    let methods: [OpenCodeV2IntegrationMethod]
+    let connections: [OpenCodeJSONValue]
+
+    var normalized: OpenCodeProviderConnection {
+        let normalizedMethods = methods.compactMap(\.normalized)
+        return OpenCodeProviderConnection(
+            id: id,
+            name: name,
+            isConnected: !connections.isEmpty,
+            methods: normalizedMethods.isEmpty
+                ? [OpenCodeProviderAuthMethod(id: "key", kind: .key, label: "API key")]
+                : normalizedMethods
+        )
+    }
+}
+
+private struct OpenCodeV2IntegrationMethod: Decodable {
+    let id: String?
+    let type: String
+    let label: String?
+    let prompts: [OpenCodeProviderAuthPrompt]?
+
+    var normalized: OpenCodeProviderAuthMethod? {
+        switch type {
+        case "key":
+            OpenCodeProviderAuthMethod(
+                id: id ?? "key",
+                kind: .key,
+                label: label ?? "API key"
+            )
+        case "oauth":
+            id.map {
+                OpenCodeProviderAuthMethod(
+                    id: $0,
+                    kind: .oauth,
+                    label: label ?? "OAuth",
+                    prompts: prompts ?? []
+                )
+            }
+        default:
+            nil
+        }
+    }
+}
+
+private struct OpenCodeV2IntegrationAttempt: Decodable {
+    struct Time: Decodable {
+        let created: Double
+        let expires: Double
+    }
+
+    let attemptID: String
+    let url: String
+    let instructions: String
+    let mode: String
+    let time: Time
+
+    var normalized: OpenCodeProviderOAuthAuthorization {
+        get throws {
+            let url = try OpenCodeProviderAuthorizationURLPolicy.validate(url)
+            return OpenCodeProviderOAuthAuthorization(
+                attemptID: attemptID,
+                url: url,
+                instructions: instructions,
+                mode: mode == "auto" ? .automatic : .code,
+                createdAt: time.created,
+                expiresAt: time.expires
+            )
+        }
+    }
+}
+
+private struct OpenCodeV2IntegrationAttemptStatus: Decodable {
+    let status: String
+    let message: String?
+
+    var normalized: OpenCodeProviderOAuthStatus {
+        switch status {
+        case "complete": .complete
+        case "failed": .failed(message: message ?? "Provider authentication failed.")
+        case "expired": .expired
+        default: .pending
+        }
     }
 }
 

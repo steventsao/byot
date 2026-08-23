@@ -899,6 +899,205 @@ final class OpenCodeV2ContractTests: XCTestCase {
         XCTAssertEqual(try v2JSONObject(for: requests[2])["agent"] as? String, "plan")
     }
 
+    func testV1ProviderAuthenticationUsesPinnedMethodsKeyAndOAuthContracts() async throws {
+        let (client, session) = makeClient(serverProtocol: .v1) { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/provider"):
+                return .json(#"{"all":[{"id":"openai","name":"OpenAI","models":{}},{"id":"anthropic","name":"Anthropic","models":{}}],"connected":["anthropic"],"default":{}}"#)
+            case ("GET", "/provider/auth"):
+                return .json(#"{"openai":[{"type":"api","label":"API key"},{"type":"oauth","label":"Browser login","prompts":[{"type":"select","key":"account","message":"Account type","options":[{"label":"Personal","value":"personal"}]},{"type":"text","key":"hostname","message":"Hostname","when":{"key":"account","op":"eq","value":"enterprise"}}]}]}"#)
+            case ("PUT", "/auth/openai"), ("POST", "/instance/dispose"), ("POST", "/provider/openai/oauth/callback"):
+                return .json("true")
+            case ("POST", "/provider/openai/oauth/authorize"):
+                return .json(#"{"url":"https://auth.example.test","method":"code","instructions":"Paste the code"}"#)
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        let providers = try await client.providerConnections(directory: "/repo", workspace: "wrk_1")
+        try await client.connectProviderKey(
+            providerID: "openai",
+            key: "secret-key",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let authorization = try await client.startProviderOAuth(
+            providerID: "openai",
+            methodID: "1",
+            inputs: ["account": "personal"],
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        try await client.completeProviderOAuth(
+            providerID: "openai",
+            attemptID: authorization.attemptID,
+            code: "oauth-code",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let status = try await client.providerOAuthStatus(
+            providerID: "openai",
+            attemptID: authorization.attemptID,
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+
+        XCTAssertEqual(providers.map(\.id), ["anthropic", "openai"])
+        XCTAssertTrue(try XCTUnwrap(providers.first { $0.id == "anthropic" }).isConnected)
+        let openAI = try XCTUnwrap(providers.first { $0.id == "openai" })
+        XCTAssertEqual(openAI.methods.map(\.id), ["0", "1"])
+        XCTAssertEqual(openAI.methods.map(\.kind), [.key, .oauth])
+        XCTAssertEqual(openAI.methods[1].prompts.map(\.key), ["account", "hostname"])
+        XCTAssertEqual(authorization.attemptID, "openai:1")
+        XCTAssertEqual(authorization.mode, .code)
+        XCTAssertEqual(status, .complete)
+
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { ($0.httpMethod ?? "") + " " + ($0.url?.path ?? "") }, [
+            "GET /provider",
+            "GET /provider/auth",
+            "PUT /auth/openai",
+            "POST /instance/dispose",
+            "POST /provider/openai/oauth/authorize",
+            "POST /provider/openai/oauth/callback",
+            "POST /provider/openai/oauth/callback",
+        ])
+        XCTAssertEqual(try v2JSONObject(for: requests[2])["type"] as? String, "api")
+        XCTAssertEqual(try v2JSONObject(for: requests[2])["key"] as? String, "secret-key")
+        XCTAssertTrue(v2QueryValues(for: requests[2]).isEmpty)
+        XCTAssertEqual(v2QueryValues(for: requests[3]), ["directory": "/repo", "workspace": "wrk_1"])
+        let authorizeBody = try v2JSONObject(for: requests[4])
+        XCTAssertEqual(authorizeBody["method"] as? Int, 1)
+        XCTAssertEqual((authorizeBody["inputs"] as? [String: String])?["account"], "personal")
+        let callbackBody = try v2JSONObject(for: requests[5])
+        XCTAssertEqual(callbackBody["method"] as? Int, 1)
+        XCTAssertEqual(callbackBody["code"] as? String, "oauth-code")
+        let statusBody = try v2JSONObject(for: requests[6])
+        XCTAssertEqual(statusBody["method"] as? Int, 1)
+        XCTAssertNil(statusBody["code"])
+        XCTAssertEqual(requests[6].timeoutInterval, 10 * 60, accuracy: 0.1)
+    }
+
+    func testV2ProviderAuthenticationUsesPinnedIntegrationAttemptContracts() async throws {
+        let (client, session) = makeClient { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/api/integration"):
+                return .json(#"{"location":{"directory":"/repo","workspaceID":"wrk_1","project":{"id":"proj_1","directory":"/repo"}},"data":[{"id":"openai","name":"OpenAI","methods":[{"type":"key","label":"API key"},{"id":"oauth-browser","type":"oauth","label":"Browser login","prompts":[]}],"connections":[{"type":"credential","id":"cred_1","label":"Personal"}]}]}"#)
+            case ("POST", "/api/integration/openai/connect/key"),
+                 ("POST", "/api/integration/attempt/attempt_1/complete"),
+                 ("DELETE", "/api/integration/attempt/attempt_1"):
+                return .empty(statusCode: 204)
+            case ("POST", "/api/integration/openai/connect/oauth"):
+                return .json(#"{"location":{"directory":"/repo","workspaceID":"wrk_1","project":{"id":"proj_1","directory":"/repo"}},"data":{"attemptID":"attempt_1","url":"https://auth.example.test","instructions":"Confirm ABCD","mode":"auto","time":{"created":10,"expires":20}}}"#)
+            case ("GET", "/api/integration/attempt/attempt_1"):
+                return .json(#"{"location":{"directory":"/repo","workspaceID":"wrk_1","project":{"id":"proj_1","directory":"/repo"}},"data":{"status":"pending","time":{"created":10,"expires":20}}}"#)
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        let providers = try await client.providerConnections(directory: "/repo", workspace: "wrk_1")
+        try await client.connectProviderKey(
+            providerID: "openai",
+            key: "secret-key",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let authorization = try await client.startProviderOAuth(
+            providerID: "openai",
+            methodID: "oauth-browser",
+            inputs: [:],
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let status = try await client.providerOAuthStatus(
+            providerID: "openai",
+            attemptID: authorization.attemptID,
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        try await client.completeProviderOAuth(
+            providerID: "openai",
+            attemptID: authorization.attemptID,
+            code: nil,
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        try await client.cancelProviderOAuth(
+            providerID: "openai",
+            attemptID: authorization.attemptID,
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+
+        XCTAssertEqual(providers.map(\.id), ["openai"])
+        XCTAssertTrue(try XCTUnwrap(providers.first).isConnected)
+        XCTAssertEqual(providers.first?.methods.map(\.id), ["key", "oauth-browser"])
+        XCTAssertEqual(authorization.mode, .automatic)
+        XCTAssertEqual(status, .pending)
+
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { ($0.httpMethod ?? "") + " " + ($0.url?.path ?? "") }, [
+            "GET /api/integration",
+            "POST /api/integration/openai/connect/key",
+            "POST /api/integration/openai/connect/oauth",
+            "GET /api/integration/attempt/attempt_1",
+            "POST /api/integration/attempt/attempt_1/complete",
+            "DELETE /api/integration/attempt/attempt_1",
+        ])
+        XCTAssertTrue(requests.allSatisfy {
+            v2QueryValues(for: $0) == [
+                "location[directory]": "/repo",
+                "location[workspace]": "wrk_1",
+            ]
+        })
+        XCTAssertEqual(try v2JSONObject(for: requests[1])["key"] as? String, "secret-key")
+        let oauthBody = try v2JSONObject(for: requests[2])
+        XCTAssertEqual(oauthBody["methodID"] as? String, "oauth-browser")
+        XCTAssertNotNil(oauthBody["inputs"] as? [String: String])
+        XCTAssertTrue(try v2JSONObject(for: requests[4]).isEmpty)
+        XCTAssertNil(requests[5].httpBody)
+    }
+
+    func testV2UnsafeOAuthURLCancelsTheCreatedAttempt() async throws {
+        let (client, session) = makeClient { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("POST", "/api/integration/openai/connect/oauth"):
+                return .json(#"{"location":{"directory":"/repo"},"data":{"attemptID":"attempt_bad_url","url":"http://auth.example.test/oauth","instructions":"","mode":"auto","time":{"created":10,"expires":20}}}"#)
+            case ("DELETE", "/api/integration/attempt/attempt_bad_url"):
+                return .empty(statusCode: 204)
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        do {
+            _ = try await client.startProviderOAuth(
+                providerID: "openai",
+                methodID: "oauth-browser",
+                inputs: [:],
+                directory: "/repo",
+                workspace: nil
+            )
+            XCTFail("Expected the invalid authorization URL to be rejected")
+        } catch let error as OpenCodeProviderConnectionError {
+            XCTAssertEqual(error, .invalidAuthorizationURL)
+        }
+
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { ($0.httpMethod ?? "") + " " + ($0.url?.path ?? "") }, [
+            "POST /api/integration/openai/connect/oauth",
+            "DELETE /api/integration/attempt/attempt_bad_url",
+        ])
+        XCTAssertTrue(requests.allSatisfy {
+            v2QueryValues(for: $0) == ["location[directory]": "/repo"]
+        })
+    }
+
     private func makeClient(
         serverProtocol: OpenCodeServerProtocol = .v2,
         handler: @escaping @Sendable (URLRequest) -> OpenCodeV2URLProtocolStub.Response
