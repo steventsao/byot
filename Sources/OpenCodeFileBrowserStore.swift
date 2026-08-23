@@ -113,6 +113,7 @@ final class OpenCodeFileBrowserStore: ObservableObject {
         }
         guard policy?.canSearch == true else { return }
         let request = searchVersion.begin()
+        searchResults = []
         isSearching = true
         defer {
             if searchVersion.accepts(request) { isSearching = false }
@@ -130,6 +131,7 @@ final class OpenCodeFileBrowserStore: ObservableObject {
             return
         } catch {
             guard searchVersion.accepts(request) else { return }
+            searchResults = []
             errorMessage = error.localizedDescription
         }
     }
