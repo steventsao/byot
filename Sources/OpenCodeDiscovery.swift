@@ -168,6 +168,45 @@ enum OpenCodeDiscoveryUpdate: Equatable, Sendable {
     case failure(String)
 }
 
+struct OpenCodeBonjourCallbackGeneration: Equatable, Sendable {
+    private var browserIdentity: ObjectIdentifier?
+    private var serviceIdentities: [String: ObjectIdentifier] = [:]
+
+    mutating func begin(browser: AnyObject) {
+        browserIdentity = ObjectIdentifier(browser)
+        serviceIdentities.removeAll()
+    }
+
+    mutating func end() {
+        browserIdentity = nil
+        serviceIdentities.removeAll()
+    }
+
+    func accepts(browser: AnyObject) -> Bool {
+        browserIdentity == ObjectIdentifier(browser)
+    }
+
+    mutating func register(
+        service: AnyObject,
+        key: String,
+        browser: AnyObject
+    ) -> Bool {
+        guard accepts(browser: browser) else { return false }
+        serviceIdentities[key] = ObjectIdentifier(service)
+        return true
+    }
+
+    func accepts(service: AnyObject, key: String) -> Bool {
+        serviceIdentities[key] == ObjectIdentifier(service)
+    }
+
+    mutating func remove(service: AnyObject, key: String) -> Bool {
+        guard accepts(service: service, key: key) else { return false }
+        serviceIdentities.removeValue(forKey: key)
+        return true
+    }
+}
+
 struct OpenCodeDiscoveryInitialSearch: Sendable {
     private var pendingServiceKeys: Set<String> = []
     private var reachedBrowseBatchEnd = false

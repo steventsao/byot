@@ -6,9 +6,10 @@ final class OpenCodeBonjourBrowser: NSObject,
     @preconcurrency NetServiceDelegate,
     OpenCodeBonjourBrowsing
 {
-    private let browser = NetServiceBrowser()
+    private var browser: NetServiceBrowser?
     private var services: [String: NetService] = [:]
     private var records: [String: OpenCodeBonjourServiceRecord] = [:]
+    private var callbackGeneration = OpenCodeBonjourCallbackGeneration()
     private var onUpdate: ((OpenCodeDiscoveryUpdate) -> Void)?
     private var initialSearch = OpenCodeDiscoveryInitialSearch()
     private var emptyWindowTask: Task<Void, Never>?
@@ -16,6 +17,9 @@ final class OpenCodeBonjourBrowser: NSObject,
     func start(onUpdate: @escaping (OpenCodeDiscoveryUpdate) -> Void) {
         stop()
         self.onUpdate = onUpdate
+        let browser = NetServiceBrowser()
+        self.browser = browser
+        callbackGeneration.begin(browser: browser)
         browser.delegate = self
         browser.includesPeerToPeer = true
         browser.searchForServices(ofType: "_http._tcp.", inDomain: "local.")
@@ -24,12 +28,19 @@ final class OpenCodeBonjourBrowser: NSObject,
     func stop() {
         emptyWindowTask?.cancel()
         emptyWindowTask = nil
-        browser.stop()
-        services.values.forEach { $0.stop() }
+        onUpdate = nil
+        callbackGeneration.end()
+        let stoppedBrowser = browser
+        browser = nil
+        stoppedBrowser?.delegate = nil
+        stoppedBrowser?.stop()
+        services.values.forEach {
+            $0.delegate = nil
+            $0.stop()
+        }
         services.removeAll()
         records.removeAll()
         initialSearch = OpenCodeDiscoveryInitialSearch()
-        onUpdate = nil
     }
 
     func netServiceBrowser(
@@ -37,6 +48,7 @@ final class OpenCodeBonjourBrowser: NSObject,
         didFind service: NetService,
         moreComing: Bool
     ) {
+        guard callbackGeneration.accepts(browser: browser) else { return }
         emptyWindowTask?.cancel()
         emptyWindowTask = nil
         let isOpenCodeService = service.name.lowercased().hasPrefix("opencode-")
@@ -45,20 +57,34 @@ final class OpenCodeBonjourBrowser: NSObject,
             publishSettled()
         }
         guard let key else { return }
-        services[key] = service
+        guard callbackGeneration.register(
+            service: service,
+            key: key,
+            browser: browser
+        ) else { return }
+        let replacedService = services.updateValue(service, forKey: key)
+        if let replacedService, replacedService !== service {
+            replacedService.delegate = nil
+            replacedService.stop()
+        }
         service.delegate = self
         service.resolve(withTimeout: 5)
     }
 
     func netServiceBrowserWillSearch(_ browser: NetServiceBrowser) {
+        guard callbackGeneration.accepts(browser: browser) else { return }
         emptyWindowTask?.cancel()
-        emptyWindowTask = Task { @MainActor [weak self] in
+        emptyWindowTask = Task { @MainActor [weak self, weak browser] in
             do {
                 try await Task.sleep(nanoseconds: 1_000_000_000)
             } catch {
                 return
             }
-            guard let self, self.initialSearch.emptyWindowElapsed() else { return }
+            guard let self,
+                  let browser,
+                  self.callbackGeneration.accepts(browser: browser),
+                  self.initialSearch.emptyWindowElapsed()
+            else { return }
             self.publishSettled()
         }
     }
@@ -68,7 +94,9 @@ final class OpenCodeBonjourBrowser: NSObject,
         didRemove service: NetService,
         moreComing: Bool
     ) {
+        guard callbackGeneration.accepts(browser: browser) else { return }
         let key = serviceKey(service)
+        guard callbackGeneration.remove(service: service, key: key) else { return }
         services.removeValue(forKey: key)?.stop()
         records.removeValue(forKey: key)
         publishRecords()
@@ -79,6 +107,7 @@ final class OpenCodeBonjourBrowser: NSObject,
         _ browser: NetServiceBrowser,
         didNotSearch errorDict: [String: NSNumber]
     ) {
+        guard callbackGeneration.accepts(browser: browser) else { return }
         emptyWindowTask?.cancel()
         emptyWindowTask = nil
         onUpdate?(.failure("Bonjour discovery could not start. Check Local Network access and try again."))
@@ -86,9 +115,11 @@ final class OpenCodeBonjourBrowser: NSObject,
 
     func netServiceDidResolveAddress(_ sender: NetService) {
         let key = serviceKey(sender)
+        guard callbackGeneration.accepts(service: sender, key: key) else { return }
         guard let host = OpenCodeBonjourAddressResolver.localHost(
             from: sender.addresses ?? []
         ) else {
+            _ = callbackGeneration.remove(service: sender, key: key)
             services.removeValue(forKey: key)
             records.removeValue(forKey: key)
             publishRecords()
@@ -122,6 +153,7 @@ final class OpenCodeBonjourBrowser: NSObject,
         didNotResolve errorDict: [String: NSNumber]
     ) {
         let key = serviceKey(sender)
+        guard callbackGeneration.remove(service: sender, key: key) else { return }
         services.removeValue(forKey: key)
         records.removeValue(forKey: key)
         publishRecords()
