@@ -163,6 +163,43 @@ struct OpenCodeSessionHistoryPresentationTests {
         )
     }
 
+    @Test("Idle history rollback pauses follow-ups without requesting an abort")
+    func idleRollbackPreparationPausesQueue() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            text: "Wait until rollback finishes",
+            model: nil,
+            serverIsActive: true
+        )
+
+        let preparation = OpenCodeSessionHistoryRollbackPolicy.prepare(
+            status: .idle,
+            queue: &queue
+        )
+
+        #expect(queue.isPaused)
+        #expect(!preparation.requiresRemoteAbort)
+        #expect(queue.prompts.map(\.text) == ["Wait until rollback finishes"])
+    }
+
+    @Test("Active history rollback pauses follow-ups and requests an abort")
+    func activeRollbackPreparationRequiresAbort() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            text: "Wait until rollback finishes",
+            model: nil,
+            serverIsActive: true
+        )
+
+        let preparation = OpenCodeSessionHistoryRollbackPolicy.prepare(
+            status: .busy,
+            queue: &queue
+        )
+
+        #expect(queue.isPaused)
+        #expect(preparation.requiresRemoteAbort)
+    }
+
     private func message(
         id: String,
         role: String,
