@@ -393,12 +393,16 @@ final class OpenCodeSessionStore: ObservableObject {
             requestGeneration: requestGeneration,
             currentGeneration: lifecycleGeneration
         ) else { return false }
-        OpenCodeSessionAbortPolicy.restoreQueueAfterFailedRequest(
+        let nextPrompt = OpenCodeSessionAbortPolicy.restoreQueueAfterFailedRequest(
             &promptQueue,
             snapshot: snapshot
         )
         publishPromptQueue()
-        scheduleQueueRecoveryIfNeeded()
+        if let nextPrompt {
+            schedulePromptDispatch(nextPrompt)
+        } else {
+            scheduleQueueRecoveryIfNeeded()
+        }
         return true
     }
 

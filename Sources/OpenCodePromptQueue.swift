@@ -17,8 +17,15 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         }
     }
 
+    private enum PausedSubmissionResult: Equatable, Sendable {
+        case none
+        case succeeded
+        case failed
+    }
+
     private(set) var prompts: [OpenCodeQueuedPrompt] = []
     private var phase: TurnPhase = .idle
+    private var pausedSubmissionResult = PausedSubmissionResult.none
 
     var isTurnActive: Bool {
         switch phase {
@@ -127,7 +134,10 @@ struct OpenCodePromptQueue: Equatable, Sendable {
             }
             phase = observedActive ? .active : .awaitingActivity
             return nil
-        case .idle, .awaitingActivity, .active, .paused:
+        case .paused:
+            pausedSubmissionResult = .succeeded
+            return nil
+        case .idle, .awaitingActivity, .active:
             return nil
         }
     }
@@ -136,10 +146,17 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         _ prompt: OpenCodeQueuedPrompt,
         requeue: Bool
     ) {
+        let failedWhilePaused = phase == .paused
         if requeue, !prompts.contains(where: { $0.id == prompt.id }) {
             prompts.insert(prompt, at: 0)
         }
-        phase = prompts.isEmpty ? .idle : .paused
+        if failedWhilePaused {
+            phase = .paused
+            pausedSubmissionResult = .failed
+        } else {
+            phase = prompts.isEmpty ? .idle : .paused
+            pausedSubmissionResult = .none
+        }
     }
 
     mutating func retry(_ id: UUID) -> OpenCodeQueuedPrompt? {
@@ -163,12 +180,32 @@ struct OpenCodePromptQueue: Equatable, Sendable {
     mutating func pausePendingPrompts() -> PauseSnapshot {
         let snapshot = PauseSnapshot(phase: phase)
         phase = prompts.isEmpty ? .idle : .paused
+        pausedSubmissionResult = .none
         return snapshot
     }
 
-    mutating func restorePendingPrompts(after snapshot: PauseSnapshot) {
-        guard phase == .paused else { return }
-        phase = snapshot.phase
+    @discardableResult
+    mutating func restorePendingPrompts(
+        after snapshot: PauseSnapshot
+    ) -> OpenCodeQueuedPrompt? {
+        guard phase == .paused else { return nil }
+        let submissionResult = pausedSubmissionResult
+        pausedSubmissionResult = .none
+        guard case .submitting = snapshot.phase else {
+            phase = snapshot.phase
+            return nil
+        }
+        switch submissionResult {
+        case .none:
+            phase = snapshot.phase
+            return nil
+        case .succeeded:
+            phase = snapshot.phase
+            return dispatchSucceeded()
+        case .failed:
+            phase = prompts.isEmpty ? .idle : .paused
+            return nil
+        }
     }
 
     private mutating func takeNextOrBecomeIdle() -> OpenCodeQueuedPrompt? {

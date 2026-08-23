@@ -75,10 +75,11 @@ enum OpenCodeSessionAbortPolicy {
         queue.pausePendingPrompts()
     }
 
+    @discardableResult
     static func restoreQueueAfterFailedRequest(
         _ queue: inout OpenCodePromptQueue,
         snapshot: OpenCodePromptQueue.PauseSnapshot
-    ) {
+    ) -> OpenCodeQueuedPrompt? {
         queue.restorePendingPrompts(after: snapshot)
     }
 
