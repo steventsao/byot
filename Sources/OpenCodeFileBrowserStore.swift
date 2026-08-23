@@ -112,6 +112,7 @@ final class OpenCodeFileBrowserStore: ObservableObject {
             _ = searchVersion.begin()
             searchResults = []
             isSearching = false
+            errorMessage = nil
             return
         }
         guard policy?.canSearch == true else { return }
