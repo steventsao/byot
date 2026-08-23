@@ -1,6 +1,6 @@
 # iOS OpenCode connection and cutover acceptance
 
-Status date: 2026-08-22  
+Status date: 2026-08-22
 Protocol pin: OpenCode `3a31c4ea801915c0b050df4b3842997ea62b6e93`
 
 ## Ship decision
