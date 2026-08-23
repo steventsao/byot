@@ -87,8 +87,4 @@ enum OpenCodeServerContextSection<Value: Equatable & Sendable>: Equatable, Senda
         return reason
     }
 
-    var failureMessage: String? {
-        guard case .failed(let message) = self else { return nil }
-        return message
-    }
 }
