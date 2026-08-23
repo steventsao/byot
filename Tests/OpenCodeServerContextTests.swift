@@ -154,6 +154,64 @@ struct OpenCodeServerContextTests {
         #expect(!store.isLoading)
         #expect(await service.laterRequestCount == 0)
     }
+
+    @Test("A failed configuration refresh preserves the loaded value and unsaved editor text")
+    func failedConfigurationRefreshPreservesLoadedDraft() async {
+        let service = FailingConfigurationRefreshService()
+        let store = OpenCodeServerContextStore(
+            service: service,
+            directory: "/repo"
+        )
+        await store.load()
+        let loaded = store.configuration
+        store.configurationText = #"{"model":"unsaved-draft"}"#
+
+        await store.load()
+
+        #expect(store.configuration == loaded)
+        #expect(store.configurationText == #"{"model":"unsaved-draft"}"#)
+        #expect(store.configurationErrorMessage == "configuration refresh failed")
+        #expect(store.canSaveConfiguration)
+    }
+}
+
+private actor FailingConfigurationRefreshService: OpenCodeServerContextServicing {
+    private var configurationRequestCount = 0
+
+    func protocolCapabilities() async throws -> OpenCodeProtocolCapabilities { .v1 }
+
+    func serverConfiguration(
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration {
+        configurationRequestCount += 1
+        if configurationRequestCount > 1 {
+            throw FailingConfigurationRefreshError()
+        }
+        return ["model": .string("server-loaded")]
+    }
+
+    func updateServerConfiguration(
+        _ configuration: OpenCodeConfiguration,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration { configuration }
+
+    func vcsInfo(directory: String, workspace: String?) async throws -> OpenCodeVCSInfo {
+        OpenCodeVCSInfo(branch: "main", defaultBranch: "main")
+    }
+
+    func pathInfo(directory: String, workspace: String?) async throws -> OpenCodeServerPaths {
+        racePaths
+    }
+
+    func mcpStatuses(directory: String, workspace: String?) async throws -> [String: OpenCodeMCPStatus] { [:] }
+    func lspStatuses(directory: String, workspace: String?) async throws -> [OpenCodeLSPStatus] { [] }
+    func formatterStatuses(directory: String, workspace: String?) async throws -> [OpenCodeFormatterStatus] { [] }
+}
+
+private struct FailingConfigurationRefreshError: LocalizedError {
+    var errorDescription: String? { "configuration refresh failed" }
 }
 
 private actor CancellingServerContextService: OpenCodeServerContextServicing {
