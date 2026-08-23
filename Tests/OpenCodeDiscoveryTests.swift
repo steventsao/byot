@@ -143,6 +143,15 @@ struct OpenCodeDiscoveryTests {
         ]))
         #expect(store.servers.map(\.endpoint.absoluteString) == ["http://192.168.1.8:4096/"])
 
+        store.start()
+        #expect(store.isSearching)
+        #expect(store.servers.isEmpty)
+        #expect(browser.startCount == 2)
+
+        browser.send(.settled)
+        #expect(!store.isSearching)
+        #expect(store.servers.isEmpty)
+
         browser.send(.failure("Local network permission denied"))
         #expect(store.errorMessage == "Local network permission denied")
 
