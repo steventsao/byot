@@ -105,6 +105,49 @@ struct OpenCodeSessionLifecycleStateTests {
         #expect(queue.serverBecameIdle()?.text == "Send after the failed stop")
     }
 
+    @Test("A failed stop restores the exact pre-request queue phase")
+    func failedStopPreservesAwaitingActivity() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(text: "In flight", model: nil, serverIsActive: false)
+        _ = queue.dispatchSucceeded()
+        _ = queue.accept(text: "Follow-up", model: nil, serverIsActive: false)
+
+        let snapshot = OpenCodeSessionAbortPolicy.prepareQueueForRequest(&queue)
+        OpenCodeSessionAbortPolicy.restoreQueueAfterFailedRequest(
+            &queue,
+            snapshot: snapshot
+        )
+
+        #expect(queue.isAwaitingActivity)
+        #expect(queue.serverBecameIdle() == nil)
+        #expect(queue.prompts.map(\.text) == ["Follow-up"])
+    }
+
+    @Test("A stop failure from an obsolete lifecycle cannot restore the queue")
+    func obsoleteAbortRequest() {
+        #expect(
+            !OpenCodeSessionAbortPolicy.shouldRestoreQueue(
+                isRunning: true,
+                requestGeneration: 3,
+                currentGeneration: 4
+            )
+        )
+        #expect(
+            !OpenCodeSessionAbortPolicy.shouldRestoreQueue(
+                isRunning: false,
+                requestGeneration: 3,
+                currentGeneration: 3
+            )
+        )
+        #expect(
+            OpenCodeSessionAbortPolicy.shouldRestoreQueue(
+                isRunning: true,
+                requestGeneration: 3,
+                currentGeneration: 3
+            )
+        )
+    }
+
     @Test("Concurrent session mutations have visible failure copy")
     @MainActor
     func mutationInProgressFeedback() {
