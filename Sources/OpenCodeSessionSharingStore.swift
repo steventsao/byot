@@ -67,6 +67,7 @@ final class OpenCodeSessionSharingStore: ObservableObject {
     }
 
     func prepareForPresentation() async {
+        errorMessage = nil
         await loadCapabilities()
     }
 
