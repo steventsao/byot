@@ -64,36 +64,39 @@ final class OpenCodeSessionInputStore: ObservableObject {
             guard generation == loadGeneration else { return }
             self.capabilities = capabilities
             let policy = OpenCodeSessionInputPolicy(capabilities: capabilities)
-            hasLoadedCommandCatalog = !policy.canListCommands
             var catalogErrors: [Error] = []
             if policy.canListCommands {
                 do {
-                    commands = try await service.commands(
+                    let loadedCommands = try await service.commands(
                         directory: directory,
                         workspace: workspace
                     )
+                    guard generation == loadGeneration else { return }
+                    commands = loadedCommands
                     hasLoadedCommandCatalog = true
                 } catch is CancellationError {
                     return
                 } catch {
-                    commands = []
-                    hasLoadedCommandCatalog = false
+                    guard generation == loadGeneration else { return }
                     catalogErrors.append(error)
                 }
             } else {
                 commands = []
+                hasLoadedCommandCatalog = true
             }
             guard generation == loadGeneration else { return }
             if policy.canListAgents {
                 do {
-                    agents = try await service.agents(
+                    let loadedAgents = try await service.agents(
                         directory: directory,
                         workspace: workspace
                     )
+                    guard generation == loadGeneration else { return }
+                    agents = loadedAgents
                 } catch is CancellationError {
                     return
                 } catch {
-                    agents = []
+                    guard generation == loadGeneration else { return }
                     catalogErrors.append(error)
                 }
             } else {
