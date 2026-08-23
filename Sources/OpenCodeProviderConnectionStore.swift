@@ -228,22 +228,30 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
     }
 
     func cancelOAuth() async {
+        guard !isConnected else { return }
         guard await cancelActiveOAuthIfNeeded() else { return }
         backToProviders()
     }
 
     func leaveToMethods() async {
+        guard !isConnected else { return }
         guard await cancelActiveOAuthIfNeeded() else { return }
         backToMethods()
     }
 
     func leaveToProviders() async {
+        guard !isConnected else { return }
         guard await cancelActiveOAuthIfNeeded() else { return }
         backToProviders()
     }
 
     func prepareToDismiss() async -> Bool {
         await cancelActiveOAuthIfNeeded()
+    }
+
+    private var isConnected: Bool {
+        if case .connected = phase { return true }
+        return false
     }
 
     func backToMethods() {
