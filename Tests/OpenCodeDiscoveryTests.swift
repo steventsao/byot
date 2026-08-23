@@ -50,7 +50,15 @@ struct OpenCodeDiscoveryTests {
         ] {
             #expect(OpenCodeLocalEndpointPolicy.isLocalHost(host), "Expected local host: \(host)")
         }
-        for host in ["example.com", "8.8.8.8", "172.32.0.1", "2001:4860:4860::8888"] {
+        for host in [
+            "example.com",
+            "fd.example.com",
+            "fe80.example.com",
+            "fc-not-an-address",
+            "8.8.8.8",
+            "172.32.0.1",
+            "2001:4860:4860::8888",
+        ] {
             #expect(!OpenCodeLocalEndpointPolicy.isLocalHost(host), "Expected public host: \(host)")
         }
     }
@@ -80,6 +88,14 @@ struct OpenCodeDiscoveryTests {
         #expect(throws: OpenCodeConnectionError.self) {
             try publicHTTP.validatedBaseURL()
         }
+        let ipv6PrefixHostname = OpenCodeServerProfile(
+            name: "Prefix is not an address",
+            baseURL: "http://fd.example.com:4096",
+            allowsLocalHTTP: true
+        )
+        #expect(throws: OpenCodeConnectionError.self) {
+            try ipv6PrefixHostname.validatedBaseURL()
+        }
 
         let legacyData = Data(
             #"{"id":"00000000-0000-0000-0000-000000000010","name":"Legacy","baseURL":"https://mac.example.test","username":"opencode","directory":""}"#.utf8
@@ -107,6 +123,10 @@ struct OpenCodeDiscoveryTests {
         store.start()
         #expect(store.isSearching)
         #expect(browser.startCount == 1)
+
+        browser.send(.services([]))
+        #expect(!store.isSearching)
+        #expect(store.servers.isEmpty)
 
         browser.send(.services([
             OpenCodeBonjourServiceRecord(
