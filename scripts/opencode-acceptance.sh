@@ -120,7 +120,14 @@ except Exception:
     raise SystemExit(1)
 
 valid = False
-if shape == "health":
+if shape == "v1_health":
+    valid = (
+        isinstance(value, dict)
+        and value.get("healthy") is True
+        and isinstance(value.get("version"), str)
+        and bool(value["version"])
+    )
+elif shape == "health":
     valid = isinstance(value, dict) and value.get("healthy") is True
 elif shape == "array":
     valid = isinstance(value, list)
@@ -150,8 +157,9 @@ request_json() {
   local url="$2"
   local shape="$3"
   local body_file="$acceptance_tmp/response.json"
+  local error_file="$acceptance_tmp/curl-error.log"
   local http_code
-  if ! http_code="$(curl --config "$curl_config" --output "$body_file" --write-out '%{http_code}' "$url")"; then
+  if ! http_code="$(curl --config "$curl_config" --output "$body_file" --write-out '%{http_code}' "$url" 2>"$error_file")"; then
     echo "not ok - $label request failed" >&2
     return 1
   fi
@@ -177,7 +185,7 @@ if [[ "$OPENCODE_PROTOCOL" == "v1" ]]; then
   if [[ -n "$encoded_workspace" ]]; then
     location_query="$location_query&workspace=$encoded_workspace"
   fi
-  request_json "v1 health" "$validated_base_url/global/health" health
+  request_json "v1 health" "$validated_base_url/global/health" v1_health
   request_json "v1 project list" "$validated_base_url/project?$location_query" array
   request_json "v1 session list" "$validated_base_url/session?$location_query&scope=project&roots=true&limit=100" array
 else
