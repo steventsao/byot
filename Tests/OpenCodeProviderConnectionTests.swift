@@ -140,6 +140,24 @@ struct OpenCodeProviderConnectionStoreTests {
         #expect(store.errorMessage == TestProviderConnectionError.statusFailed.localizedDescription)
     }
 
+    @Test("A late cancel cannot navigate away from completed OAuth")
+    func cancelAfterOAuthCompletion() async {
+        let provider = oauthProvider()
+        let service = MockProviderConnectionService(providers: [provider])
+        let store = makeStore(service: service)
+
+        await store.load()
+        store.selectProvider(provider)
+        await store.beginOAuth()
+        await store.completeOAuth(code: "device-code")
+        #expect(store.phase == .connected(providerID: "openai"))
+
+        await store.cancelOAuth()
+
+        #expect(store.phase == .connected(providerID: "openai"))
+        #expect(store.authorization == nil)
+    }
+
     @Test("Navigation invalidates an in-flight OAuth completion")
     func navigationInvalidatesSubmission() async {
         let provider = oauthProvider()
