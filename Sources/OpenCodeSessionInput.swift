@@ -150,6 +150,35 @@ enum OpenCodeSessionInputParser {
     }
 }
 
+enum OpenCodeSessionInputAgentResolver {
+    static func agentID(
+        for intent: OpenCodeSessionInputIntent,
+        selectedAgentID: String?,
+        commands: [OpenCodeCommandOption]
+    ) -> String? {
+        guard case .command(let name, _) = intent else {
+            return selectedAgentID
+        }
+        return commands.first(where: { $0.name == name })?.agent
+            ?? selectedAgentID
+    }
+}
+
+enum OpenCodeSessionAttachmentPolicy {
+    static func appending(
+        _ imported: [OpenCodePromptAttachment],
+        to current: [OpenCodePromptAttachment],
+        mode: OpenCodeSessionInputMode
+    ) throws -> [OpenCodePromptAttachment] {
+        guard mode != .shell else {
+            throw OpenCodeSessionInputError.shellAttachmentsUnavailable
+        }
+        let updated = current + imported
+        try OpenCodePromptAttachment.validate(updated)
+        return updated
+    }
+}
+
 struct OpenCodeSessionInputPolicy: Equatable, Sendable {
     let canListCommands: Bool
     let canExecuteCommands: Bool
@@ -183,11 +212,14 @@ struct OpenCodeSessionInputPolicy: Equatable, Sendable {
 
 enum OpenCodeSessionInputError: LocalizedError, Equatable, Sendable {
     case shellAgentRequired
+    case shellAttachmentsUnavailable
 
     var errorDescription: String? {
         switch self {
         case .shellAgentRequired:
             return "Choose an agent before running a shell command."
+        case .shellAttachmentsUnavailable:
+            return "Attachments are unavailable in shell mode."
         }
     }
 }

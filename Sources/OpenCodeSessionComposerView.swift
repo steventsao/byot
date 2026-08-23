@@ -338,11 +338,16 @@ struct OpenCodeSessionComposerView: View {
             return
         }
         let promptAttachments = attachments
+        let agentID = OpenCodeSessionInputAgentResolver.agentID(
+            for: intent,
+            selectedAgentID: inputStore.selectedAgent?.id,
+            commands: inputStore.commands
+        )
         text = ""
         attachments = []
         if store.send(
             intent,
-            agent: inputStore.selectedAgent?.id,
+            agent: agentID,
             attachments: promptAttachments
         ) == false,
            text.isEmpty,
@@ -408,9 +413,11 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private func appendAttachments(_ imported: [OpenCodePromptAttachment]) throws {
-        let updated = attachments + imported
-        try OpenCodePromptAttachment.validate(updated)
-        attachments = updated
+        attachments = try OpenCodeSessionAttachmentPolicy.appending(
+            imported,
+            to: attachments,
+            mode: mode
+        )
     }
 
     private static func loadAttachment(from url: URL) async throws -> OpenCodePromptAttachment {
