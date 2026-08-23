@@ -78,5 +78,17 @@ struct OpenCodeTodoPresentationTests {
 
         #expect(presentation.canPresent)
         #expect(presentation.unavailableReason == support.unavailableReason)
+        #expect(presentation.toolbarAccessibilityValue == "Unavailable")
+    }
+
+    @Test("Supported empty task lists are announced as empty, not unavailable")
+    func supportedEmptyAccessibility() {
+        let presentation = OpenCodeTodoPresentation(
+            todos: [],
+            support: .supported
+        )
+
+        #expect(!presentation.canPresent)
+        #expect(presentation.toolbarAccessibilityValue == "No tasks")
     }
 }
