@@ -85,6 +85,25 @@ struct OpenCodeSessionSharingTests {
         ])
     }
 
+    @Test("A sharing reconciliation invalidates an older session-list reload")
+    func sharingInvalidatesStaleReload() {
+        var state = OpenCodeSessionLifecycleState(
+            sessions: [makeSession(shareURL: nil)]
+        )
+        var version = OpenCodeSessionLifecycleRequestVersion()
+        let staleLoad = version.beginLoad()
+        let sharedURL = URL(string: "https://share.example.test/ses_1")!
+
+        OpenCodeSessionLifecycleReconciliation.apply(
+            makeSession(shareURL: sharedURL),
+            to: &state,
+            requestVersion: &version
+        )
+
+        #expect(!version.accepts(load: staleLoad))
+        #expect(state.sessions.first?.share?.url == sharedURL)
+    }
+
     private func makeSession(shareURL: URL?) -> OpenCodeSession {
         OpenCodeSession(
             id: "ses_1",
