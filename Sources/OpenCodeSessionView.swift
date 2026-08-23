@@ -365,10 +365,14 @@ struct OpenCodeSessionView: View {
         .task { await sharingStore.loadCapabilities() }
         .onChange(of: store.session) { _, updatedSession in
             sharingStore.reconcileSession(updatedSession)
-            sessionDidChange(updatedSession)
         }
-        .onChange(of: sharingStore.session) { _, updatedSession in
+        .onChange(of: sharingStore.ownerMutationRevision) { _, _ in
+            guard OpenCodeSessionOwnerChangePropagation.shouldNotifyOwner(
+                source: .sharingMutation
+            ) else { return }
+            let updatedSession = sharingStore.session
             store.reconcileSession(updatedSession)
+            sessionDidChange(updatedSession)
         }
         .onDisappear { store.stop() }
     }

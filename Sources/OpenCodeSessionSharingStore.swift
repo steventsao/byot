@@ -33,12 +33,24 @@ enum OpenCodeChildSessionReconciliation {
     }
 }
 
+enum OpenCodeSessionOwnerChangePropagation {
+    enum Source: Equatable, Sendable {
+        case sessionRefresh
+        case sharingMutation
+    }
+
+    static func shouldNotifyOwner(source: Source) -> Bool {
+        source == .sharingMutation
+    }
+}
+
 @MainActor
 final class OpenCodeSessionSharingStore: ObservableObject {
     @Published private(set) var session: OpenCodeSession
     @Published private(set) var support: OpenCodeFeatureSupport?
     @Published private(set) var isLoadingCapabilities = false
     @Published private(set) var isMutating = false
+    @Published private(set) var ownerMutationRevision = 0
     @Published var errorMessage: String?
 
     private let service: OpenCodeSessionSharingServicing
@@ -121,6 +133,7 @@ final class OpenCodeSessionSharingStore: ObservableObject {
         defer { isMutating = false }
         do {
             session = try await request(service, current)
+            ownerMutationRevision &+= 1
             sessionDidChange(session)
         } catch {
             errorMessage = error.localizedDescription
