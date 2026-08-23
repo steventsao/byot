@@ -11,6 +11,11 @@ struct OpenCodeProtocolCapabilitiesTests {
         #expect(capabilities.providerConnectionState == .supported)
         #expect(capabilities.modelReasoningMetadata == .supported)
         #expect(capabilities.modelTemperatureMetadata == .supported)
+        #expect(capabilities.sessionDetails == .supported)
+        #expect(capabilities.sessionRename == .supported)
+        #expect(capabilities.sessionDelete == .supported)
+        #expect(capabilities.sessionChildren == .supported)
+        #expect(capabilities.sessionAbort == .supported)
     }
 
     @Test("V2 records current upstream gaps instead of claiming parity")
@@ -22,6 +27,11 @@ struct OpenCodeProtocolCapabilitiesTests {
         #expect(!capabilities.providerConnectionState.isSupported)
         #expect(!capabilities.modelReasoningMetadata.isSupported)
         #expect(!capabilities.modelTemperatureMetadata.isSupported)
+        #expect(capabilities.sessionDetails == .supported)
+        #expect(!capabilities.sessionRename.isSupported)
+        #expect(!capabilities.sessionDelete.isSupported)
+        #expect(!capabilities.sessionChildren.isSupported)
+        #expect(capabilities.sessionAbort == .supported)
     }
 
     @Test("Unavailable session diff remains explainable and presentable")

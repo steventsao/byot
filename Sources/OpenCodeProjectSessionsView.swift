@@ -4,6 +4,8 @@ struct OpenCodeProjectSessionsView: View {
     @StateObject private var store: OpenCodeProjectStore
     @State private var isCreatingSession = false
     @State private var newSessionTitle = ""
+    @State private var renameTarget: OpenCodeSession?
+    @State private var deleteTarget: OpenCodeSession?
     let name: String
     let openAppNavigation: () -> Void
 
@@ -39,6 +41,35 @@ struct OpenCodeProjectSessionsView: View {
                         session: session,
                         status: store.statuses[session.id] ?? .idle
                     )
+                }
+                .contextMenu {
+                    if store.lifecyclePolicy?.canRename == true {
+                        Button("Rename", systemImage: "pencil") {
+                            renameTarget = session
+                        }
+                        .disabled(store.isMutating(sessionID: session.id))
+                    }
+                    if store.lifecyclePolicy?.canDelete == true {
+                        Button("Delete", systemImage: "trash", role: .destructive) {
+                            deleteTarget = session
+                        }
+                        .disabled(store.isMutating(sessionID: session.id))
+                    }
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    if store.lifecyclePolicy?.canDelete == true {
+                        Button("Delete", systemImage: "trash", role: .destructive) {
+                            deleteTarget = session
+                        }
+                        .disabled(store.isMutating(sessionID: session.id))
+                    }
+                    if store.lifecyclePolicy?.canRename == true {
+                        Button("Rename", systemImage: "pencil") {
+                            renameTarget = session
+                        }
+                        .tint(BYOTBrand.accent)
+                        .disabled(store.isMutating(sessionID: session.id))
+                    }
                 }
             }
         }
@@ -108,6 +139,64 @@ struct OpenCodeProjectSessionsView: View {
         } message: {
             Text("The session runs in \(store.directory).")
         }
+        .sheet(item: $renameTarget) { session in
+            OpenCodeRenameSessionView(session: session) { title in
+                Task { _ = await store.renameSession(session, title: title) }
+            }
+        }
+        .confirmationDialog(
+            "Delete this session permanently?",
+            isPresented: Binding(
+                get: { deleteTarget != nil },
+                set: { if !$0 { deleteTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete session", role: .destructive) {
+                guard let session = deleteTarget else { return }
+                deleteTarget = nil
+                Task { _ = await store.deleteSession(session) }
+            }
+            Button("Cancel", role: .cancel) { deleteTarget = nil }
+        } message: {
+            Text("Messages, history, and session metadata will be removed from OpenCode. This cannot be undone.")
+        }
+    }
+}
+
+private struct OpenCodeRenameSessionView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    let save: (String) -> Void
+
+    init(session: OpenCodeSession, save: @escaping (String) -> Void) {
+        _title = State(initialValue: session.title)
+        self.save = save
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Session title", text: $title)
+                    .textInputAutocapitalization(.sentences)
+            }
+            .navigationTitle("Rename session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let value = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                        dismiss()
+                        save(value)
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 

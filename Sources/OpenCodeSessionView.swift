@@ -4,8 +4,10 @@ struct OpenCodeSessionView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
     @State private var isShowingDiff = false
+    @State private var isShowingChildren = false
     @State private var isAtBottom = true
     let openAppNavigation: () -> Void
+    private let client: OpenCodeClient
 
     private let bottomAnchorID = "opencode-session-bottom"
 
@@ -15,6 +17,7 @@ struct OpenCodeSessionView: View {
         directory: String,
         openAppNavigation: @escaping () -> Void
     ) {
+        self.client = client
         self.openAppNavigation = openAppNavigation
         _store = StateObject(
             wrappedValue: OpenCodeSessionStore(
@@ -122,6 +125,7 @@ struct OpenCodeSessionView: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
+            .refreshable { await store.refresh() }
             .onChange(of: store.transcriptRevision) { _, _ in
                 scrollToConversationBottomIfNeeded(proxy)
             }
@@ -172,10 +176,24 @@ struct OpenCodeSessionView: View {
                 }
                 .labelStyle(.iconOnly)
                 .disabled(!store.diffPresentation.canPresent)
+                if store.lifecyclePolicy?.canListChildren == true {
+                    Button("Subagents", systemImage: "person.2") {
+                        isShowingChildren = true
+                    }
+                    .labelStyle(.iconOnly)
+                    .accessibilityValue("\(store.childSessions.count) sessions")
+                }
             }
         }
         .sheet(isPresented: $isShowingDiff) {
             OpenCodeDiffView(presentation: store.diffPresentation)
+        }
+        .sheet(isPresented: $isShowingChildren) {
+            OpenCodeSessionChildrenView(
+                client: client,
+                children: store.childSessions,
+                openAppNavigation: openAppNavigation
+            )
         }
         .task { await store.start() }
         .onDisappear { store.stop() }
@@ -290,6 +308,60 @@ struct OpenCodeSessionView: View {
         store.retryQueuedPrompt(id)
     }
 
+}
+
+private struct OpenCodeSessionChildrenView: View {
+    @Environment(\.dismiss) private var dismiss
+    let client: OpenCodeClient
+    let children: [OpenCodeSession]
+    let openAppNavigation: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if children.isEmpty {
+                    ContentUnavailableView(
+                        "No subagent sessions",
+                        systemImage: "person.2",
+                        description: Text("This session has not created any child sessions.")
+                    )
+                } else {
+                    List(children) { child in
+                        NavigationLink {
+                            OpenCodeSessionView(
+                                client: client,
+                                session: child,
+                                directory: child.directory,
+                                openAppNavigation: openAppNavigation
+                            )
+                        } label: {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(child.title)
+                                    .font(.cleanBodySemibold)
+                                HStack(spacing: 8) {
+                                    if let agent = child.agent { Text(agent) }
+                                    Text(
+                                        Date(timeIntervalSince1970: child.time.updated / 1_000),
+                                        style: .relative
+                                    )
+                                }
+                                .font(.cleanCaption)
+                                .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Subagent sessions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
 }
 
 private struct OpenCodeMessageView: View {
