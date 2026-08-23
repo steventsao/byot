@@ -30,12 +30,15 @@ struct OpenCodeSessionView: View {
         self.client = client
         self.sessionDidChange = sessionDidChange
         self.openAppNavigation = openAppNavigation
+        let mutationCoordinator = OpenCodeSessionMutationCoordinator()
+        let sessionStore = OpenCodeSessionStore(
+            client: client,
+            session: session,
+            directory: directory,
+            mutationCoordinator: mutationCoordinator
+        )
         _store = StateObject(
-            wrappedValue: OpenCodeSessionStore(
-                client: client,
-                session: session,
-                directory: directory
-            )
+            wrappedValue: sessionStore
         )
         _inputStore = StateObject(
             wrappedValue: OpenCodeSessionInputStore(
@@ -48,7 +51,12 @@ struct OpenCodeSessionView: View {
         _sharingStore = StateObject(
             wrappedValue: OpenCodeSessionSharingStore(
                 service: client,
-                session: session
+                session: session,
+                mutationCoordinator: mutationCoordinator,
+                sessionDidChange: { updatedSession in
+                    sessionStore.reconcileSession(updatedSession)
+                    sessionDidChange(updatedSession)
+                }
             )
         )
     }
@@ -99,9 +107,9 @@ struct OpenCodeSessionView: View {
                         OpenCodeMessageView(
                             message: message,
                             canRevert: store.historyPolicy?.canRevert == true
-                                && store.historyActionInFlight == nil,
+                                && store.canPerformHistoryAction,
                             canFork: store.historyPolicy?.canFork == true
-                                && store.historyActionInFlight == nil,
+                                && store.canPerformHistoryAction,
                             revert: { messageID in
                                 pendingRevertTarget = store.historyPresentation.revertTarget(
                                     messageID: messageID
@@ -238,6 +246,7 @@ struct OpenCodeSessionView: View {
                     isShowingSharing = true
                 }
                 .labelStyle(.iconOnly)
+                .disabled(!store.canPresentSharing)
                 Button("Changes", systemImage: "doc.text.magnifyingglass") {
                     isShowingDiff = true
                 }
@@ -282,7 +291,7 @@ struct OpenCodeSessionView: View {
                     }
                 }
                 .labelStyle(.iconOnly)
-                .disabled(store.historyActionInFlight != nil)
+                .disabled(!store.canPerformHistoryAction)
             }
         }
         .sheet(isPresented: $isShowingDiff) {
@@ -365,14 +374,6 @@ struct OpenCodeSessionView: View {
         .task { await sharingStore.loadCapabilities() }
         .onChange(of: store.session) { _, updatedSession in
             sharingStore.reconcileSession(updatedSession)
-        }
-        .onChange(of: sharingStore.ownerMutationRevision) { _, _ in
-            guard OpenCodeSessionOwnerChangePropagation.shouldNotifyOwner(
-                source: .sharingMutation
-            ) else { return }
-            let updatedSession = sharingStore.session
-            store.reconcileSession(updatedSession)
-            sessionDidChange(updatedSession)
         }
         .onDisappear { store.stop() }
     }

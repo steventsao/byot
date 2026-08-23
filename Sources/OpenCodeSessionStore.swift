@@ -42,6 +42,7 @@ final class OpenCodeSessionStore: ObservableObject {
     private let workspace: String?
     private let client: OpenCodeClient
     private let defaults: UserDefaults
+    private let mutationCoordinator: OpenCodeSessionMutationCoordinator
     private let modelSelectionKey: String
     private var persistedModelID: String?
     private var transcript = OpenCodeTranscriptReducer()
@@ -77,12 +78,14 @@ final class OpenCodeSessionStore: ObservableObject {
         client: OpenCodeClient,
         session: OpenCodeSession,
         directory: String,
+        mutationCoordinator: OpenCodeSessionMutationCoordinator? = nil,
         defaults: UserDefaults = .standard
     ) {
         self.client = client
         self.session = session
         self.directory = directory
         self.defaults = defaults
+        self.mutationCoordinator = mutationCoordinator ?? OpenCodeSessionMutationCoordinator()
         modelSelectionKey = "byot.opencode.model.\(client.profile.id.uuidString).\(session.id)"
         persistedModelID = defaults.string(forKey: modelSelectionKey)
         workspace = session.workspaceID
@@ -134,7 +137,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     var canRevertLatestPrompt: Bool {
-        historyActionInFlight == nil
+        mutationCoordinator.isAvailable
             && historyPolicy?.canRevert == true
             && historyPresentation.latestRevertTarget != nil
     }
@@ -142,18 +145,27 @@ final class OpenCodeSessionStore: ObservableObject {
     var canUnrevertSession: Bool {
         OpenCodeSessionHistoryActionAvailability.canRestore(
             hasRevertedMessages: historyPresentation.canRestore,
-            actionInFlight: historyActionInFlight
+            actionInFlight: historyActionInFlight,
+            isMutationAvailable: mutationCoordinator.isAvailable
         )
     }
 
     var canSummarizeSession: Bool {
-        historyActionInFlight == nil && canSummarizeForCurrentSelection
+        mutationCoordinator.isAvailable && canSummarizeForCurrentSelection
     }
 
     var canForkSession: Bool {
-        historyActionInFlight == nil
+        mutationCoordinator.isAvailable
             && historyPolicy?.canFork == true
             && !historyPresentation.visibleUserMessages.isEmpty
+    }
+
+    var canPresentSharing: Bool {
+        mutationCoordinator.isAvailable
+    }
+
+    var canPerformHistoryAction: Bool {
+        mutationCoordinator.isAvailable
     }
 
     var canAbortSession: Bool {
@@ -561,7 +573,7 @@ final class OpenCodeSessionStore: ObservableObject {
         guard historyPolicy?.canRevert == true, beginHistoryAction(.revert) else {
             return false
         }
-        defer { historyActionInFlight = nil }
+        defer { endHistoryAction(.revert) }
         var rollbackContext: HistoryRollbackContext?
         var shouldRestoreQueue = true
         do {
@@ -596,7 +608,7 @@ final class OpenCodeSessionStore: ObservableObject {
         guard historyPresentation.canRestore, beginHistoryAction(.unrevert) else {
             return false
         }
-        defer { historyActionInFlight = nil }
+        defer { endHistoryAction(.unrevert) }
         var rollbackContext: HistoryRollbackContext?
         var shouldRestoreQueue = true
         do {
@@ -630,7 +642,7 @@ final class OpenCodeSessionStore: ObservableObject {
         guard canSummarizeForCurrentSelection, beginHistoryAction(.summarize) else {
             return false
         }
-        defer { historyActionInFlight = nil }
+        defer { endHistoryAction(.summarize) }
         do {
             let summarized = try await client.summarizeSession(
                 sessionID: session.id,
@@ -653,7 +665,7 @@ final class OpenCodeSessionStore: ObservableObject {
         guard historyPolicy?.canFork == true, beginHistoryAction(.fork) else {
             return nil
         }
-        defer { historyActionInFlight = nil }
+        defer { endHistoryAction(.fork) }
         do {
             let forked = try await client.forkSession(
                 sessionID: session.id,
@@ -679,9 +691,16 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func beginHistoryAction(_ action: OpenCodeSessionHistoryAction) -> Bool {
-        guard historyActionInFlight == nil else { return false }
+        guard historyActionInFlight == nil,
+              mutationCoordinator.acquire(.history(action))
+        else { return false }
         historyActionInFlight = action
         return true
+    }
+
+    private func endHistoryAction(_ action: OpenCodeSessionHistoryAction) {
+        historyActionInFlight = nil
+        mutationCoordinator.release(.history(action))
     }
 
     private func invalidateHistorySnapshots() {

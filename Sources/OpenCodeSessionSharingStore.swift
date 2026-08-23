@@ -5,13 +5,20 @@ struct OpenCodeSessionSharingPresentation: Equatable, Sendable {
     let shareURL: URL?
     let support: OpenCodeFeatureSupport?
     let isMutating: Bool
+    let isMutationAvailable: Bool
 
     var canPublish: Bool {
-        support?.isSupported == true && shareURL == nil && !isMutating
+        support?.isSupported == true
+            && shareURL == nil
+            && !isMutating
+            && isMutationAvailable
     }
 
     var canUnpublish: Bool {
-        support?.isSupported == true && shareURL != nil && !isMutating
+        support?.isSupported == true
+            && shareURL != nil
+            && !isMutating
+            && isMutationAvailable
     }
 
     var unavailableReason: String? {
@@ -55,14 +62,17 @@ final class OpenCodeSessionSharingStore: ObservableObject {
 
     private let service: OpenCodeSessionSharingServicing
     private let sessionDidChange: @MainActor (OpenCodeSession) -> Void
+    private let mutationCoordinator: OpenCodeSessionMutationCoordinator
 
     init(
         service: OpenCodeSessionSharingServicing,
         session: OpenCodeSession,
+        mutationCoordinator: OpenCodeSessionMutationCoordinator? = nil,
         sessionDidChange: @escaping @MainActor (OpenCodeSession) -> Void = { _ in }
     ) {
         self.service = service
         self.session = session
+        self.mutationCoordinator = mutationCoordinator ?? OpenCodeSessionMutationCoordinator()
         self.sessionDidChange = sessionDidChange
     }
 
@@ -75,7 +85,8 @@ final class OpenCodeSessionSharingStore: ObservableObject {
         OpenCodeSessionSharingPresentation(
             shareURL: session.share?.url,
             support: support,
-            isMutating: isMutating
+            isMutating: isMutating,
+            isMutationAvailable: mutationCoordinator.isAvailable
         )
     }
 
@@ -94,6 +105,8 @@ final class OpenCodeSessionSharingStore: ObservableObject {
         defer { isLoadingCapabilities = false }
         do {
             support = try await service.protocolCapabilities().sessionSharing
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -127,11 +140,15 @@ final class OpenCodeSessionSharingStore: ObservableObject {
             OpenCodeSession
         ) async throws -> OpenCodeSession
     ) async {
-        guard !isMutating else { return }
+        let owner = OpenCodeSessionMutationOwner.sharing
+        guard !isMutating, mutationCoordinator.acquire(owner) else { return }
         isMutating = true
         errorMessage = nil
         let current = session
-        defer { isMutating = false }
+        defer {
+            isMutating = false
+            mutationCoordinator.release(owner)
+        }
         do {
             session = try await request(service, current)
             ownerMutationRevision &+= 1

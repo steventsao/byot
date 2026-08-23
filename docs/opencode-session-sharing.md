@@ -21,3 +21,7 @@ OpenCode desktop separates publish, copy/view, and unpublish states. BYOT keeps
 the same state machine in `OpenCodeSessionSharingStore`, behind an injectable
 service, and renders it independently in `OpenCodeSessionSharingView`. The
 published state uses SwiftUI `ShareLink` so iOS presents the native share sheet.
+Sharing and history operations acquire the same session-mutation coordinator,
+so server-returned session snapshots cannot race and discard a newer share or
+revert state. Capability discovery cancellation is silent, matching navigation
+away from the presentation rather than surfacing a false server failure.

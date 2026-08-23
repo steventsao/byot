@@ -421,6 +421,13 @@ struct OpenCodeSessionHistoryPresentationTests {
                 )
             )
         }
+        #expect(
+            !OpenCodeSessionHistoryActionAvailability.canRestore(
+                hasRevertedMessages: true,
+                actionInFlight: nil,
+                isMutationAvailable: false
+            )
+        )
     }
 
     private func message(
