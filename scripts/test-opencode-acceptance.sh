@@ -27,7 +27,8 @@ fail() {
 start_mock() {
   local protocol="$1"
   local port_file="$acceptance_test_tmp/$protocol.port"
-  python3 "$fixture" "$protocol" "$port_file" opencode test-secret &
+  python3 "$fixture" "$protocol" "$port_file" opencode test-secret \
+    >"$acceptance_test_tmp/$protocol.mock.log" 2>&1 &
   pids+=("$!")
   for _ in {1..100}; do
     [[ -s "$port_file" ]] && break
@@ -75,6 +76,7 @@ grep -q "v2 health" "$acceptance_test_tmp/wrong-protocol.out" || fail "wrong pro
 if OPENCODE_BASE_URL=http://example.com \
    OPENCODE_PROTOCOL=v1 \
    OPENCODE_PASSWORD=test-secret \
+   OPENCODE_DIRECTORY=/repo \
    OPENCODE_ALLOW_LOCAL_HTTP=1 \
      "$harness" >"$acceptance_test_tmp/public-http.out" 2>&1; then
   fail "public HTTP must fail before a request"

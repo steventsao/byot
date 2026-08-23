@@ -19,10 +19,13 @@ class Handler(BaseHTTPRequestHandler):
 
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
-        if protocol == "v1":
-            self.handle_v1(parsed.path, query)
-        else:
-            self.handle_v2(parsed.path, query)
+        try:
+            if protocol == "v1":
+                self.handle_v1(parsed.path, query)
+            else:
+                self.handle_v2(parsed.path, query)
+        except QueryFailure:
+            return
 
     def handle_v1(self, path, query):
         if path == "/global/health":
@@ -73,14 +76,6 @@ class QueryFailure(Exception):
     pass
 
 
-def guarded_handle_one_request(self):
-    try:
-        BaseHTTPRequestHandler.handle_one_request(self)
-    except QueryFailure:
-        pass
-
-
-Handler.handle_one_request = guarded_handle_one_request
 server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
 Path(port_file).write_text(str(server.server_address[1]))
 server.serve_forever()
