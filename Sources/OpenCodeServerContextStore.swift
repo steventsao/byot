@@ -137,6 +137,7 @@ final class OpenCodeServerContextStore: ObservableObject {
             configuration = .unavailable(reason: support.unavailableReason ?? "Configuration is unavailable.")
             return
         }
+        let refreshSnapshot = (section: configuration, text: configurationText)
         configuration = .loading
         do {
             let value = try await service.serverConfiguration(
@@ -150,7 +151,13 @@ final class OpenCodeServerContextStore: ObservableObject {
             return
         } catch {
             guard generation == loadGeneration else { return }
-            configuration = .failed(message: error.localizedDescription)
+            if refreshSnapshot.section.value != nil {
+                configuration = refreshSnapshot.section
+                configurationText = refreshSnapshot.text
+                configurationErrorMessage = error.localizedDescription
+            } else {
+                configuration = .failed(message: error.localizedDescription)
+            }
         }
     }
 
