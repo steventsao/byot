@@ -58,6 +58,58 @@ struct OpenCodeSessionInputTests {
             ) == .shell("git status")
         )
     }
+
+    @Test("Registered commands override the picker with their configured agent")
+    func commandAgentResolution() {
+        let commands = [
+            OpenCodeCommandOption(
+                name: "review",
+                description: nil,
+                template: "Review",
+                source: nil,
+                agent: "reviewer",
+                subtask: false,
+                hints: []
+            ),
+        ]
+
+        #expect(
+            OpenCodeSessionInputAgentResolver.agentID(
+                for: .command(name: "review", arguments: "staged"),
+                selectedAgentID: "build",
+                commands: commands
+            ) == "reviewer"
+        )
+        #expect(
+            OpenCodeSessionInputAgentResolver.agentID(
+                for: .prompt("hello"),
+                selectedAgentID: "build",
+                commands: commands
+            ) == "build"
+        )
+    }
+
+    @Test("Attachments finishing after shell mode starts are rejected")
+    func lateShellAttachments() {
+        let attachment = OpenCodePromptAttachment(
+            filename: "late.txt",
+            mimeType: "text/plain",
+            data: Data("late".utf8)
+        )
+
+        do {
+            _ = try OpenCodeSessionAttachmentPolicy.appending(
+                [attachment],
+                to: [],
+                mode: .shell
+            )
+            Issue.record("Expected shell mode to reject the late attachment")
+        } catch let error as OpenCodeSessionInputError {
+            #expect(error == .shellAttachmentsUnavailable)
+        } catch {
+            Issue.record("Expected an input policy error, got \(error)")
+        }
+    }
 }
 
 @MainActor
