@@ -158,6 +158,48 @@ struct OpenCodePromptQueueTests {
         #expect(queue.isTurnActive)
     }
 
+    @Test("A submission completed during a pending stop restores as awaiting activity")
+    func completedSubmissionDuringPauseDoesNotRestoreSubmitting() throws {
+        var queue = OpenCodePromptQueue()
+        let first = try #require(
+            queue.accept(
+                text: "First",
+                model: nil,
+                serverIsActive: false
+            ).dispatchedPrompt
+        )
+        _ = queue.accept(text: "Second", model: nil, serverIsActive: false)
+        let snapshot = queue.pausePendingPrompts()
+
+        #expect(queue.dispatchSucceeded() == nil)
+        _ = first
+        queue.restorePendingPrompts(after: snapshot)
+
+        #expect(queue.isTurnActive)
+        #expect(queue.needsServerReconciliation)
+        #expect(queue.prompts.map(\.text) == ["Second"])
+    }
+
+    @Test("A submission failed during a pending stop stays safely paused")
+    func failedSubmissionDuringPauseStaysPaused() throws {
+        var queue = OpenCodePromptQueue()
+        let first = try #require(
+            queue.accept(
+                text: "First",
+                model: nil,
+                serverIsActive: false
+            ).dispatchedPrompt
+        )
+        _ = queue.accept(text: "Second", model: nil, serverIsActive: false)
+        let snapshot = queue.pausePendingPrompts()
+
+        queue.dispatchFailed(first, requeue: true)
+        queue.restorePendingPrompts(after: snapshot)
+
+        #expect(queue.isPaused)
+        #expect(queue.prompts.map(\.text) == ["First", "Second"])
+    }
+
     @Test("Delayed server activity cannot auto-send an ambiguously failed prompt")
     func delayedActivityAfterFailureStaysPaused() {
         var queue = OpenCodePromptQueue()
@@ -233,6 +275,11 @@ struct OpenCodePromptQueueTests {
 private extension OpenCodePromptSubmission {
     var queuedPrompt: OpenCodeQueuedPrompt? {
         guard case .queued(let prompt) = self else { return nil }
+        return prompt
+    }
+
+    var dispatchedPrompt: OpenCodeQueuedPrompt? {
+        guard case .dispatch(let prompt) = self else { return nil }
         return prompt
     }
 }
