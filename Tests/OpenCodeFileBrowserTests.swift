@@ -90,6 +90,18 @@ struct OpenCodeFileBrowserTests {
         #expect(version.accepts(current))
     }
 
+    @Test("Overlapping browser loads stay active until every owner finishes")
+    func loadingTracker() {
+        var tracker = OpenCodeFileBrowserLoadingTracker()
+        let startup = tracker.begin()
+        let navigation = tracker.begin()
+
+        tracker.end(startup)
+        #expect(tracker.isLoading)
+        tracker.end(navigation)
+        #expect(!tracker.isLoading)
+    }
+
     @Test("Nested browse chrome keeps its folder title beside the mode picker")
     func nestedBrowseChrome() {
         let chrome = OpenCodeFileBrowserChromePresentation(
@@ -144,6 +156,71 @@ struct OpenCodeFileBrowserStoreTests {
         await startup.value
 
         #expect(!service.steps.contains(.statuses))
+    }
+
+    @Test("Startup blocks false-empty Changes until status loading finishes")
+    func startupBlocksChangesUntilStatusesFinish() async {
+        let service = MockFileBrowserService(
+            capabilities: .v1,
+            entries: [
+                OpenCodeFileEntry(
+                    name: "Sources",
+                    path: "Sources",
+                    type: "directory"
+                ),
+            ],
+            statusesDelay: .seconds(10)
+        )
+        let store = OpenCodeFileBrowserStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil
+        )
+
+        let startup = Task { await store.start() }
+        while !service.steps.contains(.statuses) { await Task.yield() }
+        store.mode = .changes
+
+        #expect(!store.entries.isEmpty)
+        #expect(store.visibleEntries.isEmpty)
+        #expect(store.isShowingBlockingLoader)
+
+        startup.cancel()
+        await startup.value
+    }
+
+    @Test("Startup completion cannot clear an overlapping navigation loader")
+    func startupDoesNotClearNavigationLoading() async throws {
+        let directory = OpenCodeFileEntry(
+            name: "Sources",
+            path: "Sources",
+            type: "directory"
+        )
+        let service = MockFileBrowserService(
+            capabilities: .v1,
+            entries: [directory],
+            statusesDelay: .seconds(10),
+            navigationListDelay: .seconds(10)
+        )
+        let store = OpenCodeFileBrowserStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil
+        )
+
+        let startup = Task { await store.start() }
+        while !service.steps.contains(.statuses) { await Task.yield() }
+        let navigation = Task { await store.open(directory) }
+        while !service.steps.contains(.list(path: "Sources")) { await Task.yield() }
+
+        startup.cancel()
+        await startup.value
+        #expect(store.isLoading)
+        #expect(store.isShowingBlockingLoader)
+
+        navigation.cancel()
+        await navigation.value
+        #expect(!store.isLoading)
     }
 
     @Test("v1 startup loads a sorted visible tree and changed-file status")
@@ -274,6 +351,8 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
     private let content: OpenCodeFileContent
     private let capabilitiesDelay: Duration?
     private let listDelay: Duration?
+    private let statusesDelay: Duration?
+    private let navigationListDelay: Duration?
     nonisolated(unsafe) private var shouldFailNextSearch = false
 
     init(
@@ -283,6 +362,8 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
         searchResults: [OpenCodeFileEntry] = [],
         capabilitiesDelay: Duration? = nil,
         listDelay: Duration? = nil,
+        statusesDelay: Duration? = nil,
+        navigationListDelay: Duration? = nil,
         content: OpenCodeFileContent = OpenCodeFileContent(
             type: "text",
             content: "",
@@ -297,6 +378,8 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
         self.searchResults = searchResults
         self.capabilitiesDelay = capabilitiesDelay
         self.listDelay = listDelay
+        self.statusesDelay = statusesDelay
+        self.navigationListDelay = navigationListDelay
         self.content = content
     }
 
@@ -319,6 +402,9 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
     ) async throws -> [OpenCodeFileEntry] {
         record(.list(path: path))
         if let listDelay { try await Task.sleep(for: listDelay) }
+        if !path.isEmpty, let navigationListDelay {
+            try await Task.sleep(for: navigationListDelay)
+        }
         return entries
     }
 
@@ -336,6 +422,7 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
         workspace: String?
     ) async throws -> [OpenCodeFileStatus] {
         record(.statuses)
+        if let statusesDelay { try await Task.sleep(for: statusesDelay) }
         return statuses
     }
 
