@@ -3,6 +3,18 @@ import Foundation
 
 @MainActor
 final class OpenCodeServerContextStore: ObservableObject {
+    private struct LoadSnapshot {
+        let configuration: OpenCodeServerContextSection<OpenCodeConfiguration>
+        let vcs: OpenCodeServerContextSection<OpenCodeVCSInfo>
+        let paths: OpenCodeServerContextSection<OpenCodeServerPaths>
+        let mcp: OpenCodeServerContextSection<[String: OpenCodeMCPStatus]>
+        let lsp: OpenCodeServerContextSection<[OpenCodeLSPStatus]>
+        let formatters: OpenCodeServerContextSection<[OpenCodeFormatterStatus]>
+        let capabilities: OpenCodeServerContextCapabilities?
+        let configurationText: String
+        let configurationErrorMessage: String?
+    }
+
     @Published private(set) var configuration = OpenCodeServerContextSection<OpenCodeConfiguration>.idle
     @Published private(set) var vcs = OpenCodeServerContextSection<OpenCodeVCSInfo>.idle
     @Published private(set) var paths = OpenCodeServerContextSection<OpenCodeServerPaths>.idle
@@ -45,34 +57,43 @@ final class OpenCodeServerContextStore: ObservableObject {
         guard !isSavingConfiguration else { return }
         loadGeneration &+= 1
         let generation = loadGeneration
+        let snapshot = loadSnapshot()
         isLoading = true
         configurationErrorMessage = nil
         defer {
             if generation == loadGeneration { isLoading = false }
         }
 
-        let contextCapabilities: OpenCodeServerContextCapabilities
         do {
-            contextCapabilities = try await service.protocolCapabilities().serverContext
+            let contextCapabilities = try await service.protocolCapabilities().serverContext
+            try Task.checkCancellation()
+            guard generation == loadGeneration else { return }
+            capabilities = contextCapabilities
+
+            await loadConfiguration(
+                support: contextCapabilities.configurationRead,
+                generation: generation
+            )
+            try Task.checkCancellation()
+            await loadVCS(support: contextCapabilities.vcs, generation: generation)
+            try Task.checkCancellation()
+            await loadPaths(support: contextCapabilities.paths, generation: generation)
+            try Task.checkCancellation()
+            await loadMCP(support: contextCapabilities.mcp, generation: generation)
+            try Task.checkCancellation()
+            await loadLSP(support: contextCapabilities.lsp, generation: generation)
+            try Task.checkCancellation()
+            await loadFormatters(support: contextCapabilities.formatter, generation: generation)
+            try Task.checkCancellation()
         } catch is CancellationError {
+            guard generation == loadGeneration else { return }
+            restore(snapshot)
             return
         } catch {
             guard generation == loadGeneration else { return }
             setAllFailed(error.localizedDescription)
             return
         }
-        guard generation == loadGeneration else { return }
-        capabilities = contextCapabilities
-
-        await loadConfiguration(
-            support: contextCapabilities.configurationRead,
-            generation: generation
-        )
-        await loadVCS(support: contextCapabilities.vcs, generation: generation)
-        await loadPaths(support: contextCapabilities.paths, generation: generation)
-        await loadMCP(support: contextCapabilities.mcp, generation: generation)
-        await loadLSP(support: contextCapabilities.lsp, generation: generation)
-        await loadFormatters(support: contextCapabilities.formatter, generation: generation)
     }
 
     func saveConfiguration() async {
@@ -235,5 +256,31 @@ final class OpenCodeServerContextStore: ObservableObject {
         mcp = .failed(message: message)
         lsp = .failed(message: message)
         formatters = .failed(message: message)
+    }
+
+    private func loadSnapshot() -> LoadSnapshot {
+        LoadSnapshot(
+            configuration: configuration,
+            vcs: vcs,
+            paths: paths,
+            mcp: mcp,
+            lsp: lsp,
+            formatters: formatters,
+            capabilities: capabilities,
+            configurationText: configurationText,
+            configurationErrorMessage: configurationErrorMessage
+        )
+    }
+
+    private func restore(_ snapshot: LoadSnapshot) {
+        configuration = snapshot.configuration
+        vcs = snapshot.vcs
+        paths = snapshot.paths
+        mcp = snapshot.mcp
+        lsp = snapshot.lsp
+        formatters = snapshot.formatters
+        capabilities = snapshot.capabilities
+        configurationText = snapshot.configurationText
+        configurationErrorMessage = snapshot.configurationErrorMessage
     }
 }
