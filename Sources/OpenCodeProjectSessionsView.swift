@@ -47,11 +47,13 @@ struct OpenCodeProjectSessionsView: View {
                         Button("Rename", systemImage: "pencil") {
                             renameTarget = session
                         }
+                        .disabled(store.isMutating(sessionID: session.id))
                     }
                     if store.lifecyclePolicy?.canDelete == true {
                         Button("Delete", systemImage: "trash", role: .destructive) {
                             deleteTarget = session
                         }
+                        .disabled(store.isMutating(sessionID: session.id))
                     }
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {

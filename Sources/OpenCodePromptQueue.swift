@@ -156,6 +156,11 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         phase = prompts.isEmpty ? .idle : .paused
     }
 
+    mutating func restorePendingPromptsAfterFailedPause(serverIsActive: Bool) {
+        guard phase == .paused else { return }
+        phase = serverIsActive || !prompts.isEmpty ? .active : .idle
+    }
+
     private mutating func takeNextOrBecomeIdle() -> OpenCodeQueuedPrompt? {
         guard !prompts.isEmpty else {
             phase = .idle

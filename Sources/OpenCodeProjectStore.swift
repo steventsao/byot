@@ -30,6 +30,10 @@ final class OpenCodeProjectStore: ObservableObject {
         mutatingSessionIDs.contains(sessionID)
     }
 
+    static func mutationInProgressMessage(sessionTitle: String) -> String {
+        "\(sessionTitle) is already being updated."
+    }
+
     func load() async {
         let generation = requestVersion.beginLoad()
         isLoading = true
@@ -75,9 +79,12 @@ final class OpenCodeProjectStore: ObservableObject {
     func renameSession(_ session: OpenCodeSession, title: String) async -> Bool {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard lifecyclePolicy?.canRename == true,
-              !title.isEmpty,
-              mutatingSessionIDs.insert(session.id).inserted
+              !title.isEmpty
         else { return false }
+        guard mutatingSessionIDs.insert(session.id).inserted else {
+            errorMessage = Self.mutationInProgressMessage(sessionTitle: session.title)
+            return false
+        }
         requestVersion.beginMutation()
         isLoading = false
         defer { mutatingSessionIDs.remove(session.id) }
@@ -100,9 +107,11 @@ final class OpenCodeProjectStore: ObservableObject {
     }
 
     func deleteSession(_ session: OpenCodeSession) async -> Bool {
-        guard lifecyclePolicy?.canDelete == true,
-              mutatingSessionIDs.insert(session.id).inserted
-        else { return false }
+        guard lifecyclePolicy?.canDelete == true else { return false }
+        guard mutatingSessionIDs.insert(session.id).inserted else {
+            errorMessage = Self.mutationInProgressMessage(sessionTitle: session.title)
+            return false
+        }
         requestVersion.beginMutation()
         isLoading = false
         defer { mutatingSessionIDs.remove(session.id) }

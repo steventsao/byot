@@ -354,6 +354,11 @@ final class OpenCodeSessionStore: ObservableObject {
                 directory: directory,
                 workspace: workspace
             )
+            promptDispatchTask?.cancel()
+            promptDispatchTask = nil
+            promptDispatchID = nil
+            inFlightPrompt = nil
+            isSending = false
             statusMutationGeneration &+= 1
             status = .idle
             isStatusReady = true
@@ -361,10 +366,21 @@ final class OpenCodeSessionStore: ObservableObject {
             scheduleMessageRefresh()
             errorMessage = nil
         } catch is CancellationError {
+            if isRunning { restoreQueueAfterFailedAbort() }
             return
         } catch {
+            restoreQueueAfterFailedAbort()
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func restoreQueueAfterFailedAbort() {
+        OpenCodeSessionAbortPolicy.restoreQueueAfterFailedRequest(
+            &promptQueue,
+            serverIsActive: status.isActive || isSending
+        )
+        publishPromptQueue()
+        scheduleQueueRecoveryIfNeeded()
     }
 
     func removeQueuedPrompt(_ id: UUID) {

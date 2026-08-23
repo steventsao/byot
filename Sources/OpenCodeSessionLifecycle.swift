@@ -72,4 +72,11 @@ enum OpenCodeSessionAbortPolicy {
     static func prepareQueueForRequest(_ queue: inout OpenCodePromptQueue) {
         queue.pausePendingPrompts()
     }
+
+    static func restoreQueueAfterFailedRequest(
+        _ queue: inout OpenCodePromptQueue,
+        serverIsActive: Bool
+    ) {
+        queue.restorePendingPromptsAfterFailedPause(serverIsActive: serverIsActive)
+    }
 }
