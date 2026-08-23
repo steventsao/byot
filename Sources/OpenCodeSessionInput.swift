@@ -164,6 +164,16 @@ enum OpenCodeSessionInputAgentResolver {
     }
 }
 
+enum OpenCodeSessionInputAgentCatalog {
+    static func submissionAgentID(
+        selectedAgentID: String?,
+        agents: [OpenCodeAgentOption]
+    ) -> String? {
+        guard let selectedAgentID else { return nil }
+        return agents.first(where: { $0.id == selectedAgentID })?.id
+    }
+}
+
 enum OpenCodeSessionAttachmentPolicy {
     static func appending(
         _ imported: [OpenCodePromptAttachment],

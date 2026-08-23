@@ -340,7 +340,7 @@ struct OpenCodeSessionComposerView: View {
         let promptAttachments = attachments
         let agentID = OpenCodeSessionInputAgentResolver.agentID(
             for: intent,
-            selectedAgentID: inputStore.selectedAgent?.id,
+            selectedAgentID: inputStore.submissionAgentID,
             commands: inputStore.commands
         )
         text = ""

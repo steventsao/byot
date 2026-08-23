@@ -52,6 +52,13 @@ final class OpenCodeSessionInputStore: ObservableObject {
         selectableAgents.first { $0.id == selectedAgentID }
     }
 
+    var submissionAgentID: String? {
+        OpenCodeSessionInputAgentCatalog.submissionAgentID(
+            selectedAgentID: selectedAgentID,
+            agents: agents
+        )
+    }
+
     func load() async {
         loadGeneration &+= 1
         let generation = loadGeneration
@@ -158,7 +165,7 @@ final class OpenCodeSessionInputStore: ObservableObject {
             }
             return false
         }
-        if case .shell = intent, selectedAgent == nil {
+        if case .shell = intent, submissionAgentID == nil {
             errorMessage = OpenCodeSessionInputError.shellAgentRequired.localizedDescription
             return false
         }
@@ -175,7 +182,7 @@ final class OpenCodeSessionInputStore: ObservableObject {
             errorMessage = policy.shellUnavailableReason
             return false
         }
-        guard selectedAgent != nil else {
+        guard submissionAgentID != nil else {
             errorMessage = OpenCodeSessionInputError.shellAgentRequired.localizedDescription
             return false
         }

@@ -43,6 +43,9 @@ BYOT follows those boundaries:
 
 - The composer exposes compact model, agent, command, and shell controls.
 - Hidden and subagent-only agents do not appear in the primary-agent picker.
+- A hidden or subagent ID inherited from the session remains valid for prompt,
+  command fallback, and shell submission while it exists in the trusted
+  catalog; picker visibility does not erase execution context.
 - The command sheet shows server descriptions and argument hints. On v2 it
   remains inspectable but explicitly disables execution with the schema gap.
 - Shell mode changes the field prompt and returns to normal mode after submit.
