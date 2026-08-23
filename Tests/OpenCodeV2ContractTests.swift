@@ -1062,11 +1062,11 @@ final class OpenCodeV2ContractTests: XCTestCase {
         XCTAssertNil(requests[5].httpBody)
     }
 
-    func testV2InvalidOAuthURLCancelsTheCreatedAttempt() async throws {
+    func testV2UnsafeOAuthURLCancelsTheCreatedAttempt() async throws {
         let (client, session) = makeClient { request in
             switch (request.httpMethod, request.url?.path) {
             case ("POST", "/api/integration/openai/connect/oauth"):
-                return .json(#"{"location":{"directory":"/repo"},"data":{"attemptID":"attempt_bad_url","url":"javascript:alert(1)","instructions":"","mode":"auto","time":{"created":10,"expires":20}}}"#)
+                return .json(#"{"location":{"directory":"/repo"},"data":{"attemptID":"attempt_bad_url","url":"http://auth.example.test/oauth","instructions":"","mode":"auto","time":{"created":10,"expires":20}}}"#)
             case ("DELETE", "/api/integration/attempt/attempt_bad_url"):
                 return .empty(statusCode: 204)
             default:

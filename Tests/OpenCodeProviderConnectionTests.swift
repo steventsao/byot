@@ -3,6 +3,28 @@ import Testing
 @testable import byot
 
 struct OpenCodeProviderConnectionPolicyTests {
+    @Test("Authorization URLs require HTTPS without userinfo and expose their destination")
+    func authorizationURLPolicy() throws {
+        let safe = try OpenCodeProviderAuthorizationURLPolicy.validate(
+            "https://auth.example.test:8443/oauth/start?client=byot"
+        )
+
+        #expect(
+            OpenCodeProviderAuthorizationURLPolicy.destinationLabel(for: safe)
+                == "Open auth.example.test:8443"
+        )
+        #expect(throws: OpenCodeProviderConnectionError.self) {
+            try OpenCodeProviderAuthorizationURLPolicy.validate(
+                "http://auth.example.test/oauth/start"
+            )
+        }
+        #expect(throws: OpenCodeProviderConnectionError.self) {
+            try OpenCodeProviderAuthorizationURLPolicy.validate(
+                "https://account@example.test/oauth/start"
+            )
+        }
+    }
+
     @Test("Conditional OAuth prompts advance through only matching inputs")
     func conditionalPrompts() {
         let method = OpenCodeProviderAuthMethod(
