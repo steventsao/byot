@@ -94,6 +94,46 @@ struct OpenCodeFileBrowserTests {
 @MainActor
 @Suite(.serialized)
 struct OpenCodeFileBrowserStoreTests {
+    @Test("Startup is visibly loading while capabilities resolve")
+    func startupLoadingState() async {
+        let service = MockFileBrowserService(
+            capabilities: .v2,
+            capabilitiesDelay: .seconds(10)
+        )
+        let store = OpenCodeFileBrowserStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil
+        )
+
+        let startup = Task { await store.start() }
+        while !service.steps.contains(.capabilities) { await Task.yield() }
+
+        #expect(store.isLoading)
+        startup.cancel()
+        await startup.value
+    }
+
+    @Test("Cancelling tree startup does not continue into status loading")
+    func cancelledStartupStopsStatuses() async {
+        let service = MockFileBrowserService(
+            capabilities: .v1,
+            listDelay: .seconds(10)
+        )
+        let store = OpenCodeFileBrowserStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil
+        )
+
+        let startup = Task { await store.start() }
+        while !service.steps.contains(.list(path: "")) { await Task.yield() }
+        startup.cancel()
+        await startup.value
+
+        #expect(!service.steps.contains(.statuses))
+    }
+
     @Test("v1 startup loads a sorted visible tree and changed-file status")
     func v1Startup() async {
         let service = MockFileBrowserService(
@@ -194,12 +234,16 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
     private let statuses: [OpenCodeFileStatus]
     private let searchResults: [OpenCodeFileEntry]
     private let content: OpenCodeFileContent
+    private let capabilitiesDelay: Duration?
+    private let listDelay: Duration?
 
     init(
         capabilities: OpenCodeProtocolCapabilities,
         entries: [OpenCodeFileEntry] = [],
         statuses: [OpenCodeFileStatus] = [],
         searchResults: [OpenCodeFileEntry] = [],
+        capabilitiesDelay: Duration? = nil,
+        listDelay: Duration? = nil,
         content: OpenCodeFileContent = OpenCodeFileContent(
             type: "text",
             content: "",
@@ -212,6 +256,8 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
         self.entries = entries
         self.statuses = statuses
         self.searchResults = searchResults
+        self.capabilitiesDelay = capabilitiesDelay
+        self.listDelay = listDelay
         self.content = content
     }
 
@@ -223,6 +269,7 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
 
     func protocolCapabilities() async throws -> OpenCodeProtocolCapabilities {
         record(.capabilities)
+        if let capabilitiesDelay { try await Task.sleep(for: capabilitiesDelay) }
         return capabilities
     }
 
@@ -232,6 +279,7 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
         path: String
     ) async throws -> [OpenCodeFileEntry] {
         record(.list(path: path))
+        if let listDelay { try await Task.sleep(for: listDelay) }
         return entries
     }
 
