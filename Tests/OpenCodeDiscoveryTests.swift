@@ -84,6 +84,18 @@ struct OpenCodeDiscoveryTests {
         )
     }
 
+    @Test("A nonlocal resolve callback remains eligible for later addresses")
+    func nonlocalResolutionWaitsForAdditionalAddresses() {
+        #expect(
+            OpenCodeBonjourResolutionPolicy.disposition(localHost: nil)
+                == .awaitingAdditionalAddresses
+        )
+        #expect(
+            OpenCodeBonjourResolutionPolicy.disposition(localHost: "192.168.1.42")
+                == .resolved(host: "192.168.1.42")
+        )
+    }
+
     @Test("Only discovered local profiles may use HTTP and legacy profiles stay secure")
     func discoveredProfileTransportPolicy() throws {
         let manual = OpenCodeServerProfile(
@@ -262,6 +274,32 @@ struct OpenCodeDiscoveryTests {
         let genericBatchSettled = genericHTTPOnly.serviceFound(key: nil, moreComing: false)
         #expect(genericBatchSettled)
         #expect(genericHTTPOnly.isSettled)
+
+        var removedPending = OpenCodeDiscoveryInitialSearch()
+        let settledAfterPendingFind = removedPending.serviceFound(
+            key: "local|_http._tcp.|opencode-4096",
+            moreComing: true
+        )
+        let settledAfterPendingRemove = removedPending.serviceRemoved(
+            key: "local|_http._tcp.|opencode-4096",
+            moreComing: false
+        )
+        #expect(!settledAfterPendingFind)
+        #expect(settledAfterPendingRemove)
+        #expect(removedPending.isSettled)
+
+        var removedGeneric = OpenCodeDiscoveryInitialSearch()
+        let settledAfterGenericFind = removedGeneric.serviceFound(
+            key: nil,
+            moreComing: true
+        )
+        let settledAfterGenericRemove = removedGeneric.serviceRemoved(
+            key: nil,
+            moreComing: false
+        )
+        #expect(!settledAfterGenericFind)
+        #expect(settledAfterGenericRemove)
+        #expect(removedGeneric.isSettled)
     }
 
     @Test("Info plist declares scoped local networking without arbitrary loads")
