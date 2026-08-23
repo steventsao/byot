@@ -349,6 +349,38 @@ struct OpenCodePromptQueueTests {
         queue.serverBecameActive()
         #expect(queue.serverBecameIdle()?.text == "Third")
     }
+
+    @Test("Removing the final shell follow-up clears its synchronous idle barrier")
+    func removingFinalShellFollowUpClearsBarrier() throws {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            intent: .shell("git status"),
+            model: nil,
+            agent: "build",
+            serverIsActive: false
+        )
+        let followUp = try #require(
+            queue.accept(
+                intent: .prompt("Explain it"),
+                model: nil,
+                agent: nil,
+                serverIsActive: false
+            ).queuedPrompt
+        )
+        #expect(queue.dispatchSucceeded(completesSynchronously: true) == nil)
+
+        queue.remove(followUp.id)
+
+        #expect(!queue.isTurnActive)
+        #expect(
+            queue.accept(
+                intent: .prompt("Start fresh"),
+                model: nil,
+                agent: nil,
+                serverIsActive: false
+            ).dispatchedPrompt?.text == "Start fresh"
+        )
+    }
 }
 
 private extension OpenCodePromptSubmission {
