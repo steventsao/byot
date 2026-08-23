@@ -209,9 +209,13 @@ struct OpenCodePromptQueue: Equatable, Sendable {
 
     mutating func remove(_ id: UUID) {
         prompts.removeAll { $0.id == id }
-        if phase == .paused, prompts.isEmpty {
+        guard prompts.isEmpty else { return }
+        switch phase {
+        case .paused, .awaitingSynchronousIdle:
             phase = .idle
             resetPausedTransition()
+        case .idle, .submitting, .awaitingActivity, .active:
+            break
         }
     }
 
