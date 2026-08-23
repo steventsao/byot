@@ -322,6 +322,27 @@ struct OpenCodeFileBrowserStoreTests {
         #expect(store.errorMessage == nil)
     }
 
+    @Test("An empty initial search preserves a startup failure")
+    func emptySearchPreservesStartupFailure() async {
+        let service = MockFileBrowserService(
+            capabilities: .v2,
+            failsCapabilities: true
+        )
+        let store = OpenCodeFileBrowserStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil
+        )
+
+        await store.start()
+        let startupError = store.errorMessage
+        #expect(startupError != nil)
+
+        await store.search()
+
+        #expect(store.errorMessage == startupError)
+    }
+
     @Test("reader checks capabilities before attempting a read")
     func readerCapabilityGate() async {
         let service = MockFileBrowserService(capabilities: .v2)
@@ -360,6 +381,7 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
     private let listDelay: Duration?
     private let statusesDelay: Duration?
     private let navigationListDelay: Duration?
+    private let failsCapabilities: Bool
     nonisolated(unsafe) private var shouldFailNextSearch = false
 
     init(
@@ -371,6 +393,7 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
         listDelay: Duration? = nil,
         statusesDelay: Duration? = nil,
         navigationListDelay: Duration? = nil,
+        failsCapabilities: Bool = false,
         content: OpenCodeFileContent = OpenCodeFileContent(
             type: "text",
             content: "",
@@ -387,6 +410,7 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
         self.listDelay = listDelay
         self.statusesDelay = statusesDelay
         self.navigationListDelay = navigationListDelay
+        self.failsCapabilities = failsCapabilities
         self.content = content
     }
 
@@ -399,6 +423,7 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
     func protocolCapabilities() async throws -> OpenCodeProtocolCapabilities {
         record(.capabilities)
         if let capabilitiesDelay { try await Task.sleep(for: capabilitiesDelay) }
+        if failsCapabilities { throw MockFileBrowserError.capabilitiesUnavailable }
         return capabilities
     }
 
@@ -465,5 +490,6 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
 }
 
 private enum MockFileBrowserError: Error {
+    case capabilitiesUnavailable
     case searchUnavailable
 }
