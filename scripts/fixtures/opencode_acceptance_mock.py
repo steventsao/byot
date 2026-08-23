@@ -20,7 +20,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
         try:
-            if protocol == "v1":
+            if protocol.startswith("v1"):
                 self.handle_v1(parsed.path, query)
             else:
                 self.handle_v2(parsed.path, query)
@@ -29,7 +29,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_v1(self, path, query):
         if path == "/global/health":
-            self.respond(200, {"healthy": True, "version": "1.18.18"})
+            body = {"healthy": True}
+            if protocol != "v1-no-version":
+                body["version"] = "1.18.18"
+            self.respond(200, body)
         elif path == "/project":
             self.require_query(query, "directory", "/repo")
             self.respond(200, [{"id": "proj_1", "worktree": "/repo", "time": {"created": 1, "updated": 2}, "sandboxes": []}])
