@@ -104,6 +104,55 @@ struct OpenCodeSessionSharingTests {
         #expect(state.sessions.first?.share?.url == sharedURL)
     }
 
+    @Test("An open sharing presentation follows a newer server session")
+    func sharingPresentationReconcilesServerSession() {
+        let store = OpenCodeSessionSharingStore(
+            service: MockSessionSharingService(),
+            session: makeSession(shareURL: nil)
+        )
+        let sharedURL = URL(string: "https://share.example.test/ses_1")!
+
+        store.reconcileSession(makeSession(shareURL: sharedURL))
+
+        #expect(store.presentation.shareURL == sharedURL)
+        #expect(store.presentation.canUnpublish == false)
+    }
+
+    @Test("A sharing change replaces the matching subagent session")
+    func childSessionReconciliation() {
+        let sharedURL = URL(string: "https://share.example.test/ses_1")!
+        let original = makeSession(shareURL: nil)
+        let unrelated = OpenCodeSession(
+            id: "ses_2",
+            slug: "second",
+            projectID: "proj_1",
+            workspaceID: "wrk_1",
+            directory: "/repo",
+            parentID: "ses_parent",
+            share: nil,
+            summary: nil,
+            title: "Second",
+            agent: nil,
+            version: "1",
+            time: OpenCodeSessionTime(
+                created: 5,
+                updated: 10,
+                compacting: nil,
+                archived: nil
+            )
+        )
+
+        let reconciled = OpenCodeChildSessionReconciliation.replacing(
+            makeSession(shareURL: sharedURL),
+            in: [original, unrelated]
+        )
+
+        #expect(reconciled.count == 2)
+        #expect(reconciled.first?.id == original.id)
+        #expect(reconciled.first?.share?.url == sharedURL)
+        #expect(reconciled.last?.id == unrelated.id)
+    }
+
     private func makeSession(shareURL: URL?) -> OpenCodeSession {
         OpenCodeSession(
             id: "ses_1",
