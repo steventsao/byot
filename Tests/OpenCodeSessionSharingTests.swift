@@ -180,6 +180,36 @@ struct OpenCodeSessionSharingTests {
         #expect(!OpenCodeProjectSessionReconciliation.accepts(child))
     }
 
+    @Test("Only sharing mutations propagate to an owning project list")
+    func ownerChangePropagation() {
+        #expect(
+            !OpenCodeSessionOwnerChangePropagation.shouldNotifyOwner(
+                source: .sessionRefresh
+            )
+        )
+        #expect(
+            OpenCodeSessionOwnerChangePropagation.shouldNotifyOwner(
+                source: .sharingMutation
+            )
+        )
+    }
+
+    @Test("Only local share mutations advance owner propagation")
+    func ownerMutationRevision() async {
+        let store = OpenCodeSessionSharingStore(
+            service: MockSessionSharingService(),
+            session: makeSession(shareURL: nil)
+        )
+        let refreshedURL = URL(string: "https://share.example.test/refreshed")!
+
+        store.reconcileSession(makeSession(shareURL: refreshedURL))
+        #expect(store.ownerMutationRevision == 0)
+
+        await store.loadCapabilities()
+        await store.unpublish()
+        #expect(store.ownerMutationRevision == 1)
+    }
+
     private func makeSession(shareURL: URL?) -> OpenCodeSession {
         OpenCodeSession(
             id: "ses_1",
