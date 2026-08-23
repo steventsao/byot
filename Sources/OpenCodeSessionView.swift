@@ -54,7 +54,7 @@ struct OpenCodeSessionView: View {
                     if !store.historyPresentation.revertedUserMessages.isEmpty {
                         OpenCodeRevertedHistoryCard(
                             messages: store.historyPresentation.revertedUserMessages,
-                            isRestoring: store.historyActionInFlight == .unrevert,
+                            canRestore: store.canUnrevertSession,
                             canReviewChanges: store.diffPresentation.canPresent,
                             restore: { isConfirmingRestore = true },
                             reviewChanges: { isShowingDiff = true }
@@ -630,7 +630,7 @@ private struct OpenCodeSessionChildrenView: View {
 
 private struct OpenCodeRevertedHistoryCard: View {
     let messages: [OpenCodeMessageEnvelope]
-    let isRestoring: Bool
+    let canRestore: Bool
     let canReviewChanges: Bool
     let restore: () -> Void
     let reviewChanges: () -> Void
@@ -656,7 +656,7 @@ private struct OpenCodeRevertedHistoryCard: View {
             HStack(spacing: 10) {
                 Button("Restore", systemImage: "arrow.uturn.forward", action: restore)
                     .buttonStyle(.borderedProminent)
-                    .disabled(isRestoring)
+                    .disabled(!canRestore)
                 Button("Review changes", systemImage: "doc.text.magnifyingglass", action: reviewChanges)
                     .buttonStyle(.bordered)
                     .disabled(!canReviewChanges)

@@ -7,6 +7,15 @@ enum OpenCodeSessionHistoryAction: String, Equatable, Sendable {
     case fork
 }
 
+enum OpenCodeSessionHistoryActionAvailability {
+    static func canRestore(
+        hasRevertedMessages: Bool,
+        actionInFlight: OpenCodeSessionHistoryAction?
+    ) -> Bool {
+        hasRevertedMessages && actionInFlight == nil
+    }
+}
+
 enum OpenCodeSessionHistoryEventMutation: Equatable, Sendable {
     case staged(OpenCodeSessionHistoryMutation)
     case cleared
@@ -157,11 +166,12 @@ enum OpenCodeSessionHistoryRollbackPolicy {
 
     static func prepare(
         status: OpenCodeSessionStatus,
+        hasInFlightPrompt: Bool = false,
         queue: inout OpenCodePromptQueue
     ) -> Preparation {
         Preparation(
             queueSnapshot: queue.pausePendingPrompts(),
-            requiresRemoteAbort: status.isActive
+            requiresRemoteAbort: status.isActive || hasInFlightPrompt
         )
     }
 
@@ -169,9 +179,13 @@ enum OpenCodeSessionHistoryRollbackPolicy {
     static func restore(
         _ preparation: Preparation,
         remoteAbortSucceeded: Bool = false,
+        interruptedPrompt: OpenCodeQueuedPrompt? = nil,
         queue: inout OpenCodePromptQueue
     ) -> OpenCodeQueuedPrompt? {
         if remoteAbortSucceeded {
+            if let interruptedPrompt {
+                queue.dispatchFailed(interruptedPrompt, requeue: true)
+            }
             return queue.resumePendingPromptsAfterCompletedInterruption()
         }
         return queue.restorePendingPrompts(after: preparation.queueSnapshot)

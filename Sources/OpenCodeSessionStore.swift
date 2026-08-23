@@ -7,6 +7,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let preparation: OpenCodeSessionHistoryRollbackPolicy.Preparation
         let lifecycleGeneration: Int
         let remoteAbortSucceeded: Bool
+        let interruptedPrompt: OpenCodeQueuedPrompt?
     }
 
     @Published private(set) var messages: [OpenCodeMessageEnvelope] = []
@@ -137,7 +138,10 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     var canUnrevertSession: Bool {
-        historyActionInFlight == nil && historyPresentation.canRestore
+        OpenCodeSessionHistoryActionAvailability.canRestore(
+            hasRevertedMessages: historyPresentation.canRestore,
+            actionInFlight: historyActionInFlight
+        )
     }
 
     var canSummarizeSession: Bool {
@@ -643,10 +647,12 @@ final class OpenCodeSessionStore: ObservableObject {
 
     private func prepareForHistoryRollback() async throws -> HistoryRollbackContext {
         let requestGeneration = lifecycleGeneration
+        let interruptedPrompt = inFlightPrompt
         isAborting = true
         defer { isAborting = false }
         let preparation = OpenCodeSessionHistoryRollbackPolicy.prepare(
             status: status,
+            hasInFlightPrompt: interruptedPrompt != nil,
             queue: &promptQueue
         )
         publishPromptQueue()
@@ -654,7 +660,8 @@ final class OpenCodeSessionStore: ObservableObject {
         let context = HistoryRollbackContext(
             preparation: preparation,
             lifecycleGeneration: requestGeneration,
-            remoteAbortSucceeded: false
+            remoteAbortSucceeded: false,
+            interruptedPrompt: nil
         )
         guard preparation.requiresRemoteAbort else { return context }
         do {
@@ -682,7 +689,8 @@ final class OpenCodeSessionStore: ObservableObject {
         return HistoryRollbackContext(
             preparation: preparation,
             lifecycleGeneration: requestGeneration,
-            remoteAbortSucceeded: true
+            remoteAbortSucceeded: true,
+            interruptedPrompt: interruptedPrompt
         )
     }
 
@@ -698,6 +706,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let nextPrompt = OpenCodeSessionHistoryRollbackPolicy.restore(
             context.preparation,
             remoteAbortSucceeded: context.remoteAbortSucceeded,
+            interruptedPrompt: context.interruptedPrompt,
             queue: &promptQueue
         )
         publishPromptQueue()
