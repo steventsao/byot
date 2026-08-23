@@ -100,6 +100,38 @@ struct OpenCodeProviderConnectionStoreTests {
         #expect(!store.isSubmitting)
     }
 
+    @Test("Navigation stays locked while an API-key connection is submitting")
+    func navigationDuringKeyConnectionWaits() async {
+        let provider = OpenCodeProviderConnection(
+            id: "openai",
+            name: "OpenAI",
+            isConnected: false,
+            methods: [
+                OpenCodeProviderAuthMethod(id: "key", kind: .key, label: "API key"),
+            ]
+        )
+        let barrier = ProviderConnectionBarrier()
+        let service = MockProviderConnectionService(
+            providers: [provider],
+            keyBarrier: barrier
+        )
+        let store = makeStore(service: service)
+
+        await store.load()
+        store.selectProvider(provider)
+        let request = Task { await store.connectKey("secret") }
+        await barrier.waitForArrival()
+
+        let canDismissWhileSubmitting = await store.prepareToDismiss()
+        #expect(!canDismissWhileSubmitting)
+        #expect(store.isSubmitting)
+        #expect(store.phase == .keyEntry)
+
+        await barrier.release()
+        await request.value
+        #expect(store.phase == .connected(providerID: "openai"))
+    }
+
     @Test("Terminal OAuth polling returns to a retryable phase")
     func terminalOAuthPoll() async {
         let provider = oauthProvider()
@@ -378,6 +410,7 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
     private let lock = NSLock()
     nonisolated(unsafe) private var recordedSteps: [Step] = []
     private let providers: [OpenCodeProviderConnection]
+    private let keyBarrier: ProviderConnectionBarrier?
     private let startBarrier: ProviderConnectionBarrier?
     private let startError: TestProviderConnectionError?
     private let cancelError: TestProviderConnectionError?
@@ -387,6 +420,7 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
 
     init(
         providers: [OpenCodeProviderConnection],
+        keyBarrier: ProviderConnectionBarrier? = nil,
         startBarrier: ProviderConnectionBarrier? = nil,
         startError: TestProviderConnectionError? = nil,
         cancelError: TestProviderConnectionError? = nil,
@@ -395,6 +429,7 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
         statusError: TestProviderConnectionError? = nil
     ) {
         self.providers = providers
+        self.keyBarrier = keyBarrier
         self.startBarrier = startBarrier
         self.startError = startError
         self.cancelError = cancelError
@@ -421,6 +456,7 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
         workspace: String?
     ) async throws {
         record(.connectKey(providerID: providerID, key: key))
+        await keyBarrier?.arriveAndWait()
     }
 
     func startProviderOAuth(
