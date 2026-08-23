@@ -46,6 +46,7 @@ final class OpenCodeSessionStore: ObservableObject {
     private var persistedModelID: String?
     private var transcript = OpenCodeTranscriptReducer()
     private var promptQueue = OpenCodePromptQueue()
+    private var historyProjection = OpenCodeSessionHistoryProjection()
     private var eventTask: Task<Void, Never>?
     private var reconciliationTask: Task<Void, Never>?
     private var reconciliationVersion = OpenCodeSessionReconciliationVersion()
@@ -123,7 +124,8 @@ final class OpenCodeSessionStore: ObservableObject {
         OpenCodeSessionHistoryPresentation(
             messages: messages,
             revert: session.revert,
-            capabilities: protocolCapabilities
+            capabilities: protocolCapabilities,
+            projection: historyProjection
         )
     }
 
@@ -337,6 +339,7 @@ final class OpenCodeSessionStore: ObservableObject {
             case .failure:
                 transcriptAccepted = false
             }
+            var acceptedSession: OpenCodeSession?
             switch results.7 {
             case .success(let fetchedSession):
                 if OpenCodeSessionHistoryReconciliation.acceptsFetchedSession(
@@ -345,21 +348,31 @@ final class OpenCodeSessionStore: ObservableObject {
                     clearsBoundary: session.revert != nil && fetchedSession.revert == nil,
                     transcriptAccepted: transcriptAccepted
                 ) {
-                    session = fetchedSession
+                    acceptedSession = fetchedSession
                 }
             case .failure(let error):
                 coreErrors.append(error)
             }
+            var acceptedMessages: [OpenCodeMessageEnvelope]?
             switch results.0 {
             case .success(let messages):
                 if transcriptAccepted {
-                    transcript.replace(with: messages)
-                    publishTranscript()
+                    acceptedMessages = messages
                 }
             case .failure(let error):
                 if messageGeneration == messageRequestGeneration {
                     coreErrors.append(error)
                 }
+            }
+            let clearsRevert = acceptedSession.map {
+                session.revert != nil && $0.revert == nil
+            } ?? false
+            if clearsRevert, let acceptedMessages {
+                replaceTranscript(with: acceptedMessages)
+                if let acceptedSession { applyReconciledSession(acceptedSession) }
+            } else {
+                if let acceptedSession { applyReconciledSession(acceptedSession) }
+                if let acceptedMessages { replaceTranscript(with: acceptedMessages) }
             }
             switch results.3 {
             case .success(let diffs):
@@ -723,6 +736,8 @@ final class OpenCodeSessionStore: ObservableObject {
         clearsRevert: Bool
     ) {
         historyMutationGeneration &+= 1
+        let nextRevert = clearsRevert ? nil : mutation.session?.revert ?? mutation.revert
+        historyProjection.reconcile(messages: messages, revert: nextRevert)
         if let updatedSession = mutation.session {
             session = updatedSession
         } else {
@@ -758,6 +773,9 @@ final class OpenCodeSessionStore: ObservableObject {
         dispatchID: UUID
     ) async {
         guard isCurrentPromptDispatch(dispatchID), !Task.isCancelled else { return }
+        let historyRefreshScope = OpenCodeSessionHistoryContinuationPolicy.refreshScope(
+            revert: session.revert
+        )
         beginCurrentTurnActivityTracking()
         markOptimisticBusy()
         isSending = true
@@ -777,7 +795,12 @@ final class OpenCodeSessionStore: ObservableObject {
             let nextPrompt = promptQueue.dispatchSucceeded()
             publishPromptQueue()
             finishPromptDispatch(dispatchID)
-            scheduleMessageRefresh()
+            switch historyRefreshScope {
+            case .messages:
+                scheduleMessageRefresh()
+            case .session:
+                scheduleReconciliation()
+            }
             if let nextPrompt {
                 schedulePromptDispatch(nextPrompt)
             } else if observedServerActivity == false || isEventConnected == false {
@@ -1014,6 +1037,7 @@ final class OpenCodeSessionStore: ObservableObject {
                 applyHistoryMutation(mutation, clearsRevert: false)
             case .cleared:
                 historyMutationGeneration &+= 1
+                historyProjection.reconcile(messages: messages, revert: nil)
                 session.revert = nil
                 diffMutationGeneration &+= 1
                 diffs = []
@@ -1086,9 +1110,21 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func publishTranscript() {
-        messages = transcript.messages
+        let messages = transcript.messages
+        historyProjection.reconcile(messages: messages, revert: session.revert)
+        self.messages = messages
         updateCurrentTurnActivityTracking()
         transcriptRevision &+= 1
+    }
+
+    private func replaceTranscript(with messages: [OpenCodeMessageEnvelope]) {
+        transcript.replace(with: messages)
+        publishTranscript()
+    }
+
+    private func applyReconciledSession(_ session: OpenCodeSession) {
+        historyProjection.reconcile(messages: messages, revert: session.revert)
+        self.session = session
     }
 
     private func applyReconciledStatus(_ value: OpenCodeSessionStatus) {

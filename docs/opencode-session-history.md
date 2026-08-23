@@ -25,6 +25,9 @@ guessed route.
 revert hides its boundary turn and every later turn while preserving those
 user prompts as a deterministic restore list. It also derives the latest undo
 and fork targets and short prompt previews without importing SwiftUI.
+`OpenCodeSessionHistoryProjection` retains the pre-revert message prefix while
+OpenCode emits cleanup removals, and fails closed when an uncaptured boundary
+is absent, so a deleted boundary cannot briefly reveal reverted turns.
 
 `OpenCodeSessionHistoryPolicy` converts protocol capabilities into UI actions.
 `OpenCodeSessionHistoryEventProjection` applies current v2 staged, cleared, and
@@ -42,6 +45,9 @@ protocol-specific routes.
   are paused before the interrupt request.
 - Reverted prompts appear in a restore card modeled after OpenCode desktop's
   revert dock. The card links directly to the resulting diff review.
+- Sending a new prompt through an active revert follows OpenCode's implicit
+  commit behavior and reconciles the session plus transcript together. This
+  covers v1, which does not emit the v2 committed-revert event.
 - Successful v1 fork opens the returned session. V2 never displays a fork
   action because no upstream route exists.
 

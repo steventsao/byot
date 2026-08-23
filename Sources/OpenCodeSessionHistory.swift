@@ -208,19 +208,98 @@ struct OpenCodeSessionHistoryPolicy: Equatable, Sendable {
     }
 }
 
+enum OpenCodeSessionHistoryRefreshScope: Equatable, Sendable {
+    case messages
+    case session
+}
+
+struct OpenCodeSessionHistoryContinuationPolicy: Equatable, Sendable {
+    static func refreshScope(
+        revert: OpenCodeSessionRevertState?
+    ) -> OpenCodeSessionHistoryRefreshScope {
+        revert == nil ? .messages : .session
+    }
+}
+
+struct OpenCodeSessionHistoryProjection: Equatable, Sendable {
+    private var revertMessageID: String?
+    private var capturedVisibleMessageIDs: Set<String>?
+    private var capturedRevertedUserMessageIDs: Set<String>?
+
+    mutating func reconcile(
+        messages: [OpenCodeMessageEnvelope],
+        revert: OpenCodeSessionRevertState?
+    ) {
+        guard let messageID = revert?.messageID else {
+            revertMessageID = nil
+            capturedVisibleMessageIDs = nil
+            capturedRevertedUserMessageIDs = nil
+            return
+        }
+        if revertMessageID != messageID {
+            revertMessageID = messageID
+            capturedVisibleMessageIDs = nil
+            capturedRevertedUserMessageIDs = nil
+        }
+        guard let boundary = messages.firstIndex(where: { $0.id == messageID }) else {
+            return
+        }
+        capturedVisibleMessageIDs = Set(messages[..<boundary].map(\.id))
+        capturedRevertedUserMessageIDs = Set(
+            messages[boundary...]
+                .filter { $0.info.role.lowercased() == "user" }
+                .map(\.id)
+        )
+    }
+
+    func visibleMessages(
+        in messages: [OpenCodeMessageEnvelope],
+        revert: OpenCodeSessionRevertState?
+    ) -> [OpenCodeMessageEnvelope] {
+        guard let messageID = revert?.messageID else { return messages }
+        if let boundary = messages.firstIndex(where: { $0.id == messageID }) {
+            return Array(messages[..<boundary])
+        }
+        guard revertMessageID == messageID,
+              let capturedVisibleMessageIDs
+        else { return [] }
+        return messages.filter { capturedVisibleMessageIDs.contains($0.id) }
+    }
+
+    func revertedUserMessages(
+        in messages: [OpenCodeMessageEnvelope],
+        revert: OpenCodeSessionRevertState?
+    ) -> [OpenCodeMessageEnvelope] {
+        guard let messageID = revert?.messageID else { return [] }
+        let userMessages = messages.filter { $0.info.role.lowercased() == "user" }
+        if let boundary = userMessages.firstIndex(where: { $0.id == messageID }) {
+            return Array(userMessages[boundary...])
+        }
+        guard revertMessageID == messageID,
+              let capturedRevertedUserMessageIDs
+        else { return [] }
+        return userMessages.filter { capturedRevertedUserMessageIDs.contains($0.id) }
+    }
+}
+
 struct OpenCodeSessionHistoryPresentation: Equatable, Sendable {
     let messages: [OpenCodeMessageEnvelope]
     let revert: OpenCodeSessionRevertState?
     let capabilities: OpenCodeProtocolCapabilities?
+    private let projection: OpenCodeSessionHistoryProjection
 
     init(
         messages: [OpenCodeMessageEnvelope],
         revert: OpenCodeSessionRevertState?,
-        capabilities: OpenCodeProtocolCapabilities?
+        capabilities: OpenCodeProtocolCapabilities?,
+        projection: OpenCodeSessionHistoryProjection = .init()
     ) {
         self.messages = messages
         self.revert = revert
         self.capabilities = capabilities
+        var projection = projection
+        projection.reconcile(messages: messages, revert: revert)
+        self.projection = projection
     }
 
     var policy: OpenCodeSessionHistoryPolicy? {
@@ -232,10 +311,7 @@ struct OpenCodeSessionHistoryPresentation: Equatable, Sendable {
     }
 
     var visibleMessages: [OpenCodeMessageEnvelope] {
-        guard let messageID = revert?.messageID,
-              let boundary = messages.firstIndex(where: { $0.id == messageID })
-        else { return messages }
-        return Array(messages[..<boundary])
+        projection.visibleMessages(in: messages, revert: revert)
     }
 
     var visibleUserMessages: [OpenCodeMessageEnvelope] {
@@ -243,10 +319,7 @@ struct OpenCodeSessionHistoryPresentation: Equatable, Sendable {
     }
 
     var revertedUserMessages: [OpenCodeMessageEnvelope] {
-        guard let messageID = revert?.messageID,
-              let boundary = userMessages.firstIndex(where: { $0.id == messageID })
-        else { return [] }
-        return Array(userMessages[boundary...])
+        projection.revertedUserMessages(in: messages, revert: revert)
     }
 
     var latestRevertTarget: OpenCodeSessionRevertTarget? {
