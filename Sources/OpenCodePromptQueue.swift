@@ -261,6 +261,13 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         pausedSubmissionFailed = false
     }
 
+    mutating func resumePendingPromptsAfterCompletedInterruption() -> OpenCodeQueuedPrompt? {
+        guard phase == .paused else { return nil }
+        resetPausedTransition()
+        phase = .active
+        return takeNextOrBecomeIdle()
+    }
+
     private mutating func takeNextOrBecomeIdle() -> OpenCodeQueuedPrompt? {
         guard !prompts.isEmpty else {
             phase = .idle

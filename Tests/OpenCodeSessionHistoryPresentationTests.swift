@@ -239,6 +239,29 @@ struct OpenCodeSessionHistoryPresentationTests {
         #expect(queue.serverBecameIdle()?.text == "Continue after failure")
     }
 
+    @Test("A failed mutation after a successful abort releases its first follow-up")
+    func failedMutationAfterAbortReleasesQueue() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            text: "Continue after aborted rollback",
+            model: nil,
+            serverIsActive: true
+        )
+        let preparation = OpenCodeSessionHistoryRollbackPolicy.prepare(
+            status: .busy,
+            queue: &queue
+        )
+
+        let next = OpenCodeSessionHistoryRollbackPolicy.restore(
+            preparation,
+            remoteAbortSucceeded: true,
+            queue: &queue
+        )
+
+        #expect(next?.text == "Continue after aborted rollback")
+        #expect(queue.prompts.isEmpty)
+    }
+
     private func message(
         id: String,
         role: String,

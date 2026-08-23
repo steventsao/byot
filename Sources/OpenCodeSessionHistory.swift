@@ -114,6 +114,18 @@ enum OpenCodeSessionHistoryReconciliation {
         mutationBaseline == currentMutation
     }
 
+    static func acceptsFetchedSession(
+        mutationBaseline: Int,
+        currentMutation: Int,
+        clearsBoundary: Bool,
+        transcriptAccepted: Bool
+    ) -> Bool {
+        acceptsFetchedSession(
+            mutationBaseline: mutationBaseline,
+            currentMutation: currentMutation
+        ) && (!clearsBoundary || transcriptAccepted)
+    }
+
     static func diffs(
         delivered: [OpenCodeDiff]?,
         current: [OpenCodeDiff],
@@ -151,6 +163,18 @@ enum OpenCodeSessionHistoryRollbackPolicy {
             queueSnapshot: queue.pausePendingPrompts(),
             requiresRemoteAbort: status.isActive
         )
+    }
+
+    @discardableResult
+    static func restore(
+        _ preparation: Preparation,
+        remoteAbortSucceeded: Bool = false,
+        queue: inout OpenCodePromptQueue
+    ) -> OpenCodeQueuedPrompt? {
+        if remoteAbortSucceeded {
+            return queue.resumePendingPromptsAfterCompletedInterruption()
+        }
+        return queue.restorePendingPrompts(after: preparation.queueSnapshot)
     }
 }
 
