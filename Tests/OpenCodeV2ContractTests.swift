@@ -1156,6 +1156,117 @@ final class OpenCodeV2ContractTests: XCTestCase {
         })
     }
 
+    func testV1ServerContextUsesPinnedLocationRoutesAndPreservesConfigBody() async throws {
+        let (client, session) = makeClient(serverProtocol: .v1) { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/config"):
+                return .json(#"{"model":"openai/gpt-5","provider":{"openai":{"options":{"timeout":90}}},"experimental":{"batch_tool":true}}"#)
+            case ("PATCH", "/config"):
+                return .json(#"{"model":"openai/gpt-5","provider":{"openai":{"options":{"timeout":120}}},"experimental":{"batch_tool":true}}"#)
+            case ("GET", "/vcs"):
+                return .json(#"{"branch":"codex/issue-9-server-context","default_branch":"main"}"#)
+            case ("GET", "/path"):
+                return .json(#"{"home":"/Users/test","state":"/Users/test/.state","config":"/Users/test/.config/opencode","worktree":"/repo","directory":"/repo"}"#)
+            case ("GET", "/mcp"):
+                return .json(#"{"docs":{"status":"connected"},"search":{"status":"failed","error":"offline"}}"#)
+            case ("GET", "/lsp"):
+                return .json(#"[{"id":"sourcekit","name":"SourceKit LSP","root":"/repo","status":"connected"}]"#)
+            case ("GET", "/formatter"):
+                return .json(#"[{"name":"swiftformat","extensions":[".swift"],"enabled":true}]"#)
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        let configuration = try await client.serverConfiguration(
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        var updated = configuration
+        updated["provider"] = .object([
+            "openai": .object([
+                "options": .object(["timeout": .number(120)]),
+            ]),
+        ])
+        let saved = try await client.updateServerConfiguration(
+            updated,
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let vcs = try await client.vcsInfo(directory: "/repo", workspace: "wrk_1")
+        let paths = try await client.pathInfo(directory: "/repo", workspace: "wrk_1")
+        let mcp = try await client.mcpStatuses(directory: "/repo", workspace: "wrk_1")
+        let lsp = try await client.lspStatuses(directory: "/repo", workspace: "wrk_1")
+        let formatters = try await client.formatterStatuses(directory: "/repo", workspace: "wrk_1")
+
+        XCTAssertEqual(saved["experimental"], .object(["batch_tool": .bool(true)]))
+        XCTAssertEqual(vcs.branch, "codex/issue-9-server-context")
+        XCTAssertEqual(paths.config, "/Users/test/.config/opencode")
+        XCTAssertEqual(mcp["docs"]?.status, .connected)
+        XCTAssertEqual(mcp["search"]?.error, "offline")
+        XCTAssertEqual(lsp.first?.id, "sourcekit")
+        XCTAssertEqual(formatters.first?.extensions, [".swift"])
+
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { ($0.httpMethod ?? "") + " " + ($0.url?.path ?? "") }, [
+            "GET /config",
+            "PATCH /config",
+            "GET /vcs",
+            "GET /path",
+            "GET /mcp",
+            "GET /lsp",
+            "GET /formatter",
+        ])
+        XCTAssertTrue(requests.allSatisfy {
+            v2QueryValues(for: $0) == ["directory": "/repo", "workspace": "wrk_1"]
+        })
+        let body = try v2JSONObject(for: requests[1])
+        let provider = try XCTUnwrap(body["provider"] as? [String: Any])
+        let openAI = try XCTUnwrap(provider["openai"] as? [String: Any])
+        let options = try XCTUnwrap(openAI["options"] as? [String: Any])
+        XCTAssertEqual(options["timeout"] as? Double, 120)
+        XCTAssertEqual((body["experimental"] as? [String: Any])?["batch_tool"] as? Bool, true)
+    }
+
+    func testV2ServerContextUsesLocationOnlyAndNeverProbesMissingRoutes() async throws {
+        let (client, session) = makeClient { request in
+            if request.url?.path == "/api/location" {
+                return .json(#"{"directory":"/repo","workspaceID":"wrk_1","project":{"id":"proj_1","directory":"/repo"}}"#)
+            }
+            return .json(#"{"message":"must not request"}"#, statusCode: 500)
+        }
+        defer { session.invalidateAndCancel() }
+
+        let paths = try await client.pathInfo(directory: "/repo", workspace: "wrk_1")
+        XCTAssertEqual(paths.directory, "/repo")
+        XCTAssertEqual(paths.workspaceID, "wrk_1")
+        XCTAssertEqual(paths.projectID, "proj_1")
+
+        let unavailableCalls: [() async throws -> Any] = [
+            { try await client.serverConfiguration(directory: "/repo") },
+            { try await client.updateServerConfiguration([:], directory: "/repo") },
+            { try await client.vcsInfo(directory: "/repo") },
+            { try await client.mcpStatuses(directory: "/repo") },
+            { try await client.lspStatuses(directory: "/repo") },
+            { try await client.formatterStatuses(directory: "/repo") },
+        ]
+        for call in unavailableCalls {
+            do {
+                _ = try await call()
+                XCTFail("Expected current v2 server-context surface to be unavailable")
+            } catch is OpenCodeFeatureUnavailableError { }
+        }
+
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(requests.first?.url?.path, "/api/location")
+        XCTAssertEqual(v2QueryValues(for: try XCTUnwrap(requests.first)), [
+            "location[directory]": "/repo",
+            "location[workspace]": "wrk_1",
+        ])
+    }
+
     private func makeClient(
         serverProtocol: OpenCodeServerProtocol = .v2,
         handler: @escaping @Sendable (URLRequest) -> OpenCodeV2URLProtocolStub.Response

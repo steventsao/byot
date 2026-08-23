@@ -14,6 +14,49 @@ protocol OpenCodeProtocolAdapting: Sendable {
         profile: OpenCodeServerProfile
     ) async throws -> [OpenCodeProject]
 
+    func serverConfiguration(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration
+
+    func updateServerConfiguration(
+        using transport: OpenCodeTransport,
+        configuration: OpenCodeConfiguration,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration
+
+    func vcsInfo(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeVCSInfo
+
+    func pathInfo(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeServerPaths
+
+    func mcpStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [String: OpenCodeMCPStatus]
+
+    func lspStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeLSPStatus]
+
+    func formatterStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeFormatterStatus]
+
     func listSessions(
         using transport: OpenCodeTransport,
         directory: String
@@ -342,6 +385,85 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         try await transport.get(
             ["project"],
             query: instanceQuery(directory: profile.normalizedDirectory)
+        )
+    }
+
+    func serverConfiguration(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration {
+        try await transport.get(
+            ["config"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func updateServerConfiguration(
+        using transport: OpenCodeTransport,
+        configuration: OpenCodeConfiguration,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration {
+        try await transport.patch(
+            ["config"],
+            query: instanceQuery(directory: directory, workspace: workspace),
+            body: configuration
+        )
+    }
+
+    func vcsInfo(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeVCSInfo {
+        try await transport.get(
+            ["vcs"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func pathInfo(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeServerPaths {
+        try await transport.get(
+            ["path"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func mcpStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [String: OpenCodeMCPStatus] {
+        try await transport.get(
+            ["mcp"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func lspStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeLSPStatus] {
+        try await transport.get(
+            ["lsp"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func formatterStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeFormatterStatus] {
+        try await transport.get(
+            ["formatter"],
+            query: instanceQuery(directory: directory, workspace: workspace)
         )
     }
 
@@ -1118,6 +1240,85 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
             )
         }
         .sorted { $0.time.updated > $1.time.updated }
+    }
+
+    func serverConfiguration(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration {
+        throw unavailable(
+            feature: "Read server configuration",
+            support: capabilities.serverContext.configurationRead
+        )
+    }
+
+    func updateServerConfiguration(
+        using transport: OpenCodeTransport,
+        configuration: OpenCodeConfiguration,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration {
+        throw unavailable(
+            feature: "Update server configuration",
+            support: capabilities.serverContext.configurationWrite
+        )
+    }
+
+    func vcsInfo(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeVCSInfo {
+        throw unavailable(
+            feature: "VCS status",
+            support: capabilities.serverContext.vcs
+        )
+    }
+
+    func pathInfo(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeServerPaths {
+        let location: OpenCodeV2Location = try await transport.get(
+            ["api", "location"],
+            query: locationQuery(directory: directory, workspace: workspace)
+        )
+        return location.normalizedPaths
+    }
+
+    func mcpStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [String: OpenCodeMCPStatus] {
+        throw unavailable(
+            feature: "MCP status",
+            support: capabilities.serverContext.mcp
+        )
+    }
+
+    func lspStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeLSPStatus] {
+        throw unavailable(
+            feature: "LSP status",
+            support: capabilities.serverContext.lsp
+        )
+    }
+
+    func formatterStatuses(
+        using transport: OpenCodeTransport,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeFormatterStatus] {
+        throw unavailable(
+            feature: "Formatter status",
+            support: capabilities.serverContext.formatter
+        )
     }
 
     func listSessions(
@@ -2004,6 +2205,18 @@ private struct OpenCodeV2Location: Decodable {
             name: nil,
             time: OpenCodeProjectTime(created: 0, updated: 0),
             sandboxes: []
+        )
+    }
+
+    var normalizedPaths: OpenCodeServerPaths {
+        OpenCodeServerPaths(
+            home: nil,
+            state: nil,
+            config: nil,
+            worktree: project.directory,
+            directory: directory,
+            workspaceID: workspaceID,
+            projectID: project.id
         )
     }
 }
