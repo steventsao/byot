@@ -17,15 +17,11 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         }
     }
 
-    private enum PausedSubmissionResult: Equatable, Sendable {
-        case none
-        case succeeded
-        case failed
-    }
-
     private(set) var prompts: [OpenCodeQueuedPrompt] = []
     private var phase: TurnPhase = .idle
-    private var pausedSubmissionResult = PausedSubmissionResult.none
+    private var pausedResumePhase: TurnPhase?
+    private var pausedShouldAdvance = false
+    private var pausedSubmissionFailed = false
 
     var isTurnActive: Bool {
         switch phase {
@@ -96,13 +92,16 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         case .idle, .awaitingActivity, .active:
             phase = .active
         case .paused:
-            break
+            recordPausedServerActive()
         }
     }
 
     mutating func serverBecameIdle() -> OpenCodeQueuedPrompt? {
         switch phase {
-        case .idle, .awaitingActivity, .paused:
+        case .idle, .awaitingActivity:
+            return nil
+        case .paused:
+            recordPausedServerIdle()
             return nil
         case .submitting(let observedActive, _):
             guard observedActive else { return nil }
@@ -115,7 +114,10 @@ struct OpenCodePromptQueue: Equatable, Sendable {
 
     mutating func reconciledServerIdle() -> OpenCodeQueuedPrompt? {
         switch phase {
-        case .idle, .awaitingActivity, .paused:
+        case .idle, .awaitingActivity:
+            return nil
+        case .paused:
+            recordPausedServerIdle()
             return nil
         case .submitting(let observedActive, _):
             guard observedActive else { return nil }
@@ -135,7 +137,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
             phase = observedActive ? .active : .awaitingActivity
             return nil
         case .paused:
-            pausedSubmissionResult = .succeeded
+            recordPausedDispatchSucceeded()
             return nil
         case .idle, .awaitingActivity, .active:
             return nil
@@ -152,16 +154,19 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         }
         if failedWhilePaused {
             phase = .paused
-            pausedSubmissionResult = .failed
+            pausedResumePhase = .paused
+            pausedShouldAdvance = false
+            pausedSubmissionFailed = true
         } else {
             phase = prompts.isEmpty ? .idle : .paused
-            pausedSubmissionResult = .none
+            resetPausedTransition()
         }
     }
 
     mutating func retry(_ id: UUID) -> OpenCodeQueuedPrompt? {
         guard phase == .paused, prompts.first?.id == id else { return nil }
         phase = .submitting(observedActive: false, observedCompletion: false)
+        resetPausedTransition()
         return prompts.removeFirst()
     }
 
@@ -169,6 +174,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         prompts.removeAll { $0.id == id }
         if phase == .paused, prompts.isEmpty {
             phase = .idle
+            resetPausedTransition()
         }
     }
 
@@ -180,7 +186,9 @@ struct OpenCodePromptQueue: Equatable, Sendable {
     mutating func pausePendingPrompts() -> PauseSnapshot {
         let snapshot = PauseSnapshot(phase: phase)
         phase = prompts.isEmpty ? .idle : .paused
-        pausedSubmissionResult = .none
+        pausedResumePhase = phase == .paused ? snapshot.phase : nil
+        pausedShouldAdvance = false
+        pausedSubmissionFailed = false
         return snapshot
     }
 
@@ -189,23 +197,68 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         after snapshot: PauseSnapshot
     ) -> OpenCodeQueuedPrompt? {
         guard phase == .paused else { return nil }
-        let submissionResult = pausedSubmissionResult
-        pausedSubmissionResult = .none
-        guard case .submitting = snapshot.phase else {
-            phase = snapshot.phase
-            return nil
-        }
-        switch submissionResult {
-        case .none:
-            phase = snapshot.phase
-            return nil
-        case .succeeded:
-            phase = snapshot.phase
-            return dispatchSucceeded()
-        case .failed:
+        let resumePhase = pausedResumePhase ?? snapshot.phase
+        let shouldAdvance = pausedShouldAdvance
+        let submissionFailed = pausedSubmissionFailed
+        resetPausedTransition()
+        if submissionFailed {
             phase = prompts.isEmpty ? .idle : .paused
             return nil
         }
+        if shouldAdvance {
+            phase = .active
+            return takeNextOrBecomeIdle()
+        }
+        phase = resumePhase
+        return nil
+    }
+
+    private mutating func recordPausedServerActive() {
+        guard !pausedSubmissionFailed, !pausedShouldAdvance else { return }
+        switch pausedResumePhase {
+        case .submitting(_, let observedCompletion):
+            pausedResumePhase = .submitting(
+                observedActive: true,
+                observedCompletion: observedCompletion
+            )
+        case .idle, .awaitingActivity, .active:
+            pausedResumePhase = .active
+        case .paused, nil:
+            break
+        }
+    }
+
+    private mutating func recordPausedServerIdle() {
+        guard !pausedSubmissionFailed, !pausedShouldAdvance else { return }
+        switch pausedResumePhase {
+        case .submitting(let observedActive, _):
+            guard observedActive else { return }
+            pausedResumePhase = .submitting(
+                observedActive: true,
+                observedCompletion: true
+            )
+        case .active:
+            pausedShouldAdvance = true
+        case .idle, .awaitingActivity, .paused, nil:
+            break
+        }
+    }
+
+    private mutating func recordPausedDispatchSucceeded() {
+        guard !pausedSubmissionFailed, !pausedShouldAdvance else { return }
+        guard case .submitting(let observedActive, let observedCompletion) = pausedResumePhase
+        else { return }
+        if observedActive, observedCompletion {
+            pausedShouldAdvance = true
+        } else {
+            pausedResumePhase = observedActive ? .active : .awaitingActivity
+        }
+    }
+
+    private mutating func resetPausedTransition() {
+        pausedResumePhase = nil
+        pausedShouldAdvance = false
+        pausedSubmissionFailed = false
     }
 
     private mutating func takeNextOrBecomeIdle() -> OpenCodeQueuedPrompt? {
