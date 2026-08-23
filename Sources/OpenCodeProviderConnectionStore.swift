@@ -143,6 +143,7 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
     }
 
     func beginOAuth() async {
+        guard !isSubmitting else { return }
         guard let provider = selectedProvider,
               let method = selectedMethod,
               method.kind == .oauth

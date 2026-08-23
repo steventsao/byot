@@ -112,51 +112,68 @@ private struct OpenCodeProviderPickerView: View {
     @State private var searchText = ""
 
     var body: some View {
-        List(filteredProviders) { provider in
-            Button {
-                store.selectProvider(provider)
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(BYOTBrand.accent)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(provider.name)
-                            .font(.cleanBodySemibold)
-                        Text(provider.id)
-                            .font(.cleanCaption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if provider.isConnected {
-                        Label("Connected", systemImage: "checkmark.circle.fill")
-                            .labelStyle(.iconOnly)
-                            .foregroundStyle(BYOTBrand.accent)
-                            .accessibilityLabel("Connected")
-                    }
-                    Image(systemName: "chevron.right")
-                        .font(.caption.bold())
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
+        List {
+            if let errorMessage = presentation.refreshErrorMessage {
+                Section {
+                    ErrorBanner(message: errorMessage)
+                        .listRowInsets(EdgeInsets())
                 }
             }
-            .buttonStyle(.plain)
+            ForEach(presentation.filteredProviders) { provider in
+                Button {
+                    store.selectProvider(provider)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(BYOTBrand.accent)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(provider.name)
+                                .font(.cleanBodySemibold)
+                            Text(provider.id)
+                                .font(.cleanCaption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if provider.isConnected {
+                            Label("Connected", systemImage: "checkmark.circle.fill")
+                                .labelStyle(.iconOnly)
+                                .foregroundStyle(BYOTBrand.accent)
+                                .accessibilityLabel("Connected")
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.caption.bold())
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
         }
         .searchable(text: $searchText, prompt: "Search providers")
         .refreshable { await store.load() }
         .overlay {
-            if filteredProviders.isEmpty {
+            switch presentation.emptyState {
+            case .none:
+                EmptyView()
+            case .catalog:
+                ContentUnavailableView(
+                    "No providers",
+                    systemImage: "shippingbox",
+                    description: Text("OpenCode did not report any providers to connect.")
+                )
+            case .search:
                 ContentUnavailableView.search
             }
         }
     }
 
-    private var filteredProviders: [OpenCodeProviderConnection] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return store.providers }
-        return store.providers.filter {
-            $0.name.localizedStandardContains(query) || $0.id.localizedStandardContains(query)
-        }
+    private var presentation: OpenCodeProviderCatalogPresentation {
+        OpenCodeProviderCatalogPresentation(
+            providers: store.providers,
+            query: searchText,
+            errorMessage: store.errorMessage
+        )
     }
 }
 

@@ -155,6 +155,38 @@ struct OpenCodeProviderConnection: Identifiable, Equatable, Sendable {
     }
 }
 
+enum OpenCodeProviderCatalogEmptyState: Equatable, Sendable {
+    case none
+    case catalog
+    case search
+}
+
+struct OpenCodeProviderCatalogPresentation: Equatable, Sendable {
+    let providers: [OpenCodeProviderConnection]
+    let query: String
+    let errorMessage: String?
+
+    var filteredProviders: [OpenCodeProviderConnection] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return providers }
+        return providers.filter {
+            $0.name.localizedStandardContains(query)
+                || $0.id.localizedStandardContains(query)
+        }
+    }
+
+    var emptyState: OpenCodeProviderCatalogEmptyState {
+        guard filteredProviders.isEmpty else { return .none }
+        return query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? .catalog
+            : .search
+    }
+
+    var refreshErrorMessage: String? {
+        providers.isEmpty ? nil : errorMessage
+    }
+}
+
 enum OpenCodeProviderOAuthMode: Equatable, Sendable {
     case code
     case automatic
