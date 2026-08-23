@@ -86,6 +86,34 @@ struct OpenCodeSessionLifecycleStateTests {
         #expect(queue.prompts.map(\.text) == ["Do not send after stop"])
     }
 
+    @Test("A failed remote stop restores queued follow-ups")
+    func failedStopRestoresQueue() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            text: "Send after the failed stop",
+            model: nil,
+            serverIsActive: true
+        )
+        OpenCodeSessionAbortPolicy.prepareQueueForRequest(&queue)
+
+        OpenCodeSessionAbortPolicy.restoreQueueAfterFailedRequest(
+            &queue,
+            serverIsActive: true
+        )
+
+        #expect(queue.isPaused == false)
+        #expect(queue.serverBecameIdle()?.text == "Send after the failed stop")
+    }
+
+    @Test("Concurrent session mutations have visible failure copy")
+    @MainActor
+    func mutationInProgressFeedback() {
+        #expect(
+            OpenCodeProjectStore.mutationInProgressMessage(sessionTitle: "Fix auth")
+                == "Fix auth is already being updated."
+        )
+    }
+
     private func makeSession(
         id: String,
         title: String,
