@@ -174,7 +174,10 @@ struct OpenCodeSessionView: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
-            .refreshable { await store.refresh() }
+            .refreshable {
+                await store.refresh()
+                await inputStore.refresh()
+            }
             .onChange(of: store.transcriptRevision) { _, _ in
                 scrollToConversationBottomIfNeeded(proxy)
             }

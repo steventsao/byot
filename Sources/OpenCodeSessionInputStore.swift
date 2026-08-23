@@ -100,7 +100,7 @@ final class OpenCodeSessionInputStore: ObservableObject {
                 agents = []
             }
             guard generation == loadGeneration else { return }
-            if selectedAgent == nil {
+            if selectedAgentID == nil {
                 selectedAgentID = selectableAgents.first?.id
             }
             errorMessage = catalogErrors.first?.localizedDescription
@@ -110,6 +110,10 @@ final class OpenCodeSessionInputStore: ObservableObject {
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
+    }
+
+    func refresh() async {
+        await load()
     }
 
     func selectAgent(_ agent: OpenCodeAgentOption) {
