@@ -28,12 +28,12 @@ struct OpenCodeProviderConnectionView: View {
                             Button("Methods", systemImage: "chevron.left") {
                                 Task { await store.leaveToMethods() }
                             }
-                            .disabled(store.isOAuthStartInFlight)
+                            .disabled(store.isNavigationLocked)
                         } else if store.selectedProvider != nil {
                             Button("Providers", systemImage: "chevron.left") {
                                 Task { await store.leaveToProviders() }
                             }
-                            .disabled(store.isOAuthStartInFlight)
+                            .disabled(store.isNavigationLocked)
                         }
                     }
                     ToolbarItem(placement: .confirmationAction) {
@@ -42,7 +42,7 @@ struct OpenCodeProviderConnectionView: View {
                                 if await store.prepareToDismiss() { dismiss() }
                             }
                         }
-                        .disabled(store.isOAuthStartInFlight)
+                        .disabled(store.isNavigationLocked)
                     }
                 }
         }
