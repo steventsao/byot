@@ -93,11 +93,19 @@ struct OpenCodeSession: Codable, Identifiable, Equatable, Sendable {
     let workspaceID: String?
     let directory: String
     let parentID: String?
+    var revert: OpenCodeSessionRevertState? = nil
     let summary: OpenCodeSessionSummary?
     let title: String
     let agent: String?
     let version: String
     let time: OpenCodeSessionTime
+}
+
+struct OpenCodeSessionRevertState: Codable, Equatable, Sendable {
+    let messageID: String
+    let partID: String?
+    let snapshot: String?
+    let diff: String?
 }
 
 struct OpenCodeSessionSummary: Codable, Equatable, Sendable {

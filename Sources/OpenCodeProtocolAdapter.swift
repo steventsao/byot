@@ -61,6 +61,38 @@ protocol OpenCodeProtocolAdapting: Sendable {
         workspace: String?
     ) async throws -> [OpenCodeTodo]
 
+    func revertSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        target: OpenCodeSessionRevertTarget
+    ) async throws -> OpenCodeSessionHistoryMutation
+
+    func unrevertSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSessionHistoryMutation
+
+    func summarizeSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        model: OpenCodeModelOption?,
+        automatically: Bool?
+    ) async throws -> Bool
+
+    func forkSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        messageID: String?
+    ) async throws -> OpenCodeSession
+
     func connectedProviderModels(
         using transport: OpenCodeTransport,
         directory: String,
@@ -275,6 +307,81 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         try await transport.get(
             ["session", sessionID, "todo"],
             query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func revertSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        target: OpenCodeSessionRevertTarget
+    ) async throws -> OpenCodeSessionHistoryMutation {
+        struct Body: Encodable {
+            let messageID: String
+            let partID: String?
+        }
+        let session: OpenCodeSession = try await transport.post(
+            ["session", sessionID, "revert"],
+            query: instanceQuery(directory: directory, workspace: workspace),
+            body: Body(messageID: target.messageID, partID: target.partID)
+        )
+        return OpenCodeSessionHistoryMutation(
+            session: session,
+            revert: session.revert
+        )
+    }
+
+    func unrevertSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSessionHistoryMutation {
+        let session: OpenCodeSession = try await transport.postWithoutBody(
+            ["session", sessionID, "unrevert"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+        return OpenCodeSessionHistoryMutation(session: session)
+    }
+
+    func summarizeSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        model: OpenCodeModelOption?,
+        automatically: Bool?
+    ) async throws -> Bool {
+        guard let model else { throw OpenCodeSessionHistoryError.modelRequired }
+        struct Body: Encodable {
+            let providerID: String
+            let modelID: String
+            let auto: Bool?
+        }
+        return try await transport.post(
+            ["session", sessionID, "summarize"],
+            query: instanceQuery(directory: directory, workspace: workspace),
+            body: Body(
+                providerID: model.providerID,
+                modelID: model.modelID,
+                auto: automatically
+            )
+        )
+    }
+
+    func forkSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        messageID: String?
+    ) async throws -> OpenCodeSession {
+        struct Body: Encodable { let messageID: String? }
+        return try await transport.post(
+            ["session", sessionID, "fork"],
+            query: instanceQuery(directory: directory, workspace: workspace),
+            body: Body(messageID: messageID)
         )
     }
 
@@ -636,6 +743,66 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         workspace: String?
     ) async throws -> [OpenCodeTodo] {
         []
+    }
+
+    func revertSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        target: OpenCodeSessionRevertTarget
+    ) async throws -> OpenCodeSessionHistoryMutation {
+        struct Body: Encodable {
+            let messageID: String
+            let files: Bool?
+        }
+        let response: OpenCodeV2DataResponse<OpenCodeV2RevertState> = try await transport.post(
+            ["api", "session", sessionID, "revert", "stage"],
+            body: Body(messageID: target.messageID, files: target.files)
+        )
+        return OpenCodeSessionHistoryMutation(
+            revert: response.data.normalized,
+            diffs: response.data.files?.map(\.normalized)
+        )
+    }
+
+    func unrevertSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSessionHistoryMutation {
+        try await transport.postWithoutBodyExpectingEmptyResponse(
+            ["api", "session", sessionID, "revert", "clear"]
+        )
+        return OpenCodeSessionHistoryMutation(diffs: [])
+    }
+
+    func summarizeSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        model: OpenCodeModelOption?,
+        automatically: Bool?
+    ) async throws -> Bool {
+        try await transport.postWithoutBodyExpectingEmptyResponse(
+            ["api", "session", sessionID, "compact"]
+        )
+        return true
+    }
+
+    func forkSession(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?,
+        messageID: String?
+    ) async throws -> OpenCodeSession {
+        throw unavailable(
+            feature: "Fork session",
+            support: capabilities.sessionFork
+        )
     }
 
     func connectedProviderModels(
@@ -1009,6 +1176,7 @@ private struct OpenCodeV2Session: Decodable {
     let time: Time
     let title: String
     let location: OpenCodeV2LocationReference
+    let revert: OpenCodeV2RevertState?
 
     var normalized: OpenCodeSession {
         OpenCodeSession(
@@ -1018,6 +1186,7 @@ private struct OpenCodeV2Session: Decodable {
             workspaceID: location.workspaceID,
             directory: location.directory,
             parentID: parentID,
+            revert: revert?.normalized,
             summary: nil,
             title: title,
             agent: agent,
@@ -1028,6 +1197,23 @@ private struct OpenCodeV2Session: Decodable {
                 compacting: nil,
                 archived: time.archived
             )
+        )
+    }
+}
+
+private struct OpenCodeV2RevertState: Decodable {
+    let messageID: String
+    let partID: String?
+    let snapshot: String?
+    let diff: String?
+    let files: [OpenCodeSessionHistoryFileDiff]?
+
+    var normalized: OpenCodeSessionRevertState {
+        OpenCodeSessionRevertState(
+            messageID: messageID,
+            partID: partID,
+            snapshot: snapshot,
+            diff: diff
         )
     }
 }

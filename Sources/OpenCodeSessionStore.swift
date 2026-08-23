@@ -3,18 +3,27 @@ import Foundation
 
 @MainActor
 final class OpenCodeSessionStore: ObservableObject {
+    private struct HistoryRollbackContext {
+        let preparation: OpenCodeSessionHistoryRollbackPolicy.Preparation
+        let lifecycleGeneration: Int
+        let remoteAbortSucceeded: Bool
+        let interruptedPrompt: OpenCodeQueuedPrompt?
+    }
+
     @Published private(set) var messages: [OpenCodeMessageEnvelope] = []
     @Published private(set) var permissions: [OpenCodePermissionRequest] = []
     @Published private(set) var questions: [OpenCodeQuestionRequest] = []
     @Published private(set) var childSessions: [OpenCodeSession] = []
     @Published private(set) var todos: [OpenCodeTodo] = []
     @Published private(set) var diffs: [OpenCodeDiff] = []
+    @Published private(set) var session: OpenCodeSession
     @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
     @Published private(set) var status: OpenCodeSessionStatus = .idle
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false
     @Published private(set) var isSending = false
     @Published private(set) var isAborting = false
+    @Published private(set) var historyActionInFlight: OpenCodeSessionHistoryAction?
     @Published private(set) var isEventConnected = false
     @Published private(set) var eventErrorMessage: String?
     @Published private(set) var actionErrorMessage: String?
@@ -29,7 +38,6 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var modelErrorMessage: String?
     @Published var errorMessage: String?
 
-    let session: OpenCodeSession
     let directory: String
     private let workspace: String?
     private let client: OpenCodeClient
@@ -38,8 +46,10 @@ final class OpenCodeSessionStore: ObservableObject {
     private var persistedModelID: String?
     private var transcript = OpenCodeTranscriptReducer()
     private var promptQueue = OpenCodePromptQueue()
+    private var historyProjection = OpenCodeSessionHistoryProjection()
     private var eventTask: Task<Void, Never>?
     private var reconciliationTask: Task<Void, Never>?
+    private var reconciliationVersion = OpenCodeSessionReconciliationVersion()
     private var messageRefreshTask: Task<Void, Never>?
     private var actionRefreshTask: Task<Void, Never>?
     private var modelTask: Task<Void, Never>?
@@ -57,6 +67,7 @@ final class OpenCodeSessionStore: ObservableObject {
     private var diffMutationGeneration = 0
     private var statusMutationGeneration = 0
     private var todoMutationGeneration = 0
+    private var historyMutationGeneration = 0
     private var messageRefreshPending = false
     private var actionRefreshPending = false
     private var isRunning = false
@@ -109,6 +120,42 @@ final class OpenCodeSessionStore: ObservableObject {
         )
     }
 
+    var historyPresentation: OpenCodeSessionHistoryPresentation {
+        OpenCodeSessionHistoryPresentation(
+            messages: messages,
+            revert: session.revert,
+            capabilities: protocolCapabilities,
+            projection: historyProjection
+        )
+    }
+
+    var historyPolicy: OpenCodeSessionHistoryPolicy? {
+        protocolCapabilities.map(OpenCodeSessionHistoryPolicy.init)
+    }
+
+    var canRevertLatestPrompt: Bool {
+        historyActionInFlight == nil
+            && historyPolicy?.canRevert == true
+            && historyPresentation.latestRevertTarget != nil
+    }
+
+    var canUnrevertSession: Bool {
+        OpenCodeSessionHistoryActionAvailability.canRestore(
+            hasRevertedMessages: historyPresentation.canRestore,
+            actionInFlight: historyActionInFlight
+        )
+    }
+
+    var canSummarizeSession: Bool {
+        historyActionInFlight == nil && canSummarizeForCurrentSelection
+    }
+
+    var canForkSession: Bool {
+        historyActionInFlight == nil
+            && historyPolicy?.canFork == true
+            && !historyPresentation.visibleUserMessages.isEmpty
+    }
+
     var canAbortSession: Bool {
         lifecyclePolicy?.canAbort == true
             && OpenCodeSessionAbortPolicy.canRequest(
@@ -157,6 +204,7 @@ final class OpenCodeSessionStore: ObservableObject {
         eventTask = nil
         reconciliationTask?.cancel()
         reconciliationTask = nil
+        _ = reconciliationVersion.begin()
         messageRefreshTask?.cancel()
         messageRefreshTask = nil
         actionRefreshTask?.cancel()
@@ -195,6 +243,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let diffBaseline = diffMutationGeneration
         let statusBaseline = statusMutationGeneration
         let todoBaseline = todoMutationGeneration
+        let historyBaseline = historyMutationGeneration
         if showLoading { isLoading = true }
         defer {
             if generation == refreshGeneration { isLoading = false }
@@ -260,6 +309,13 @@ final class OpenCodeSessionStore: ObservableObject {
                     workspace: actionWorkspace
                 )
             }
+            async let sessionResult = Self.capture {
+                try await actionClient.getSession(
+                    sessionID: actionSessionID,
+                    directory: actionDirectory,
+                    workspace: actionWorkspace
+                )
+            }
 
             let results = await (
                 messageResult,
@@ -268,23 +324,55 @@ final class OpenCodeSessionStore: ObservableObject {
                 diffResult,
                 statusResult,
                 childResult,
-                todoResult
+                todoResult,
+                sessionResult
             )
             try Task.checkCancellation()
             guard generation == refreshGeneration else { return }
 
             var coreErrors: [Error] = []
+            let transcriptAccepted: Bool
+            switch results.0 {
+            case .success:
+                transcriptAccepted = messageGeneration == messageRequestGeneration
+                    && transcriptBaseline == transcriptMutationGeneration
+            case .failure:
+                transcriptAccepted = false
+            }
+            var acceptedSession: OpenCodeSession?
+            switch results.7 {
+            case .success(let fetchedSession):
+                if OpenCodeSessionHistoryReconciliation.acceptsFetchedSession(
+                    mutationBaseline: historyBaseline,
+                    currentMutation: historyMutationGeneration,
+                    clearsBoundary: session.revert != nil && fetchedSession.revert == nil,
+                    transcriptAccepted: transcriptAccepted
+                ) {
+                    acceptedSession = fetchedSession
+                }
+            case .failure(let error):
+                coreErrors.append(error)
+            }
+            var acceptedMessages: [OpenCodeMessageEnvelope]?
             switch results.0 {
             case .success(let messages):
-                if messageGeneration == messageRequestGeneration,
-                   transcriptBaseline == transcriptMutationGeneration {
-                    transcript.replace(with: messages)
-                    publishTranscript()
+                if transcriptAccepted {
+                    acceptedMessages = messages
                 }
             case .failure(let error):
                 if messageGeneration == messageRequestGeneration {
                     coreErrors.append(error)
                 }
+            }
+            let clearsRevert = acceptedSession.map {
+                session.revert != nil && $0.revert == nil
+            } ?? false
+            if clearsRevert, let acceptedMessages {
+                replaceTranscript(with: acceptedMessages)
+                if let acceptedSession { applyReconciledSession(acceptedSession) }
+            } else {
+                if let acceptedSession { applyReconciledSession(acceptedSession) }
+                if let acceptedMessages { replaceTranscript(with: acceptedMessages) }
             }
             switch results.3 {
             case .success(let diffs):
@@ -436,6 +524,237 @@ final class OpenCodeSessionStore: ObservableObject {
         return true
     }
 
+    func revertSession(to target: OpenCodeSessionRevertTarget) async -> Bool {
+        guard historyPolicy?.canRevert == true, beginHistoryAction(.revert) else {
+            return false
+        }
+        defer { historyActionInFlight = nil }
+        var rollbackContext: HistoryRollbackContext?
+        var shouldRestoreQueue = true
+        do {
+            rollbackContext = try await prepareForHistoryRollback()
+            invalidateHistorySnapshots()
+            let mutation = try await client.revertSession(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace,
+                target: target
+            )
+            shouldRestoreQueue = false
+            applyHistoryMutation(mutation, clearsRevert: false)
+            await refresh()
+            errorMessage = nil
+            return true
+        } catch is CancellationError {
+            if shouldRestoreQueue, let rollbackContext {
+                restoreQueueAfterFailedHistoryMutation(rollbackContext)
+            }
+            return false
+        } catch {
+            if shouldRestoreQueue, let rollbackContext {
+                restoreQueueAfterFailedHistoryMutation(rollbackContext)
+            }
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func unrevertSession() async -> Bool {
+        guard historyPresentation.canRestore, beginHistoryAction(.unrevert) else {
+            return false
+        }
+        defer { historyActionInFlight = nil }
+        var rollbackContext: HistoryRollbackContext?
+        var shouldRestoreQueue = true
+        do {
+            rollbackContext = try await prepareForHistoryRollback()
+            invalidateHistorySnapshots()
+            let mutation = try await client.unrevertSession(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace
+            )
+            shouldRestoreQueue = false
+            applyHistoryMutation(mutation, clearsRevert: true)
+            await refresh()
+            errorMessage = nil
+            return true
+        } catch is CancellationError {
+            if shouldRestoreQueue, let rollbackContext {
+                restoreQueueAfterFailedHistoryMutation(rollbackContext)
+            }
+            return false
+        } catch {
+            if shouldRestoreQueue, let rollbackContext {
+                restoreQueueAfterFailedHistoryMutation(rollbackContext)
+            }
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func summarizeSession() async -> Bool {
+        guard canSummarizeForCurrentSelection, beginHistoryAction(.summarize) else {
+            return false
+        }
+        defer { historyActionInFlight = nil }
+        do {
+            let summarized = try await client.summarizeSession(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace,
+                model: selectedModel
+            )
+            if summarized { await refresh() }
+            errorMessage = nil
+            return summarized
+        } catch is CancellationError {
+            return false
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func forkSession(at messageID: String?) async -> OpenCodeSession? {
+        guard historyPolicy?.canFork == true, beginHistoryAction(.fork) else {
+            return nil
+        }
+        defer { historyActionInFlight = nil }
+        do {
+            let forked = try await client.forkSession(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace,
+                messageID: messageID
+            )
+            errorMessage = nil
+            return forked
+        } catch is CancellationError {
+            return nil
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    private var canSummarizeForCurrentSelection: Bool {
+        guard historyPolicy?.canSummarize == true,
+              !historyPresentation.visibleUserMessages.isEmpty
+        else { return false }
+        return historyPolicy?.summarizeRequiresModel != true || selectedModel != nil
+    }
+
+    private func beginHistoryAction(_ action: OpenCodeSessionHistoryAction) -> Bool {
+        guard historyActionInFlight == nil else { return false }
+        historyActionInFlight = action
+        return true
+    }
+
+    private func invalidateHistorySnapshots() {
+        refreshGeneration &+= 1
+        messageRequestGeneration &+= 1
+        diffMutationGeneration &+= 1
+        historyMutationGeneration &+= 1
+    }
+
+    private func prepareForHistoryRollback() async throws -> HistoryRollbackContext {
+        let requestGeneration = lifecycleGeneration
+        let interruptedPrompt = inFlightPrompt
+        isAborting = true
+        defer { isAborting = false }
+        let preparation = OpenCodeSessionHistoryRollbackPolicy.prepare(
+            status: status,
+            hasInFlightPrompt: interruptedPrompt != nil,
+            queue: &promptQueue
+        )
+        publishPromptQueue()
+        cancelQueueRecovery()
+        let context = HistoryRollbackContext(
+            preparation: preparation,
+            lifecycleGeneration: requestGeneration,
+            remoteAbortSucceeded: false,
+            interruptedPrompt: nil
+        )
+        guard preparation.requiresRemoteAbort else { return context }
+        do {
+            try await client.abortSession(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace
+            )
+            guard isRunning, requestGeneration == lifecycleGeneration else {
+                throw CancellationError()
+            }
+        } catch {
+            restoreQueueAfterFailedHistoryMutation(context)
+            throw error
+        }
+        promptDispatchTask?.cancel()
+        promptDispatchTask = nil
+        promptDispatchID = nil
+        inFlightPrompt = nil
+        isSending = false
+        statusMutationGeneration &+= 1
+        status = .idle
+        isStatusReady = true
+        finishCurrentTurnActivityTracking()
+        return HistoryRollbackContext(
+            preparation: preparation,
+            lifecycleGeneration: requestGeneration,
+            remoteAbortSucceeded: true,
+            interruptedPrompt: interruptedPrompt
+        )
+    }
+
+    @discardableResult
+    private func restoreQueueAfterFailedHistoryMutation(
+        _ context: HistoryRollbackContext
+    ) -> Bool {
+        guard OpenCodeSessionAbortPolicy.shouldRestoreQueue(
+            isRunning: isRunning,
+            requestGeneration: context.lifecycleGeneration,
+            currentGeneration: lifecycleGeneration
+        ) else { return false }
+        let nextPrompt = OpenCodeSessionHistoryRollbackPolicy.restore(
+            context.preparation,
+            remoteAbortSucceeded: context.remoteAbortSucceeded,
+            interruptedPrompt: context.interruptedPrompt,
+            queue: &promptQueue
+        )
+        publishPromptQueue()
+        if let nextPrompt {
+            schedulePromptDispatch(nextPrompt)
+        } else {
+            scheduleQueueRecoveryIfNeeded()
+        }
+        return true
+    }
+
+    private func applyHistoryMutation(
+        _ mutation: OpenCodeSessionHistoryMutation,
+        clearsRevert: Bool
+    ) {
+        historyMutationGeneration &+= 1
+        let nextRevert = clearsRevert ? nil : mutation.session?.revert ?? mutation.revert
+        historyProjection.reconcile(messages: messages, revert: nextRevert)
+        if let updatedSession = mutation.session {
+            session = updatedSession
+        } else {
+            session.revert = clearsRevert ? nil : mutation.revert
+        }
+        if clearsRevert { session.revert = nil }
+        let reconciledDiffs = OpenCodeSessionHistoryReconciliation.diffs(
+            delivered: mutation.diffs,
+            current: diffs,
+            capabilities: protocolCapabilities
+        )
+        if reconciledDiffs != diffs {
+            diffMutationGeneration &+= 1
+            diffs = reconciledDiffs
+        }
+    }
+
     func removeQueuedPrompt(_ id: UUID) {
         promptQueue.remove(id)
         publishPromptQueue()
@@ -454,6 +773,10 @@ final class OpenCodeSessionStore: ObservableObject {
         dispatchID: UUID
     ) async {
         guard isCurrentPromptDispatch(dispatchID), !Task.isCancelled else { return }
+        let historyRefreshScope = OpenCodeSessionHistoryContinuationPolicy.refreshScope(
+            requested: .messages,
+            revert: session.revert
+        )
         beginCurrentTurnActivityTracking()
         markOptimisticBusy()
         isSending = true
@@ -473,7 +796,12 @@ final class OpenCodeSessionStore: ObservableObject {
             let nextPrompt = promptQueue.dispatchSucceeded()
             publishPromptQueue()
             finishPromptDispatch(dispatchID)
-            scheduleMessageRefresh()
+            switch historyRefreshScope {
+            case .messages:
+                scheduleMessageRefresh()
+            case .session:
+                scheduleReconciliation()
+            }
             if let nextPrompt {
                 schedulePromptDispatch(nextPrompt)
             } else if observedServerActivity == false || isEventConnected == false {
@@ -704,6 +1032,28 @@ final class OpenCodeSessionStore: ObservableObject {
         if let eventSessionID = event.sessionID, eventSessionID != session.id {
             return
         }
+        if let historyMutation = OpenCodeSessionHistoryEventProjection.mutation(from: event) {
+            switch historyMutation {
+            case .staged(let mutation):
+                applyHistoryMutation(mutation, clearsRevert: false)
+            case .cleared:
+                historyMutationGeneration &+= 1
+                historyProjection.reconcile(messages: messages, revert: nil)
+                session.revert = nil
+                diffMutationGeneration &+= 1
+                diffs = []
+            case .committed:
+                historyMutationGeneration &+= 1
+                if OpenCodeSessionHistoryReconciliation.keepsBoundaryUntilRefresh(
+                    for: historyMutation
+                ) {
+                    scheduleReconciliation()
+                } else {
+                    session.revert = nil
+                }
+            }
+            return
+        }
         switch event.type {
         case "server.connected":
             scheduleReconciliation()
@@ -761,9 +1111,21 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func publishTranscript() {
-        messages = transcript.messages
+        let messages = transcript.messages
+        historyProjection.reconcile(messages: messages, revert: session.revert)
+        self.messages = messages
         updateCurrentTurnActivityTracking()
         transcriptRevision &+= 1
+    }
+
+    private func replaceTranscript(with messages: [OpenCodeMessageEnvelope]) {
+        transcript.replace(with: messages)
+        publishTranscript()
+    }
+
+    private func applyReconciledSession(_ session: OpenCodeSession) {
+        historyProjection.reconcile(messages: messages, revert: session.revert)
+        self.session = session
     }
 
     private func applyReconciledStatus(_ value: OpenCodeSessionStatus) {
@@ -1079,16 +1441,34 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func scheduleReconciliation() {
-        guard reconciliationTask == nil else { return }
+        reconciliationTask?.cancel()
+        let request = reconciliationVersion.begin()
         reconciliationTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(50))
-            guard !Task.isCancelled, let store = self else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(50))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled,
+                  let store = self,
+                  store.reconciliationVersion.accepts(request)
+            else { return }
             await store.refresh()
+            guard !Task.isCancelled,
+                  store.reconciliationVersion.accepts(request)
+            else { return }
             store.reconciliationTask = nil
         }
     }
 
     private func scheduleMessageRefresh() {
+        guard OpenCodeSessionHistoryContinuationPolicy.refreshScope(
+            requested: .messages,
+            revert: session.revert
+        ) == .messages else {
+            scheduleReconciliation()
+            return
+        }
         messageRefreshPending = true
         guard messageRefreshTask == nil else { return }
         messageRefreshTask = Task { [weak self] in

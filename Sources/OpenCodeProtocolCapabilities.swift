@@ -26,6 +26,11 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
     let sessionChildren: OpenCodeFeatureSupport
     let sessionAbort: OpenCodeFeatureSupport
     let sessionTodos: OpenCodeFeatureSupport
+    let sessionRevert: OpenCodeFeatureSupport
+    let sessionUnrevert: OpenCodeFeatureSupport
+    let sessionSummarize: OpenCodeFeatureSupport
+    let sessionFork: OpenCodeFeatureSupport
+    let sessionSummarizeRequiresModel: Bool
 
     static let v1 = Self(
         sessionDiff: .supported,
@@ -38,7 +43,12 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         sessionDelete: .supported,
         sessionChildren: .supported,
         sessionAbort: .supported,
-        sessionTodos: .supported
+        sessionTodos: .supported,
+        sessionRevert: .supported,
+        sessionUnrevert: .supported,
+        sessionSummarize: .supported,
+        sessionFork: .supported,
+        sessionSummarizeRequiresModel: true
     )
 
     static let v2 = Self(
@@ -70,7 +80,14 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         sessionAbort: .supported,
         sessionTodos: .unavailable(
             reason: "OpenCode v2 does not expose a session todo route yet."
-        )
+        ),
+        sessionRevert: .supported,
+        sessionUnrevert: .supported,
+        sessionSummarize: .supported,
+        sessionFork: .unavailable(
+            reason: "OpenCode v2 does not expose a session fork route yet."
+        ),
+        sessionSummarizeRequiresModel: false
     )
 }
 
