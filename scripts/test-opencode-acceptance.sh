@@ -90,6 +90,20 @@ if OPENCODE_BASE_URL=http://example.com \
 fi
 grep -q "local network" "$acceptance_test_tmp/public-http.out" || fail "public HTTP failure explains local policy"
 
+for spoofable_host in localhost opencode.local; do
+  output_name="${spoofable_host//./-}-http.out"
+  if OPENCODE_BASE_URL="http://$spoofable_host" \
+     OPENCODE_PROTOCOL=v1 \
+     OPENCODE_PASSWORD=test-secret \
+     OPENCODE_DIRECTORY=/repo \
+     OPENCODE_ALLOW_LOCAL_HTTP=1 \
+       "$harness" >"$acceptance_test_tmp/$output_name" 2>&1; then
+    fail "$spoofable_host HTTP must fail before a request"
+  fi
+  grep -q "numeric local network" "$acceptance_test_tmp/$output_name" \
+    || fail "$spoofable_host failure explains the numeric-address policy"
+done
+
 if OPENCODE_BASE_URL="http://127.0.0.1:$v1_no_version_port" \
    OPENCODE_PROTOCOL=v1 \
    OPENCODE_USERNAME=opencode \
