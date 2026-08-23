@@ -266,6 +266,32 @@ struct OpenCodeSessionInputStoreTests {
         #expect(store.selectedAgent == nil)
     }
 
+    @Test("A preserved subagent remains the submission and shell agent")
+    func preservedSubagentRemainsSubmittable() async {
+        let service = MockSessionInputService(
+            capabilities: .v1,
+            commands: [],
+            agents: [
+                OpenCodeAgentOption(id: "build", description: nil, mode: "primary", hidden: false),
+                OpenCodeAgentOption(id: "helper", description: nil, mode: "subagent", hidden: false),
+            ]
+        )
+        let store = OpenCodeSessionInputStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil,
+            initialAgentID: "helper"
+        )
+
+        await store.load()
+
+        #expect(store.selectedAgent == nil)
+        #expect(store.submissionAgentID == "helper")
+        #expect(store.validate(.prompt("continue")))
+        #expect(store.validate(.shell("git status")))
+        #expect(store.prepareShellMode())
+    }
+
     @Test("A failed catalog refresh preserves the last trusted commands and agents")
     func failedRefreshPreservesCatalogs() async {
         let command = OpenCodeCommandOption(
