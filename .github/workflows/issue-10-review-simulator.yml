@@ -1,0 +1,45 @@
+name: OpenCode local discovery review verification
+
+on:
+  push:
+    branches:
+      - codex/issue-10-mdns-discovery
+
+permissions:
+  contents: read
+
+jobs:
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install project generator
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Boot simulator
+        id: simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime="$(xcrun simctl list runtimes --json | jq -r '.runtimes[] | select(.isAvailable and (.identifier | contains("iOS"))) | .identifier' | tail -1)"
+          device_type="$(xcrun simctl list devicetypes --json | jq -r '.devicetypes[] | select(.name == "iPhone 16 Pro") | .identifier' | head -1)"
+          udid="$(xcrun simctl create 'BYOT Discovery Review Tests' "$device_type" "$runtime")"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+      - name: Run unit tests
+        run: |
+          xcodebuild test \
+            -project BYOT.xcodeproj \
+            -scheme BYOT \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -only-testing:BYOTTests \
+            -resultBundlePath TestResults.xcresult
+      - name: Upload test result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-local-discovery-review-test-result
+          path: TestResults.xcresult
