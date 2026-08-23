@@ -47,6 +47,8 @@ v1_port="$(start_mock v1)"
 v2_port="$(start_mock v2)"
 v1_no_version_port="$(start_mock v1-no-version)"
 
+[[ "${#pids[@]}" -eq 3 ]] || fail "parent shell owns every mock process for cleanup"
+
 OPENCODE_BASE_URL="http://127.0.0.1:$v1_port" \
 OPENCODE_PROTOCOL=v1 \
 OPENCODE_USERNAME=opencode \
@@ -155,5 +157,15 @@ for index in "${!ipv6_hosts[@]}"; do
     fail "local IPv6 address must not be rejected by local-network validation"
   fi
 done
+
+managed_pids=("${pids[@]}")
+cleanup
+for pid in "${managed_pids[@]}"; do
+  if kill -0 "$pid" 2>/dev/null; then
+    fail "mock process $pid stopped during cleanup"
+  fi
+done
+[[ ! -e "$acceptance_test_tmp" ]] || fail "acceptance test workspace was removed during cleanup"
+trap - EXIT
 
 echo "ok - dual-stack acceptance harness self-test"
