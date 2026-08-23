@@ -65,6 +65,23 @@ struct OpenCodeSessionSharingTests {
         #expect(service.capabilityRequestCount == 2)
     }
 
+    @Test("Reopening sharing clears a stale mutation failure")
+    func presentationClearsMutationFailure() async {
+        let store = OpenCodeSessionSharingStore(
+            service: FailingMutationSessionSharingService(),
+            session: makeSession(shareURL: nil)
+        )
+        await store.loadCapabilities()
+        await store.publish()
+        #expect(store.errorMessage != nil)
+
+        await store.prepareForPresentation()
+
+        #expect(store.support == .supported)
+        #expect(store.errorMessage == nil)
+        #expect(store.presentation.canPublish)
+    }
+
     @Test("Server-returned sharing changes propagate to the owning session list")
     func propagatesSessionChanges() async {
         let service = MockSessionSharingService()
@@ -230,6 +247,30 @@ struct OpenCodeSessionSharingTests {
                 archived: nil
             )
         )
+    }
+}
+
+private final class FailingMutationSessionSharingService: OpenCodeSessionSharingServicing,
+    @unchecked Sendable
+{
+    func protocolCapabilities() async throws -> OpenCodeProtocolCapabilities {
+        .v1
+    }
+
+    func shareSession(
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        throw OpenCodeConnectionError.server("Temporary sharing failure")
+    }
+
+    func unshareSession(
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        throw OpenCodeConnectionError.server("Temporary sharing failure")
     }
 }
 
