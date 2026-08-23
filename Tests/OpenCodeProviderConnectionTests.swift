@@ -105,7 +105,7 @@ struct OpenCodeProviderConnectionStoreTests {
         let provider = oauthProvider()
         let service = MockProviderConnectionService(
             providers: [provider],
-            authorizationMode: .browser,
+            authorizationMode: .automatic,
             status: .expired
         )
         let store = makeStore(service: service)
@@ -125,7 +125,7 @@ struct OpenCodeProviderConnectionStoreTests {
         let provider = oauthProvider()
         let service = MockProviderConnectionService(
             providers: [provider],
-            authorizationMode: .browser,
+            authorizationMode: .automatic,
             statusError: TestProviderConnectionError.statusFailed
         )
         let store = makeStore(service: service)
