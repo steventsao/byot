@@ -113,6 +113,28 @@ enum OpenCodeSessionHistoryReconciliation {
     ) -> Bool {
         mutationBaseline == currentMutation
     }
+
+    static func diffs(
+        delivered: [OpenCodeDiff]?,
+        current: [OpenCodeDiff],
+        capabilities: OpenCodeProtocolCapabilities?
+    ) -> [OpenCodeDiff] {
+        if let delivered { return delivered }
+        return capabilities?.sessionDiff.isSupported == false ? [] : current
+    }
+}
+
+struct OpenCodeSessionReconciliationVersion: Equatable, Sendable {
+    private var value = 0
+
+    mutating func begin() -> Int {
+        value &+= 1
+        return value
+    }
+
+    func accepts(_ request: Int) -> Bool {
+        request == value
+    }
 }
 
 struct OpenCodeSessionHistoryPolicy: Equatable, Sendable {

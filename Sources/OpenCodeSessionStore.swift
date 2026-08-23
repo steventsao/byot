@@ -41,6 +41,7 @@ final class OpenCodeSessionStore: ObservableObject {
     private var promptQueue = OpenCodePromptQueue()
     private var eventTask: Task<Void, Never>?
     private var reconciliationTask: Task<Void, Never>?
+    private var reconciliationVersion = OpenCodeSessionReconciliationVersion()
     private var messageRefreshTask: Task<Void, Never>?
     private var actionRefreshTask: Task<Void, Never>?
     private var modelTask: Task<Void, Never>?
@@ -191,6 +192,7 @@ final class OpenCodeSessionStore: ObservableObject {
         eventTask = nil
         reconciliationTask?.cancel()
         reconciliationTask = nil
+        _ = reconciliationVersion.begin()
         messageRefreshTask?.cancel()
         messageRefreshTask = nil
         actionRefreshTask?.cancel()
@@ -645,9 +647,14 @@ final class OpenCodeSessionStore: ObservableObject {
             session.revert = clearsRevert ? nil : mutation.revert
         }
         if clearsRevert { session.revert = nil }
-        if let deliveredDiffs = mutation.diffs {
+        let reconciledDiffs = OpenCodeSessionHistoryReconciliation.diffs(
+            delivered: mutation.diffs,
+            current: diffs,
+            capabilities: protocolCapabilities
+        )
+        if reconciledDiffs != diffs {
             diffMutationGeneration &+= 1
-            diffs = deliveredDiffs
+            diffs = reconciledDiffs
         }
     }
 
@@ -1315,11 +1322,22 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func scheduleReconciliation() {
-        guard reconciliationTask == nil else { return }
+        reconciliationTask?.cancel()
+        let request = reconciliationVersion.begin()
         reconciliationTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(50))
-            guard !Task.isCancelled, let store = self else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(50))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled,
+                  let store = self,
+                  store.reconciliationVersion.accepts(request)
+            else { return }
             await store.refresh()
+            guard !Task.isCancelled,
+                  store.reconciliationVersion.accepts(request)
+            else { return }
             store.reconciliationTask = nil
         }
     }
