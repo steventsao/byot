@@ -111,6 +111,26 @@ struct OpenCodeServerContextTests {
         await save.value
         #expect(store.configuration == .available(["model": .string("saved")]))
     }
+
+    @Test("A completed save never overwrites edits made while the request was in flight")
+    func savePreservesNewerEditorText() async {
+        let service = SaveRaceServerContextService()
+        let store = OpenCodeServerContextStore(
+            service: service,
+            directory: "/repo"
+        )
+        await store.load()
+        store.configurationText = #"{"model":"submitted"}"#
+
+        let save = Task { await store.saveConfiguration() }
+        await service.waitForUpdateRequest()
+        store.configurationText = #"{"model":"newer-draft"}"#
+        await service.releaseUpdateRequest()
+        await save.value
+
+        #expect(store.configurationText == #"{"model":"newer-draft"}"#)
+        #expect(store.configuration == .available(["model": .string("submitted")]))
+    }
 }
 
 private actor StaleServerContextService: OpenCodeServerContextServicing {
