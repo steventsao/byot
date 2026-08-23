@@ -72,6 +72,12 @@ enum OpenCodeSessionLifecycleReconciliation {
     }
 }
 
+enum OpenCodeProjectSessionReconciliation {
+    static func accepts(_ session: OpenCodeSession) -> Bool {
+        session.parentID == nil
+    }
+}
+
 enum OpenCodeSessionAbortPolicy {
     static func canRequest(
         status: OpenCodeSessionStatus,

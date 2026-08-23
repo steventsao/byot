@@ -35,6 +35,7 @@ final class OpenCodeProjectStore: ObservableObject {
     }
 
     func reconcileSession(_ session: OpenCodeSession) {
+        guard OpenCodeProjectSessionReconciliation.accepts(session) else { return }
         OpenCodeSessionLifecycleReconciliation.apply(
             session,
             to: &lifecycleState,

@@ -297,7 +297,6 @@ struct OpenCodeSessionView: View {
                 children: store.childSessions,
                 sessionDidChange: { updatedSession in
                     store.reconcileChildSession(updatedSession)
-                    sessionDidChange(updatedSession)
                 },
                 openAppNavigation: openAppNavigation
             )
