@@ -70,13 +70,22 @@ final class OpenCodeFileBrowserStore: ObservableObject {
     }
 
     func start() async {
+        isLoading = true
+        defer { isLoading = false }
         do {
             let capabilities = try await service.protocolCapabilities()
+            try Task.checkCancellation()
             self.capabilities = capabilities
             errorMessage = nil
             let policy = OpenCodeFileBrowserPolicy(capabilities: capabilities)
-            if policy.canBrowseTree { await load(path: "") }
-            if policy.canListChanges { await loadStatuses() }
+            if policy.canBrowseTree {
+                await load(path: "", managesLoadingState: false)
+                try Task.checkCancellation()
+            }
+            if policy.canListChanges {
+                await loadStatuses()
+                try Task.checkCancellation()
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -125,11 +134,11 @@ final class OpenCodeFileBrowserStore: ObservableObject {
         }
     }
 
-    private func load(path: String) async {
+    private func load(path: String, managesLoadingState: Bool = true) async {
         let request = navigationVersion.begin()
-        isLoading = true
+        if managesLoadingState { isLoading = true }
         defer {
-            if navigationVersion.accepts(request) { isLoading = false }
+            if managesLoadingState, navigationVersion.accepts(request) { isLoading = false }
         }
         do {
             let entries = try await service.listFiles(
