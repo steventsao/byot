@@ -181,6 +181,37 @@ struct OpenCodeProviderConnectionStoreTests {
         #expect(!store.isSubmitting)
     }
 
+    @Test("Navigation waits for OAuth start before cancelling the created attempt")
+    func navigationDuringOAuthStartDoesNotOrphanAttempt() async {
+        let provider = oauthProvider()
+        let barrier = ProviderConnectionBarrier()
+        let service = MockProviderConnectionService(
+            providers: [provider],
+            startBarrier: barrier
+        )
+        let store = makeStore(service: service)
+
+        await store.load()
+        store.selectProvider(provider)
+        let request = Task { await store.beginOAuth() }
+        await barrier.waitForArrival()
+
+        let canDismissWhileStarting = await store.prepareToDismiss()
+        #expect(!canDismissWhileStarting)
+        await store.leaveToMethods()
+        #expect(store.phase == .startingOAuth)
+        #expect(store.isSubmitting)
+
+        await barrier.release()
+        await request.value
+        #expect(store.phase == .oauthCode)
+        #expect(store.authorization?.attemptID == "attempt_1")
+
+        await store.leaveToMethods()
+        #expect(service.steps.filter { $0 == .cancel(attemptID: "attempt_1") }.count == 1)
+        #expect(store.phase == .methodSelection)
+    }
+
     @Test("Leaving an active OAuth flow cancels its server attempt")
     func leavingOAuthCancelsAttempt() async {
         let provider = oauthProvider()

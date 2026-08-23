@@ -977,6 +977,7 @@ final class OpenCodeV2ContractTests: XCTestCase {
         let statusBody = try v2JSONObject(for: requests[6])
         XCTAssertEqual(statusBody["method"] as? Int, 1)
         XCTAssertNil(statusBody["code"])
+        XCTAssertEqual(requests[6].timeoutInterval, 10 * 60, accuracy: 0.1)
     }
 
     func testV2ProviderAuthenticationUsesPinnedIntegrationAttemptContracts() async throws {
