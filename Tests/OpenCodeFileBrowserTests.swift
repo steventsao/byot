@@ -89,6 +89,18 @@ struct OpenCodeFileBrowserTests {
         #expect(!version.accepts(stale))
         #expect(version.accepts(current))
     }
+
+    @Test("Nested browse chrome keeps its folder title beside the mode picker")
+    func nestedBrowseChrome() {
+        let chrome = OpenCodeFileBrowserChromePresentation(
+            path: "Sources/Features",
+            canListChanges: true,
+            query: ""
+        )
+
+        #expect(chrome.title == "Features")
+        #expect(chrome.showsModePicker)
+    }
 }
 
 @MainActor
