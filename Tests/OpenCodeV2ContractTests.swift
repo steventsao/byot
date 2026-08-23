@@ -109,13 +109,19 @@ final class OpenCodeV2ContractTests: XCTestCase {
             modelName: "GPT-5",
             status: "active"
         )
+        let attachment = OpenCodePromptAttachment(
+            filename: "notes.txt",
+            mimeType: "text/plain",
+            data: Data("hello".utf8)
+        )
 
         try await client.sendMessage(
             sessionID: "ses_1",
             directory: "/repo",
             workspace: "wrk_1",
             model: model,
-            text: "Ship it"
+            text: "Ship it",
+            attachments: [attachment]
         )
 
         let requests = OpenCodeV2URLProtocolStub.recordedRequests()
@@ -130,10 +136,12 @@ final class OpenCodeV2ContractTests: XCTestCase {
         let admission = try v2JSONObject(for: requests[1])
         XCTAssertEqual(Set(admission.keys), ["prompt", "delivery"])
         XCTAssertEqual(admission["delivery"] as? String, "queue")
-        XCTAssertEqual(
-            (admission["prompt"] as? [String: Any])?["text"] as? String,
-            "Ship it"
-        )
+        let prompt = try XCTUnwrap(admission["prompt"] as? [String: Any])
+        XCTAssertEqual(prompt["text"] as? String, "Ship it")
+        let files = try XCTUnwrap(prompt["files"] as? [[String: Any]])
+        XCTAssertEqual(files.count, 1)
+        XCTAssertEqual(files[0]["name"] as? String, "notes.txt")
+        XCTAssertEqual(files[0]["uri"] as? String, "data:text/plain;base64,aGVsbG8=")
     }
 
     func testActiveStatusesAndInterruptUseCurrentV2Routes() async throws {
