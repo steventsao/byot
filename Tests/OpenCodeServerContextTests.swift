@@ -131,6 +131,84 @@ struct OpenCodeServerContextTests {
         #expect(store.configurationText == #"{"model":"newer-draft"}"#)
         #expect(store.configuration == .available(["model": .string("submitted")]))
     }
+
+    @Test("Cancelling a context load restores every section and stops later requests")
+    func cancellationRestoresSectionsAndStopsSequence() async {
+        let service = CancellingServerContextService()
+        let store = OpenCodeServerContextStore(
+            service: service,
+            directory: "/repo"
+        )
+
+        let load = Task { await store.load() }
+        await service.waitForConfigurationRequest()
+        load.cancel()
+        await load.value
+
+        #expect(store.configuration == .idle)
+        #expect(store.vcs == .idle)
+        #expect(store.paths == .idle)
+        #expect(store.mcp == .idle)
+        #expect(store.lsp == .idle)
+        #expect(store.formatters == .idle)
+        #expect(!store.isLoading)
+        #expect(await service.laterRequestCount == 0)
+    }
+}
+
+private actor CancellingServerContextService: OpenCodeServerContextServicing {
+    private var configurationStarted = false
+    private var configurationWaiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var laterRequestCount = 0
+
+    func waitForConfigurationRequest() async {
+        if configurationStarted { return }
+        await withCheckedContinuation { configurationWaiters.append($0) }
+    }
+
+    func protocolCapabilities() async throws -> OpenCodeProtocolCapabilities { .v1 }
+
+    func serverConfiguration(
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration {
+        configurationStarted = true
+        configurationWaiters.forEach { $0.resume() }
+        configurationWaiters.removeAll()
+        try await Task.sleep(for: .seconds(30))
+        return [:]
+    }
+
+    func updateServerConfiguration(
+        _ configuration: OpenCodeConfiguration,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeConfiguration { configuration }
+
+    func vcsInfo(directory: String, workspace: String?) async throws -> OpenCodeVCSInfo {
+        laterRequestCount += 1
+        return OpenCodeVCSInfo(branch: nil, defaultBranch: nil)
+    }
+
+    func pathInfo(directory: String, workspace: String?) async throws -> OpenCodeServerPaths {
+        laterRequestCount += 1
+        return racePaths
+    }
+
+    func mcpStatuses(directory: String, workspace: String?) async throws -> [String: OpenCodeMCPStatus] {
+        laterRequestCount += 1
+        return [:]
+    }
+
+    func lspStatuses(directory: String, workspace: String?) async throws -> [OpenCodeLSPStatus] {
+        laterRequestCount += 1
+        return []
+    }
+
+    func formatterStatuses(directory: String, workspace: String?) async throws -> [OpenCodeFormatterStatus] {
+        laterRequestCount += 1
+        return []
+    }
 }
 
 private actor StaleServerContextService: OpenCodeServerContextServicing {
