@@ -172,7 +172,10 @@ private struct OpenCodeServerSettingsSection: View {
                     .frame(minHeight: 280)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .disabled(store.configurationWriteUnavailableReason != nil)
+                    .disabled(
+                        store.configurationWriteUnavailableReason != nil
+                            || store.isSavingConfiguration
+                    )
 
                 if let reason = store.configurationWriteUnavailableReason {
                     Label(reason, systemImage: "lock")

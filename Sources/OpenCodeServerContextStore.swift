@@ -77,9 +77,10 @@ final class OpenCodeServerContextStore: ObservableObject {
 
     func saveConfiguration() async {
         guard canSaveConfiguration else { return }
+        let submittedText = configurationText
         let candidate: OpenCodeConfiguration
         do {
-            candidate = try OpenCodeConfigurationDocument.configuration(from: configurationText)
+            candidate = try OpenCodeConfigurationDocument.configuration(from: submittedText)
         } catch {
             configurationErrorMessage = "Configuration must be a valid JSON object: \(error.localizedDescription)"
             return
@@ -95,7 +96,10 @@ final class OpenCodeServerContextStore: ObservableObject {
                 workspace: workspace
             )
             configuration = .available(saved)
-            configurationText = try OpenCodeConfigurationDocument.string(from: saved)
+            let normalizedText = try OpenCodeConfigurationDocument.string(from: saved)
+            if configurationText == submittedText {
+                configurationText = normalizedText
+            }
         } catch is CancellationError {
             return
         } catch {
