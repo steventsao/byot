@@ -153,6 +153,33 @@ struct OpenCodeSessionSharingTests {
         #expect(reconciled.last?.id == unrelated.id)
     }
 
+    @Test("Subagent changes are excluded from the root project session list")
+    func childSessionIsNotAProjectRoot() {
+        let root = makeSession(shareURL: nil)
+        let child = OpenCodeSession(
+            id: "ses_child",
+            slug: "child",
+            projectID: "proj_1",
+            workspaceID: "wrk_1",
+            directory: "/repo",
+            parentID: root.id,
+            share: nil,
+            summary: nil,
+            title: "Child",
+            agent: "build",
+            version: "1",
+            time: OpenCodeSessionTime(
+                created: 10,
+                updated: 20,
+                compacting: nil,
+                archived: nil
+            )
+        )
+
+        #expect(OpenCodeProjectSessionReconciliation.accepts(root))
+        #expect(!OpenCodeProjectSessionReconciliation.accepts(child))
+    }
+
     private func makeSession(shareURL: URL?) -> OpenCodeSession {
         OpenCodeSession(
             id: "ses_1",
