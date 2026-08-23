@@ -429,6 +429,21 @@ final class OpenCodeSessionStore: ObservableObject {
         }
     }
 
+    func reconcileSession(_ updatedSession: OpenCodeSession) {
+        guard updatedSession.id == session.id,
+              updatedSession != session
+        else { return }
+        historyMutationGeneration &+= 1
+        session = updatedSession
+    }
+
+    func reconcileChildSession(_ updatedSession: OpenCodeSession) {
+        childSessions = OpenCodeChildSessionReconciliation.replacing(
+            updatedSession,
+            in: childSessions
+        )
+    }
+
     func send(
         _ text: String,
         attachments: [OpenCodePromptAttachment] = []

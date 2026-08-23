@@ -19,6 +19,20 @@ struct OpenCodeSessionSharingPresentation: Equatable, Sendable {
     }
 }
 
+enum OpenCodeChildSessionReconciliation {
+    static func replacing(
+        _ updatedSession: OpenCodeSession,
+        in sessions: [OpenCodeSession]
+    ) -> [OpenCodeSession] {
+        guard sessions.contains(where: { $0.id == updatedSession.id }) else {
+            return sessions
+        }
+        return sessions
+            .map { $0.id == updatedSession.id ? updatedSession : $0 }
+            .sorted { $0.time.updated > $1.time.updated }
+    }
+}
+
 @MainActor
 final class OpenCodeSessionSharingStore: ObservableObject {
     @Published private(set) var session: OpenCodeSession
@@ -50,6 +64,14 @@ final class OpenCodeSessionSharingStore: ObservableObject {
             support: support,
             isMutating: isMutating
         )
+    }
+
+    func reconcileSession(_ updatedSession: OpenCodeSession) {
+        guard !isMutating,
+              updatedSession.id == session.id,
+              updatedSession != session
+        else { return }
+        session = updatedSession
     }
 
     func loadCapabilities() async {

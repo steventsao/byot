@@ -48,8 +48,7 @@ struct OpenCodeSessionView: View {
         _sharingStore = StateObject(
             wrappedValue: OpenCodeSessionSharingStore(
                 service: client,
-                session: session,
-                sessionDidChange: sessionDidChange
+                session: session
             )
         )
     }
@@ -296,6 +295,10 @@ struct OpenCodeSessionView: View {
             OpenCodeSessionChildrenView(
                 client: client,
                 children: store.childSessions,
+                sessionDidChange: { updatedSession in
+                    store.reconcileChildSession(updatedSession)
+                    sessionDidChange(updatedSession)
+                },
                 openAppNavigation: openAppNavigation
             )
         }
@@ -361,6 +364,13 @@ struct OpenCodeSessionView: View {
         .task { await store.start() }
         .task { await inputStore.load() }
         .task { await sharingStore.loadCapabilities() }
+        .onChange(of: store.session) { _, updatedSession in
+            sharingStore.reconcileSession(updatedSession)
+            sessionDidChange(updatedSession)
+        }
+        .onChange(of: sharingStore.session) { _, updatedSession in
+            store.reconcileSession(updatedSession)
+        }
         .onDisappear { store.stop() }
     }
 
@@ -624,6 +634,7 @@ private struct OpenCodeSessionChildrenView: View {
     @Environment(\.dismiss) private var dismiss
     let client: OpenCodeClient
     let children: [OpenCodeSession]
+    let sessionDidChange: @MainActor (OpenCodeSession) -> Void
     let openAppNavigation: () -> Void
 
     var body: some View {
@@ -642,6 +653,7 @@ private struct OpenCodeSessionChildrenView: View {
                                 client: client,
                                 session: child,
                                 directory: child.directory,
+                                sessionDidChange: sessionDidChange,
                                 openAppNavigation: openAppNavigation
                             )
                         } label: {
