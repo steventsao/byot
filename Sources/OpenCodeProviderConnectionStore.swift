@@ -209,16 +209,22 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
             case .complete:
                 finishConnection(providerID: provider.id)
             case .failed(let message):
-                errorMessage = message
+                failOAuthAttempt(message: message)
             case .expired:
-                errorMessage = "Provider authorization expired. Start again."
+                failOAuthAttempt(message: "Provider authorization expired. Start again.")
             }
         } catch is CancellationError {
             return
         } catch {
             guard generation == flowGeneration else { return }
-            errorMessage = error.localizedDescription
+            failOAuthAttempt(message: error.localizedDescription)
         }
+    }
+
+    private func failOAuthAttempt(message: String) {
+        authorization = nil
+        phase = selectedMethod?.prompts.isEmpty == false ? .oauthPrompts : .oauthReady
+        errorMessage = message
     }
 
     func cancelOAuth() async {
