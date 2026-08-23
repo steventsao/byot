@@ -254,12 +254,12 @@ struct OpenCodeSessionComposerView: View {
         Button {
             isShowingAgentPicker = true
         } label: {
-            Label(inputStore.selectedAgent?.id ?? "Automatic agent", systemImage: "person.crop.circle")
+            Label(inputStore.agentButtonLabel, systemImage: "person.crop.circle")
                 .lineLimit(1)
         }
         .disabled(inputStore.selectableAgents.isEmpty)
         .accessibilityLabel("Choose agent")
-        .accessibilityValue(inputStore.selectedAgent?.id ?? "Automatic")
+        .accessibilityValue(inputStore.agentPresentationValue)
     }
 
     private var inputModeButton: some View {

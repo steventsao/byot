@@ -59,6 +59,14 @@ final class OpenCodeSessionInputStore: ObservableObject {
         )
     }
 
+    var agentButtonLabel: String {
+        submissionAgentID ?? "Automatic agent"
+    }
+
+    var agentPresentationValue: String {
+        submissionAgentID ?? "Automatic"
+    }
+
     func load() async {
         loadGeneration &+= 1
         let generation = loadGeneration
