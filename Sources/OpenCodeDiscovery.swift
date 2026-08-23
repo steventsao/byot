@@ -168,6 +168,20 @@ enum OpenCodeDiscoveryUpdate: Equatable, Sendable {
     case failure(String)
 }
 
+enum OpenCodeBonjourResolutionDisposition: Equatable, Sendable {
+    case resolved(host: String)
+    case awaitingAdditionalAddresses
+}
+
+enum OpenCodeBonjourResolutionPolicy {
+    static func disposition(
+        localHost: String?
+    ) -> OpenCodeBonjourResolutionDisposition {
+        localHost.map(OpenCodeBonjourResolutionDisposition.resolved)
+            ?? .awaitingAdditionalAddresses
+    }
+}
+
 struct OpenCodeBonjourCallbackGeneration: Equatable, Sendable {
     private var browserIdentity: ObjectIdentifier?
     private var serviceIdentities: [String: ObjectIdentifier] = [:]
@@ -226,6 +240,17 @@ struct OpenCodeDiscoveryInitialSearch: Sendable {
     mutating func resolutionFinished(key: String) -> Bool {
         guard !isSettled else { return false }
         pendingServiceKeys.remove(key)
+        return settleAfterBrowseBatchIfReady()
+    }
+
+    mutating func serviceRemoved(key: String?, moreComing: Bool) -> Bool {
+        guard !isSettled else { return false }
+        if let key {
+            pendingServiceKeys.remove(key)
+        }
+        if !moreComing {
+            reachedBrowseBatchEnd = true
+        }
         return settleAfterBrowseBatchIfReady()
     }
 

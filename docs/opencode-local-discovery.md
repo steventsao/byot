@@ -8,6 +8,11 @@ This slice is pinned to OpenCode commit `3a31c4ea801915c0b050df4b3842997ea62b6e9
 
 Because `_http._tcp` is generic, BYOT filters the `opencode-` name prefix and validates the resolved TXT record instead of listing every local web service. The advertised hostname is not trusted for transport: BYOT selects a numeric address from the resolved Bonjour socket addresses and rejects the service unless that address is local.
 
+Initial discovery treats both find and remove callbacks as browse-batch
+boundaries. A removed pending service therefore cannot leave the search stuck.
+Resolved services remain registered when a callback contains only nonlocal
+addresses, allowing a later dual-stack callback to publish its local address.
+
 ## Transport boundary
 
 - Manually entered profiles remain HTTPS-only.

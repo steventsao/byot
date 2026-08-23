@@ -96,11 +96,18 @@ final class OpenCodeBonjourBrowser: NSObject,
     ) {
         guard callbackGeneration.accepts(browser: browser) else { return }
         let key = serviceKey(service)
-        guard callbackGeneration.remove(service: service, key: key) else { return }
-        services.removeValue(forKey: key)?.stop()
-        records.removeValue(forKey: key)
-        publishRecords()
-        finishInitialResolution(key: key)
+        let removedCurrentService = callbackGeneration.remove(service: service, key: key)
+        if removedCurrentService {
+            services.removeValue(forKey: key)?.stop()
+            records.removeValue(forKey: key)
+            publishRecords()
+        }
+        if initialSearch.serviceRemoved(
+            key: removedCurrentService ? key : nil,
+            moreComing: moreComing
+        ) {
+            publishSettled()
+        }
     }
 
     func netServiceBrowser(
@@ -116,11 +123,12 @@ final class OpenCodeBonjourBrowser: NSObject,
     func netServiceDidResolveAddress(_ sender: NetService) {
         let key = serviceKey(sender)
         guard callbackGeneration.accepts(service: sender, key: key) else { return }
-        guard let host = OpenCodeBonjourAddressResolver.localHost(
+        let localHost = OpenCodeBonjourAddressResolver.localHost(
             from: sender.addresses ?? []
+        )
+        guard case .resolved(let host) = OpenCodeBonjourResolutionPolicy.disposition(
+            localHost: localHost
         ) else {
-            _ = callbackGeneration.remove(service: sender, key: key)
-            services.removeValue(forKey: key)
             records.removeValue(forKey: key)
             publishRecords()
             finishInitialResolution(key: key)
