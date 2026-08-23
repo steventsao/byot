@@ -103,6 +103,28 @@ struct OpenCodeSessionHistoryPresentationTests {
         #expect(OpenCodeSessionHistoryEventProjection.mutation(from: cleared) == .cleared)
     }
 
+    @Test("Committed reverts retain their boundary until the session snapshot refreshes")
+    func committedBoundaryReconciliation() {
+        #expect(
+            OpenCodeSessionHistoryReconciliation.keepsBoundaryUntilRefresh(for: .committed)
+        )
+        #expect(
+            !OpenCodeSessionHistoryReconciliation.keepsBoundaryUntilRefresh(for: .cleared)
+        )
+        #expect(
+            OpenCodeSessionHistoryReconciliation.acceptsFetchedSession(
+                mutationBaseline: 4,
+                currentMutation: 4
+            )
+        )
+        #expect(
+            !OpenCodeSessionHistoryReconciliation.acceptsFetchedSession(
+                mutationBaseline: 4,
+                currentMutation: 5
+            )
+        )
+    }
+
     private func message(
         id: String,
         role: String,
