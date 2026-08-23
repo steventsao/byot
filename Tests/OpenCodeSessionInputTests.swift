@@ -63,6 +63,27 @@ struct OpenCodeSessionInputTests {
 @MainActor
 @Suite(.serialized)
 struct OpenCodeSessionInputStoreTests {
+    @Test("Shell validation rejects submission after its selected agent disappears")
+    func shellValidationRequiresCurrentAgent() async {
+        let service = MockSessionInputService(
+            capabilities: .v1,
+            commands: [],
+            agents: []
+        )
+        let store = OpenCodeSessionInputStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil
+        )
+        await store.load()
+
+        #expect(!store.validate(.shell("git status")))
+        #expect(
+            store.errorMessage
+                == OpenCodeSessionInputError.shellAgentRequired.localizedDescription
+        )
+    }
+
     @Test("Catalog store filters picker agents and keeps the session agent selected")
     func loadsCatalogs() async {
         let service = MockSessionInputService(

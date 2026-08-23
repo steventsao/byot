@@ -381,6 +381,25 @@ struct OpenCodePromptQueueTests {
             ).dispatchedPrompt?.text == "Start fresh"
         )
     }
+
+    @Test("A shell completed during an abort pause restores its synchronous idle barrier")
+    func pausedShellCompletionKeepsSynchronousBarrier() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            intent: .shell("git status"),
+            model: nil,
+            agent: "build",
+            serverIsActive: false
+        )
+        _ = queue.accept(text: "Explain it", model: nil, serverIsActive: false)
+        let snapshot = queue.pausePendingPrompts()
+
+        #expect(queue.dispatchSucceeded(completesSynchronously: true) == nil)
+        #expect(queue.restorePendingPrompts(after: snapshot) == nil)
+
+        #expect(queue.serverBecameIdle()?.text == "Explain it")
+        #expect(queue.prompts.isEmpty)
+    }
 }
 
 private extension OpenCodePromptSubmission {
