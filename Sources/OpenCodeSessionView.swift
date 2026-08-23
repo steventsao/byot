@@ -195,11 +195,7 @@ struct OpenCodeSessionView: View {
                 }
                 .labelStyle(.iconOnly)
                 .disabled(!store.todoPresentation.canPresent)
-                .accessibilityValue(
-                    store.todos.isEmpty
-                        ? "Unavailable"
-                        : store.todoPresentation.progressAccessibilityValue
-                )
+                .accessibilityValue(store.todoPresentation.toolbarAccessibilityValue)
                 if store.lifecyclePolicy?.canListChildren == true {
                     Button("Subagents", systemImage: "person.2") {
                         isShowingChildren = true

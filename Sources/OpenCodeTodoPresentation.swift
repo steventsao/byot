@@ -43,6 +43,10 @@ struct OpenCodeTodoPresentation: Equatable, Sendable {
     var progressAccessibilityValue: String {
         "\(resolvedCount) of \(totalCount) resolved"
     }
+    var toolbarAccessibilityValue: String {
+        if !todos.isEmpty { return progressAccessibilityValue }
+        return unavailableReason == nil ? "No tasks" : "Unavailable"
+    }
     var headline: String? {
         todos.first(where: { $0.resolvedStatus == .inProgress })?.content
             ?? todos.first(where: { $0.resolvedStatus == .pending })?.content
