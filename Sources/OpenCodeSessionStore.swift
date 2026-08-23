@@ -497,9 +497,9 @@ final class OpenCodeSessionStore: ObservableObject {
             return false
         }
         defer { historyActionInFlight = nil }
-        invalidateHistorySnapshots()
         do {
             try await prepareForHistoryRollback()
+            invalidateHistorySnapshots()
             let mutation = try await client.revertSession(
                 sessionID: session.id,
                 directory: directory,
@@ -523,9 +523,9 @@ final class OpenCodeSessionStore: ObservableObject {
             return false
         }
         defer { historyActionInFlight = nil }
-        invalidateHistorySnapshots()
         do {
             try await prepareForHistoryRollback()
+            invalidateHistorySnapshots()
             let mutation = try await client.unrevertSession(
                 sessionID: session.id,
                 directory: directory,
@@ -609,13 +609,16 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func prepareForHistoryRollback() async throws {
-        guard status.isActive else { return }
         let requestGeneration = lifecycleGeneration
         isAborting = true
         defer { isAborting = false }
-        let queueSnapshot = OpenCodeSessionAbortPolicy.prepareQueueForRequest(&promptQueue)
+        let preparation = OpenCodeSessionHistoryRollbackPolicy.prepare(
+            status: status,
+            queue: &promptQueue
+        )
         publishPromptQueue()
         cancelQueueRecovery()
+        guard preparation.requiresRemoteAbort else { return }
         do {
             try await client.abortSession(
                 sessionID: session.id,
@@ -627,7 +630,7 @@ final class OpenCodeSessionStore: ObservableObject {
             }
         } catch {
             restoreQueueAfterFailedAbort(
-                snapshot: queueSnapshot,
+                snapshot: preparation.queueSnapshot,
                 requestGeneration: requestGeneration
             )
             throw error

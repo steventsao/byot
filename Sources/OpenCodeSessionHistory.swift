@@ -137,6 +137,23 @@ struct OpenCodeSessionReconciliationVersion: Equatable, Sendable {
     }
 }
 
+enum OpenCodeSessionHistoryRollbackPolicy {
+    struct Preparation: Equatable, Sendable {
+        let queueSnapshot: OpenCodePromptQueue.PauseSnapshot
+        let requiresRemoteAbort: Bool
+    }
+
+    static func prepare(
+        status: OpenCodeSessionStatus,
+        queue: inout OpenCodePromptQueue
+    ) -> Preparation {
+        Preparation(
+            queueSnapshot: queue.pausePendingPrompts(),
+            requiresRemoteAbort: status.isActive
+        )
+    }
+}
+
 struct OpenCodeSessionHistoryPolicy: Equatable, Sendable {
     let canRevert: Bool
     let canUnrevert: Bool
