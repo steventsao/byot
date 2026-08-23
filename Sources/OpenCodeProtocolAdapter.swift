@@ -54,6 +54,13 @@ protocol OpenCodeProtocolAdapting: Sendable {
         workspace: String?
     ) async throws -> [OpenCodeSession]
 
+    func todos(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeTodo]
+
     func connectedProviderModels(
         using transport: OpenCodeTransport,
         directory: String,
@@ -255,6 +262,18 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
     ) async throws -> [OpenCodeSession] {
         try await transport.get(
             ["session", sessionID, "children"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func todos(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeTodo] {
+        try await transport.get(
+            ["session", sessionID, "todo"],
             query: instanceQuery(directory: directory, workspace: workspace)
         )
     }
@@ -608,6 +627,15 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
             feature: "Child sessions",
             support: capabilities.sessionChildren
         )
+    }
+
+    func todos(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeTodo] {
+        []
     }
 
     func connectedProviderModels(

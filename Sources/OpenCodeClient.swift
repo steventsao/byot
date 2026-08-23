@@ -278,6 +278,19 @@ struct OpenCodeClient: Sendable {
         )
     }
 
+    func todos(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> [OpenCodeTodo] {
+        try await protocolAdapter().todos(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
     func connectedProviderModels(
         directory: String,
         workspace: String? = nil

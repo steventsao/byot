@@ -7,6 +7,7 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var permissions: [OpenCodePermissionRequest] = []
     @Published private(set) var questions: [OpenCodeQuestionRequest] = []
     @Published private(set) var childSessions: [OpenCodeSession] = []
+    @Published private(set) var todos: [OpenCodeTodo] = []
     @Published private(set) var diffs: [OpenCodeDiff] = []
     @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
     @Published private(set) var status: OpenCodeSessionStatus = .idle
@@ -55,6 +56,7 @@ final class OpenCodeSessionStore: ObservableObject {
     private var actionMutationGeneration = 0
     private var diffMutationGeneration = 0
     private var statusMutationGeneration = 0
+    private var todoMutationGeneration = 0
     private var messageRefreshPending = false
     private var actionRefreshPending = false
     private var isRunning = false
@@ -98,6 +100,13 @@ final class OpenCodeSessionStore: ObservableObject {
 
     var lifecyclePolicy: OpenCodeSessionLifecyclePolicy? {
         protocolCapabilities.map(OpenCodeSessionLifecyclePolicy.init)
+    }
+
+    var todoPresentation: OpenCodeTodoPresentation {
+        OpenCodeTodoPresentation(
+            todos: todos,
+            support: protocolCapabilities?.sessionTodos
+        )
     }
 
     var canAbortSession: Bool {
@@ -185,6 +194,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let actionBaseline = actionMutationGeneration
         let diffBaseline = diffMutationGeneration
         let statusBaseline = statusMutationGeneration
+        let todoBaseline = todoMutationGeneration
         if showLoading { isLoading = true }
         defer {
             if generation == refreshGeneration { isLoading = false }
@@ -243,6 +253,13 @@ final class OpenCodeSessionStore: ObservableObject {
                     workspace: actionWorkspace
                 )
             }
+            async let todoResult = Self.capture {
+                try await actionClient.todos(
+                    sessionID: actionSessionID,
+                    directory: actionDirectory,
+                    workspace: actionWorkspace
+                )
+            }
 
             let results = await (
                 messageResult,
@@ -250,7 +267,8 @@ final class OpenCodeSessionStore: ObservableObject {
                 questionResult,
                 diffResult,
                 statusResult,
-                childResult
+                childResult,
+                todoResult
             )
             try Task.checkCancellation()
             guard generation == refreshGeneration else { return }
@@ -291,6 +309,18 @@ final class OpenCodeSessionStore: ObservableObject {
             switch results.5 {
             case .success(let children):
                 childSessions = children.sorted { $0.time.updated > $1.time.updated }
+            case .failure(let error):
+                coreErrors.append(error)
+            }
+            switch results.6 {
+            case .success(let todos):
+                if OpenCodeTodoReconciliation.shouldApplyFetchedSnapshot(
+                    support: capabilities.sessionTodos,
+                    mutationBaseline: todoBaseline,
+                    currentMutation: todoMutationGeneration
+                ) {
+                    self.todos = todos
+                }
             case .failure(let error):
                 coreErrors.append(error)
             }
@@ -689,6 +719,11 @@ final class OpenCodeSessionStore: ObservableObject {
             if let value: [OpenCodeDiff] = decode(event.properties["diff"]) {
                 diffMutationGeneration &+= 1
                 diffs = value
+            }
+        case "todo.updated":
+            if let value = OpenCodeTodoEventProjection.todos(from: event) {
+                todoMutationGeneration &+= 1
+                todos = value
             }
         case "session.status":
             if let value: OpenCodeSessionStatus = decode(event.properties["status"]) {
