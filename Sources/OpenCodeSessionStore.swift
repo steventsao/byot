@@ -610,9 +610,10 @@ final class OpenCodeSessionStore: ObservableObject {
 
     private func prepareForHistoryRollback() async throws {
         guard status.isActive else { return }
+        let requestGeneration = lifecycleGeneration
         isAborting = true
         defer { isAborting = false }
-        OpenCodeSessionAbortPolicy.prepareQueueForRequest(&promptQueue)
+        let queueSnapshot = OpenCodeSessionAbortPolicy.prepareQueueForRequest(&promptQueue)
         publishPromptQueue()
         cancelQueueRecovery()
         do {
@@ -621,8 +622,14 @@ final class OpenCodeSessionStore: ObservableObject {
                 directory: directory,
                 workspace: workspace
             )
+            guard isRunning, requestGeneration == lifecycleGeneration else {
+                throw CancellationError()
+            }
         } catch {
-            if isRunning { restoreQueueAfterFailedAbort() }
+            restoreQueueAfterFailedAbort(
+                snapshot: queueSnapshot,
+                requestGeneration: requestGeneration
+            )
             throw error
         }
         promptDispatchTask?.cancel()
