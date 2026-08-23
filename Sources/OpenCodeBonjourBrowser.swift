@@ -10,6 +10,8 @@ final class OpenCodeBonjourBrowser: NSObject,
     private var services: [String: NetService] = [:]
     private var records: [String: OpenCodeBonjourServiceRecord] = [:]
     private var onUpdate: ((OpenCodeDiscoveryUpdate) -> Void)?
+    private var initialSearch = OpenCodeDiscoveryInitialSearch()
+    private var emptyWindowTask: Task<Void, Never>?
 
     func start(onUpdate: @escaping (OpenCodeDiscoveryUpdate) -> Void) {
         stop()
@@ -20,10 +22,13 @@ final class OpenCodeBonjourBrowser: NSObject,
     }
 
     func stop() {
+        emptyWindowTask?.cancel()
+        emptyWindowTask = nil
         browser.stop()
         services.values.forEach { $0.stop() }
         services.removeAll()
         records.removeAll()
+        initialSearch = OpenCodeDiscoveryInitialSearch()
         onUpdate = nil
     }
 
@@ -32,15 +37,30 @@ final class OpenCodeBonjourBrowser: NSObject,
         didFind service: NetService,
         moreComing: Bool
     ) {
-        guard service.name.lowercased().hasPrefix("opencode-") else { return }
-        let key = serviceKey(service)
+        emptyWindowTask?.cancel()
+        emptyWindowTask = nil
+        let isOpenCodeService = service.name.lowercased().hasPrefix("opencode-")
+        let key = isOpenCodeService ? serviceKey(service) : nil
+        if initialSearch.serviceFound(key: key, moreComing: moreComing) {
+            publishSettled()
+        }
+        guard let key else { return }
         services[key] = service
         service.delegate = self
         service.resolve(withTimeout: 5)
     }
 
     func netServiceBrowserWillSearch(_ browser: NetServiceBrowser) {
-        publishRecords()
+        emptyWindowTask?.cancel()
+        emptyWindowTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+            } catch {
+                return
+            }
+            guard let self, self.initialSearch.emptyWindowElapsed() else { return }
+            self.publishSettled()
+        }
     }
 
     func netServiceBrowser(
@@ -52,17 +72,27 @@ final class OpenCodeBonjourBrowser: NSObject,
         services.removeValue(forKey: key)?.stop()
         records.removeValue(forKey: key)
         publishRecords()
+        finishInitialResolution(key: key)
     }
 
     func netServiceBrowser(
         _ browser: NetServiceBrowser,
         didNotSearch errorDict: [String: NSNumber]
     ) {
+        emptyWindowTask?.cancel()
+        emptyWindowTask = nil
         onUpdate?(.failure("Bonjour discovery could not start. Check Local Network access and try again."))
     }
 
     func netServiceDidResolveAddress(_ sender: NetService) {
-        guard let host = sender.hostName else { return }
+        let key = serviceKey(sender)
+        guard let host = sender.hostName else {
+            services.removeValue(forKey: key)
+            records.removeValue(forKey: key)
+            publishRecords()
+            finishInitialResolution(key: key)
+            return
+        }
         let txt: [String: String]
         if let data = sender.txtRecordData() {
             txt = NetService.dictionary(fromTXTRecord: data).reduce(into: [:]) { result, item in
@@ -73,7 +103,6 @@ final class OpenCodeBonjourBrowser: NSObject,
         } else {
             txt = [:]
         }
-        let key = serviceKey(sender)
         records[key] = OpenCodeBonjourServiceRecord(
             name: sender.name,
             type: sender.type,
@@ -83,6 +112,7 @@ final class OpenCodeBonjourBrowser: NSObject,
             txt: txt
         )
         publishRecords()
+        finishInitialResolution(key: key)
     }
 
     func netService(
@@ -93,6 +123,7 @@ final class OpenCodeBonjourBrowser: NSObject,
         services.removeValue(forKey: key)
         records.removeValue(forKey: key)
         publishRecords()
+        finishInitialResolution(key: key)
     }
 
     private func serviceKey(_ service: NetService) -> String {
@@ -101,5 +132,17 @@ final class OpenCodeBonjourBrowser: NSObject,
 
     private func publishRecords() {
         onUpdate?(.services(Array(records.values)))
+    }
+
+    private func finishInitialResolution(key: String) {
+        if initialSearch.resolutionFinished(key: key) {
+            publishSettled()
+        }
+    }
+
+    private func publishSettled() {
+        emptyWindowTask?.cancel()
+        emptyWindowTask = nil
+        onUpdate?(.settled)
     }
 }

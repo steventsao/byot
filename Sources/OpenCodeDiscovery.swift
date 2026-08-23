@@ -129,7 +129,43 @@ enum OpenCodeBonjourServiceResolver {
 
 enum OpenCodeDiscoveryUpdate: Equatable, Sendable {
     case services([OpenCodeBonjourServiceRecord])
+    case settled
     case failure(String)
+}
+
+struct OpenCodeDiscoveryInitialSearch: Sendable {
+    private var pendingServiceKeys: Set<String> = []
+    private var reachedBrowseBatchEnd = false
+    private(set) var isSettled = false
+
+    mutating func serviceFound(key: String?, moreComing: Bool) -> Bool {
+        guard !isSettled else { return false }
+        if let key {
+            pendingServiceKeys.insert(key)
+        }
+        if !moreComing {
+            reachedBrowseBatchEnd = true
+        }
+        return settleAfterBrowseBatchIfReady()
+    }
+
+    mutating func resolutionFinished(key: String) -> Bool {
+        guard !isSettled else { return false }
+        pendingServiceKeys.remove(key)
+        return settleAfterBrowseBatchIfReady()
+    }
+
+    mutating func emptyWindowElapsed() -> Bool {
+        guard !isSettled, pendingServiceKeys.isEmpty else { return false }
+        isSettled = true
+        return true
+    }
+
+    private mutating func settleAfterBrowseBatchIfReady() -> Bool {
+        guard reachedBrowseBatchEnd, pendingServiceKeys.isEmpty else { return false }
+        isSettled = true
+        return true
+    }
 }
 
 @MainActor
