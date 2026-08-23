@@ -167,3 +167,20 @@ struct OpenCodeFileBrowserRequestVersion: Equatable, Sendable {
         request == value
     }
 }
+
+struct OpenCodeFileBrowserLoadingTracker: Equatable, Sendable {
+    private var nextOwner = 0
+    private var activeOwners: Set<Int> = []
+
+    var isLoading: Bool { !activeOwners.isEmpty }
+
+    mutating func begin() -> Int {
+        nextOwner &+= 1
+        activeOwners.insert(nextOwner)
+        return nextOwner
+    }
+
+    mutating func end(_ owner: Int) {
+        activeOwners.remove(owner)
+    }
+}

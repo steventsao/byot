@@ -26,6 +26,7 @@ final class OpenCodeFileBrowserStore: ObservableObject {
     let workspace: String?
     private var navigationVersion = OpenCodeFileBrowserRequestVersion()
     private var searchVersion = OpenCodeFileBrowserRequestVersion()
+    private var loadingTracker = OpenCodeFileBrowserLoadingTracker()
 
     init(client: OpenCodeClient, directory: String, workspace: String?) {
         service = client
@@ -46,6 +47,8 @@ final class OpenCodeFileBrowserStore: ObservableObject {
     var policy: OpenCodeFileBrowserPolicy? {
         capabilities.map(OpenCodeFileBrowserPolicy.init)
     }
+
+    var isShowingBlockingLoader: Bool { isLoading }
 
     var visibleEntries: [OpenCodeFileEntry] {
         if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -70,8 +73,8 @@ final class OpenCodeFileBrowserStore: ObservableObject {
     }
 
     func start() async {
-        isLoading = true
-        defer { isLoading = false }
+        let loadingOwner = beginLoading()
+        defer { endLoading(loadingOwner) }
         do {
             let capabilities = try await service.protocolCapabilities()
             try Task.checkCancellation()
@@ -138,9 +141,9 @@ final class OpenCodeFileBrowserStore: ObservableObject {
 
     private func load(path: String, managesLoadingState: Bool = true) async {
         let request = navigationVersion.begin()
-        if managesLoadingState { isLoading = true }
+        let loadingOwner = managesLoadingState ? beginLoading() : nil
         defer {
-            if managesLoadingState, navigationVersion.accepts(request) { isLoading = false }
+            if let loadingOwner { endLoading(loadingOwner) }
         }
         do {
             let entries = try await service.listFiles(
@@ -178,6 +181,17 @@ final class OpenCodeFileBrowserStore: ObservableObject {
             if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
             return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
         }
+    }
+
+    private func beginLoading() -> Int {
+        let owner = loadingTracker.begin()
+        isLoading = loadingTracker.isLoading
+        return owner
+    }
+
+    private func endLoading(_ owner: Int) {
+        loadingTracker.end(owner)
+        isLoading = loadingTracker.isLoading
     }
 }
 

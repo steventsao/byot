@@ -37,7 +37,7 @@ struct OpenCodeFileBrowserView: View {
                 }
 
                 Group {
-                    if store.isLoading && store.entries.isEmpty {
+                    if store.isShowingBlockingLoader {
                         BYOTActivityView(
                             .loading,
                             title: "Loading project files",
