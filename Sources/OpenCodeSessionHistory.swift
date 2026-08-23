@@ -215,9 +215,10 @@ enum OpenCodeSessionHistoryRefreshScope: Equatable, Sendable {
 
 struct OpenCodeSessionHistoryContinuationPolicy: Equatable, Sendable {
     static func refreshScope(
+        requested: OpenCodeSessionHistoryRefreshScope,
         revert: OpenCodeSessionRevertState?
     ) -> OpenCodeSessionHistoryRefreshScope {
-        revert == nil ? .messages : .session
+        revert == nil ? requested : .session
     }
 }
 

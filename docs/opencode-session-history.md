@@ -48,6 +48,9 @@ protocol-specific routes.
 - Sending a new prompt through an active revert follows OpenCode's implicit
   commit behavior and reconciles the session plus transcript together. This
   covers v1, which does not emit the v2 committed-revert event.
+- Message and idle events that arrive while that revert snapshot is still
+  active are upgraded to the same full reconciliation owner, so a competing
+  message-only refresh cannot invalidate the boundary-clearing transcript.
 - Successful v1 fork opens the returned session. V2 never displays a fork
   action because no upstream route exists.
 

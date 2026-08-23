@@ -774,6 +774,7 @@ final class OpenCodeSessionStore: ObservableObject {
     ) async {
         guard isCurrentPromptDispatch(dispatchID), !Task.isCancelled else { return }
         let historyRefreshScope = OpenCodeSessionHistoryContinuationPolicy.refreshScope(
+            requested: .messages,
             revert: session.revert
         )
         beginCurrentTurnActivityTracking()
@@ -1461,6 +1462,13 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func scheduleMessageRefresh() {
+        guard OpenCodeSessionHistoryContinuationPolicy.refreshScope(
+            requested: .messages,
+            revert: session.revert
+        ) == .messages else {
+            scheduleReconciliation()
+            return
+        }
         messageRefreshPending = true
         guard messageRefreshTask == nil else { return }
         messageRefreshTask = Task { [weak self] in
