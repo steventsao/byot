@@ -34,6 +34,82 @@ struct OpenCodeSessionHistoryPresentationTests {
         #expect(presentation.canRestore)
     }
 
+    @Test("A removed revert boundary cannot reveal turns awaiting cleanup")
+    func removedBoundaryRetainsVisiblePrefix() {
+        let revert = OpenCodeSessionRevertState(
+            messageID: "msg_user_2",
+            partID: nil,
+            snapshot: "snap_1",
+            diff: "diff"
+        )
+        var projection = OpenCodeSessionHistoryProjection()
+        projection.reconcile(
+            messages: [
+                message(id: "msg_user_1", role: "user", text: "First prompt"),
+                message(id: "msg_assistant_1", role: "assistant", text: "First answer"),
+                message(id: "msg_user_2", role: "user", text: "Second prompt"),
+                message(id: "msg_assistant_2", role: "assistant", text: "Second answer"),
+                message(id: "msg_user_3", role: "user", text: "Third prompt"),
+            ],
+            revert: revert
+        )
+        let cleanupInProgress = [
+            message(id: "msg_user_1", role: "user", text: "First prompt"),
+            message(id: "msg_assistant_1", role: "assistant", text: "First answer"),
+            message(id: "msg_assistant_2", role: "assistant", text: "Second answer"),
+            message(id: "msg_user_3", role: "user", text: "Third prompt"),
+        ]
+        projection.reconcile(messages: cleanupInProgress, revert: revert)
+        let presentation = OpenCodeSessionHistoryPresentation(
+            messages: cleanupInProgress,
+            revert: revert,
+            capabilities: .v2,
+            projection: projection
+        )
+
+        #expect(presentation.visibleMessages.map(\.id) == [
+            "msg_user_1", "msg_assistant_1",
+        ])
+        #expect(presentation.revertedUserMessages.map(\.id) == ["msg_user_3"])
+    }
+
+    @Test("A missing uncaptured revert boundary fails closed")
+    func unknownRemovedBoundaryFailsClosed() {
+        let presentation = OpenCodeSessionHistoryPresentation(
+            messages: [
+                message(id: "msg_assistant_2", role: "assistant", text: "Hidden answer"),
+                message(id: "msg_user_3", role: "user", text: "Hidden prompt"),
+            ],
+            revert: OpenCodeSessionRevertState(
+                messageID: "msg_user_2",
+                partID: nil,
+                snapshot: nil,
+                diff: nil
+            ),
+            capabilities: .v1
+        )
+
+        #expect(presentation.visibleMessages.isEmpty)
+        #expect(presentation.revertedUserMessages.isEmpty)
+    }
+
+    @Test("Continuing a reverted session reconciles the session and transcript together")
+    func revertedContinuationReconciliation() {
+        let revert = OpenCodeSessionRevertState(
+            messageID: "msg_user_2",
+            partID: nil,
+            snapshot: nil,
+            diff: nil
+        )
+
+        #expect(
+            OpenCodeSessionHistoryContinuationPolicy.refreshScope(revert: revert) == .session
+        )
+        #expect(
+            OpenCodeSessionHistoryContinuationPolicy.refreshScope(revert: nil) == .messages
+        )
+    }
+
     @Test("History policy describes protocol parity without leaking routes")
     func protocolPolicy() {
         let v1 = OpenCodeSessionHistoryPolicy(capabilities: .v1)
