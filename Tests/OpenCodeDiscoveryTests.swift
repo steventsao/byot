@@ -154,18 +154,28 @@ struct OpenCodeDiscoveryTests {
     @Test("Initial discovery settles only after the browse batch and its resolutions finish")
     func initialSearchSettlement() {
         var pending = OpenCodeDiscoveryInitialSearch()
-        #expect(!pending.serviceFound(key: "local|_http._tcp.|opencode-4096", moreComing: false))
-        #expect(!pending.emptyWindowElapsed())
+        let settledAfterFinding = pending.serviceFound(
+            key: "local|_http._tcp.|opencode-4096",
+            moreComing: false
+        )
+        let settledDuringPendingResolution = pending.emptyWindowElapsed()
+        #expect(!settledAfterFinding)
+        #expect(!settledDuringPendingResolution)
         #expect(!pending.isSettled)
-        #expect(pending.resolutionFinished(key: "local|_http._tcp.|opencode-4096"))
+        let settledAfterResolution = pending.resolutionFinished(
+            key: "local|_http._tcp.|opencode-4096"
+        )
+        #expect(settledAfterResolution)
         #expect(pending.isSettled)
 
         var empty = OpenCodeDiscoveryInitialSearch()
-        #expect(empty.emptyWindowElapsed())
+        let emptyWindowSettled = empty.emptyWindowElapsed()
+        #expect(emptyWindowSettled)
         #expect(empty.isSettled)
 
         var genericHTTPOnly = OpenCodeDiscoveryInitialSearch()
-        #expect(genericHTTPOnly.serviceFound(key: nil, moreComing: false))
+        let genericBatchSettled = genericHTTPOnly.serviceFound(key: nil, moreComing: false)
+        #expect(genericBatchSettled)
         #expect(genericHTTPOnly.isSettled)
     }
 
