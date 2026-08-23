@@ -654,6 +654,102 @@ final class OpenCodeV2ContractTests: XCTestCase {
         XCTAssertTrue(requests.allSatisfy { v2QueryValues(for: $0).isEmpty })
     }
 
+    func testV1FileBrowsingUsesCurrentRoutesQueriesAndShapes() async throws {
+        let (client, session) = makeClient(serverProtocol: .v1) { request in
+            switch request.url?.path {
+            case "/file":
+                return .json(#"[{"name":"App.swift","path":"Sources/App.swift","absolute":"/repo/Sources/App.swift","type":"file","ignored":false},{"name":"Tests","path":"Tests","absolute":"/repo/Tests","type":"directory","ignored":false}]"#)
+            case "/file/content":
+                return .json(#"{"type":"text","content":"let value = 1\n","mimeType":"text/x-swift"}"#)
+            case "/file/status":
+                return .json(#"[{"path":"Sources/App.swift","added":2,"removed":1,"status":"modified"}]"#)
+            case "/find/file":
+                return .json(#"["Sources/App.swift","Tests/AppTests.swift"]"#)
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        let entries = try await client.listFiles(
+            directory: "/repo",
+            workspace: "wrk_1",
+            path: "Sources"
+        )
+        let content = try await client.readFile(
+            directory: "/repo",
+            workspace: "wrk_1",
+            path: "Sources/App.swift"
+        )
+        let statuses = try await client.fileStatuses(
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let matches = try await client.findFiles(
+            directory: "/repo",
+            workspace: "wrk_1",
+            query: "App"
+        )
+
+        XCTAssertEqual(entries.map(\.path), ["Sources/App.swift", "Tests"])
+        XCTAssertEqual(content.content, "let value = 1\n")
+        XCTAssertEqual(statuses.first?.additions, 2)
+        XCTAssertEqual(matches.map(\.path), ["Sources/App.swift", "Tests/AppTests.swift"])
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { $0.url?.path }, [
+            "/file", "/file/content", "/file/status", "/find/file",
+        ])
+        XCTAssertEqual(v2QueryValues(for: requests[0]), [
+            "directory": "/repo", "workspace": "wrk_1", "path": "Sources",
+        ])
+        XCTAssertEqual(v2QueryValues(for: requests[1]), [
+            "directory": "/repo", "workspace": "wrk_1", "path": "Sources/App.swift",
+        ])
+        XCTAssertEqual(v2QueryValues(for: requests[2]), [
+            "directory": "/repo", "workspace": "wrk_1",
+        ])
+        XCTAssertEqual(v2QueryValues(for: requests[3]), [
+            "directory": "/repo", "workspace": "wrk_1", "query": "App",
+            "type": "file", "limit": "200",
+        ])
+    }
+
+    func testV2FileSearchUsesCurrentRouteAndMissingSurfacesNeverProbe() async throws {
+        let (client, session) = makeClient { request in
+            .json(#"{"location":{"directory":"/repo","workspaceID":"wrk_1","project":{"id":"proj_1","directory":"/repo"}},"data":[{"path":"Sources/App.swift","type":"file"},{"path":"Sources/UI","type":"directory"}]}"#)
+        }
+        defer { session.invalidateAndCancel() }
+
+        for operation in [
+            { try await client.listFiles(directory: "/repo", path: "") as Any },
+            { try await client.readFile(directory: "/repo", path: "README.md") as Any },
+            { try await client.fileStatuses(directory: "/repo") as Any },
+        ] {
+            do {
+                _ = try await operation()
+                XCTFail("Expected unavailable v2 file surface")
+            } catch is OpenCodeFeatureUnavailableError { }
+        }
+        XCTAssertTrue(OpenCodeV2URLProtocolStub.recordedRequests().isEmpty)
+
+        let matches = try await client.findFiles(
+            directory: "/repo",
+            workspace: "wrk_1",
+            query: "App"
+        )
+
+        XCTAssertEqual(matches.map(\.path), ["Sources/App.swift", "Sources/UI"])
+        let request = try XCTUnwrap(OpenCodeV2URLProtocolStub.recordedRequests().first)
+        XCTAssertEqual(request.url?.path, "/api/fs/find")
+        XCTAssertEqual(v2QueryValues(for: request), [
+            "location[directory]": "/repo",
+            "location[workspace]": "wrk_1",
+            "query": "App",
+            "type": "file",
+            "limit": "200",
+        ])
+    }
+
     private func makeClient(
         serverProtocol: OpenCodeServerProtocol = .v2,
         handler: @escaping @Sendable (URLRequest) -> OpenCodeV2URLProtocolStub.Response

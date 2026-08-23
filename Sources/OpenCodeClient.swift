@@ -351,6 +351,56 @@ struct OpenCodeClient: Sendable {
         )
     }
 
+    func listFiles(
+        directory: String,
+        workspace: String? = nil,
+        path: String
+    ) async throws -> [OpenCodeFileEntry] {
+        try await protocolAdapter().listFiles(
+            using: transport,
+            directory: directory,
+            workspace: workspace,
+            path: path
+        )
+    }
+
+    func readFile(
+        directory: String,
+        workspace: String? = nil,
+        path: String
+    ) async throws -> OpenCodeFileContent {
+        try await protocolAdapter().readFile(
+            using: transport,
+            directory: directory,
+            workspace: workspace,
+            path: path
+        )
+    }
+
+    func fileStatuses(
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> [OpenCodeFileStatus] {
+        try await protocolAdapter().fileStatuses(
+            using: transport,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func findFiles(
+        directory: String,
+        workspace: String? = nil,
+        query: String
+    ) async throws -> [OpenCodeFileEntry] {
+        try await protocolAdapter().findFiles(
+            using: transport,
+            directory: directory,
+            workspace: workspace,
+            query: query
+        )
+    }
+
     func connectedProviderModels(
         directory: String,
         workspace: String? = nil

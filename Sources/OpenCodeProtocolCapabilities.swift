@@ -31,6 +31,10 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
     let sessionSummarize: OpenCodeFeatureSupport
     let sessionFork: OpenCodeFeatureSupport
     let sessionSummarizeRequiresModel: Bool
+    let fileTree: OpenCodeFeatureSupport
+    let fileRead: OpenCodeFeatureSupport
+    let fileStatus: OpenCodeFeatureSupport
+    let fileSearch: OpenCodeFeatureSupport
 
     static let v1 = Self(
         sessionDiff: .supported,
@@ -48,7 +52,11 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         sessionUnrevert: .supported,
         sessionSummarize: .supported,
         sessionFork: .supported,
-        sessionSummarizeRequiresModel: true
+        sessionSummarizeRequiresModel: true,
+        fileTree: .supported,
+        fileRead: .supported,
+        fileStatus: .supported,
+        fileSearch: .supported
     )
 
     static let v2 = Self(
@@ -87,7 +95,17 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
         sessionFork: .unavailable(
             reason: "OpenCode v2 does not expose a session fork route yet."
         ),
-        sessionSummarizeRequiresModel: false
+        sessionSummarizeRequiresModel: false,
+        fileTree: .unavailable(
+            reason: "OpenCode v2 does not expose a directory listing route yet."
+        ),
+        fileRead: .unavailable(
+            reason: "OpenCode v2 does not expose a file content route yet."
+        ),
+        fileStatus: .unavailable(
+            reason: "OpenCode v2 does not expose a changed-file status route yet."
+        ),
+        fileSearch: .supported
     )
 }
 
