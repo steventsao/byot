@@ -21,6 +21,7 @@ final class OpenCodeDiscoveryStore: ObservableObject {
             guard let self else { return }
             switch update {
             case .services(let records):
+                isSearching = false
                 servers = OpenCodeBonjourServiceResolver.resolve(records)
                 errorMessage = nil
             case .failure(let message):

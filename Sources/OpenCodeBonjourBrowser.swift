@@ -39,6 +39,10 @@ final class OpenCodeBonjourBrowser: NSObject,
         service.resolve(withTimeout: 5)
     }
 
+    func netServiceBrowserWillSearch(_ browser: NetServiceBrowser) {
+        publishRecords()
+    }
+
     func netServiceBrowser(
         _ browser: NetServiceBrowser,
         didRemove service: NetService,

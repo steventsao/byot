@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 struct OpenCodeBonjourServiceRecord: Equatable, Sendable {
@@ -43,13 +44,7 @@ enum OpenCodeLocalEndpointPolicy {
 
         if host == "localhost" || host.hasSuffix(".local") { return true }
         if isLocalIPv4(host) { return true }
-        return host == "::1"
-            || host.hasPrefix("fe8")
-            || host.hasPrefix("fe9")
-            || host.hasPrefix("fea")
-            || host.hasPrefix("feb")
-            || host.hasPrefix("fc")
-            || host.hasPrefix("fd")
+        return isLocalIPv6(host)
     }
 
     private static func isLocalIPv4(_ host: String) -> Bool {
@@ -65,6 +60,20 @@ enum OpenCodeLocalEndpointPolicy {
             || (values[0] == 169 && values[1] == 254)
             || (values[0] == 172 && (16...31).contains(values[1]))
             || (values[0] == 192 && values[1] == 168)
+    }
+
+    private static func isLocalIPv6(_ host: String) -> Bool {
+        var address = in6_addr()
+        let parsed = host.withCString { pointer in
+            inet_pton(AF_INET6, pointer, &address)
+        }
+        guard parsed == 1 else { return false }
+        let bytes = withUnsafeBytes(of: &address) { Array($0) }
+        let isLoopback = bytes.dropLast().allSatisfy { $0 == 0 }
+            && bytes.last == 1
+        let isLinkLocal = bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80
+        let isUniqueLocal = (bytes[0] & 0xfe) == 0xfc
+        return isLoopback || isLinkLocal || isUniqueLocal
     }
 }
 
