@@ -1,0 +1,29 @@
+name: OpenCode acceptance harness
+
+on:
+  pull_request:
+    paths:
+      - "scripts/opencode-acceptance.sh"
+      - "scripts/test-opencode-acceptance.sh"
+      - "scripts/fixtures/opencode_acceptance_mock.py"
+      - "docs/milestone-ios-opencode-connection.md"
+      - ".github/workflows/opencode-acceptance-harness.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/opencode-acceptance.sh"
+      - "scripts/test-opencode-acceptance.sh"
+      - "scripts/fixtures/opencode_acceptance_mock.py"
+
+permissions:
+  contents: read
+
+jobs:
+  dual-stack-contract:
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise v1 and v2 fixtures
+        run: scripts/test-opencode-acceptance.sh
