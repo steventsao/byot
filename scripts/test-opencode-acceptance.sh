@@ -26,6 +26,7 @@ fail() {
 
 start_mock() {
   local protocol="$1"
+  local output_variable="$2"
   local port_file="$acceptance_test_tmp/$protocol.port"
   python3 -u "$fixture" "$protocol" "$port_file" opencode test-secret \
     >"$acceptance_test_tmp/$protocol.mock.log" 2>&1 &
@@ -40,12 +41,17 @@ start_mock() {
     sed 's/^/mock: /' "$acceptance_test_tmp/$protocol.mock.log" >&2 || true
     fail "$protocol mock started"
   fi
-  cat "$port_file"
+  local mock_port
+  mock_port="$(<"$port_file")"
+  printf -v "$output_variable" '%s' "$mock_port"
 }
 
-v1_port="$(start_mock v1)"
-v2_port="$(start_mock v2)"
-v1_no_version_port="$(start_mock v1-no-version)"
+v1_port=""
+v2_port=""
+v1_no_version_port=""
+start_mock v1 v1_port
+start_mock v2 v2_port
+start_mock v1-no-version v1_no_version_port
 
 [[ "${#pids[@]}" -eq 3 ]] || fail "parent shell owns every mock process for cleanup"
 
