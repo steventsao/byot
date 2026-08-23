@@ -50,23 +50,33 @@ scheme = parts.scheme.lower()
 host = parts.hostname.rstrip(".").lower()
 
 def is_local(value):
-    if value == "localhost" or value.endswith(".local"):
-        return True
     try:
         address = ipaddress.ip_address(value.split("%", 1)[0])
     except ValueError:
         return False
-    return address.is_private or address.is_loopback or address.is_link_local
+    packed = address.packed
+    if address.version == 4:
+        return (
+            packed[0] == 10
+            or packed[0] == 127
+            or (packed[0] == 169 and packed[1] == 254)
+            or (packed[0] == 172 and 16 <= packed[1] <= 31)
+            or (packed[0] == 192 and packed[1] == 168)
+        )
+    is_loopback = packed[:-1] == bytes(15) and packed[-1] == 1
+    is_link_local = packed[0] == 0xFE and packed[1] & 0xC0 == 0x80
+    is_unique_local = packed[0] & 0xFE == 0xFC
+    return is_loopback or is_link_local or is_unique_local
 
 if scheme == "https":
     pass
 elif scheme == "http" and allow_local_http == "1" and is_local(host):
     pass
 elif scheme == "http" and allow_local_http == "1":
-    print("not ok - plain HTTP is limited to a local network host", file=sys.stderr)
+    print("not ok - plain HTTP is limited to a numeric local network address", file=sys.stderr)
     raise SystemExit(2)
 else:
-    print("not ok - use HTTPS, or explicitly allow HTTP for a local network host", file=sys.stderr)
+    print("not ok - use HTTPS, or explicitly allow HTTP for a numeric local network address", file=sys.stderr)
     raise SystemExit(2)
 
 path = parts.path.rstrip("/")

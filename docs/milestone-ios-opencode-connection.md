@@ -43,7 +43,7 @@ OPENCODE_DIRECTORY="/absolute/test/repository" \
 scripts/opencode-acceptance.sh
 ```
 
-For a loopback, private-IP, or `.local` lab endpoint only, set `OPENCODE_ALLOW_LOCAL_HTTP=1`. The harness rejects public HTTP hosts even with that flag, matching the iOS discovery policy.
+For a numeric loopback, private IPv4, IPv4 link-local, IPv6 link-local, or IPv6 unique-local lab endpoint only, set `OPENCODE_ALLOW_LOCAL_HTTP=1`. Hostnames such as `localhost` and `.local` names are deliberately rejected because they can resolve outside the trusted address range; the harness matches the iOS discovery policy.
 
 ## Mac server preparation
 
