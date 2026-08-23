@@ -100,6 +100,46 @@ struct OpenCodeProviderConnectionStoreTests {
         #expect(!store.isSubmitting)
     }
 
+    @Test("Terminal OAuth polling returns to a retryable phase")
+    func terminalOAuthPoll() async {
+        let provider = oauthProvider()
+        let service = MockProviderConnectionService(
+            providers: [provider],
+            authorizationMode: .browser,
+            status: .expired
+        )
+        let store = makeStore(service: service)
+
+        await store.load()
+        store.selectProvider(provider)
+        await store.beginOAuth()
+        await store.pollOAuthOnce()
+
+        #expect(store.phase == .oauthReady)
+        #expect(store.authorization == nil)
+        #expect(store.errorMessage == "Provider authorization expired. Start again.")
+    }
+
+    @Test("OAuth polling transport failures leave a retryable flow")
+    func failedOAuthPollRequest() async {
+        let provider = oauthProvider()
+        let service = MockProviderConnectionService(
+            providers: [provider],
+            authorizationMode: .browser,
+            statusError: TestProviderConnectionError.statusFailed
+        )
+        let store = makeStore(service: service)
+
+        await store.load()
+        store.selectProvider(provider)
+        await store.beginOAuth()
+        await store.pollOAuthOnce()
+
+        #expect(store.phase == .oauthReady)
+        #expect(store.authorization == nil)
+        #expect(store.errorMessage == TestProviderConnectionError.statusFailed.localizedDescription)
+    }
+
     @Test("Navigation invalidates an in-flight OAuth completion")
     func navigationInvalidatesSubmission() async {
         let provider = oauthProvider()
@@ -239,11 +279,13 @@ struct OpenCodeProviderConnectionStoreTests {
 private enum TestProviderConnectionError: LocalizedError {
     case startFailed
     case cancelFailed
+    case statusFailed
 
     var errorDescription: String? {
         switch self {
         case .startFailed: "Could not start provider sign-in."
         case .cancelFailed: "Could not cancel provider sign-in."
+        case .statusFailed: "Could not check provider sign-in."
         }
     }
 }
@@ -290,17 +332,26 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
     private let startBarrier: ProviderConnectionBarrier?
     private let startError: TestProviderConnectionError?
     private let cancelError: TestProviderConnectionError?
+    private let authorizationMode: OpenCodeProviderOAuthMode
+    private let status: OpenCodeProviderOAuthStatus
+    private let statusError: TestProviderConnectionError?
 
     init(
         providers: [OpenCodeProviderConnection],
         startBarrier: ProviderConnectionBarrier? = nil,
         startError: TestProviderConnectionError? = nil,
-        cancelError: TestProviderConnectionError? = nil
+        cancelError: TestProviderConnectionError? = nil,
+        authorizationMode: OpenCodeProviderOAuthMode = .code,
+        status: OpenCodeProviderOAuthStatus = .pending,
+        statusError: TestProviderConnectionError? = nil
     ) {
         self.providers = providers
         self.startBarrier = startBarrier
         self.startError = startError
         self.cancelError = cancelError
+        self.authorizationMode = authorizationMode
+        self.status = status
+        self.statusError = statusError
     }
 
     var steps: [Step] {
@@ -337,7 +388,7 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
             attemptID: "attempt_1",
             url: URL(string: "https://auth.example.test")!,
             instructions: "Paste the code",
-            mode: .code,
+            mode: authorizationMode,
             createdAt: 1,
             expiresAt: 2
         )
@@ -360,7 +411,8 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
         workspace: String?
     ) async throws -> OpenCodeProviderOAuthStatus {
         record(.status(attemptID: attemptID))
-        return .pending
+        if let statusError { throw statusError }
+        return status
     }
 
     func cancelProviderOAuth(
