@@ -200,6 +200,32 @@ struct OpenCodeFileBrowserStoreTests {
         #expect(store.errorMessage == nil)
     }
 
+    @Test("A failed search clears results from the previous query")
+    func failedSearchClearsStaleResults() async {
+        let service = MockFileBrowserService(
+            capabilities: .v2,
+            searchResults: [
+                OpenCodeFileEntry(name: "Old.swift", path: "Old.swift", type: "file"),
+            ]
+        )
+        let store = OpenCodeFileBrowserStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil
+        )
+        await store.start()
+        store.query = "old"
+        await store.search()
+        #expect(store.searchResults.map(\.path) == ["Old.swift"])
+
+        service.failNextSearch()
+        store.query = "new"
+        await store.search()
+
+        #expect(store.searchResults.isEmpty)
+        #expect(store.errorMessage != nil)
+    }
+
     @Test("reader checks capabilities before attempting a read")
     func readerCapabilityGate() async {
         let service = MockFileBrowserService(capabilities: .v2)
@@ -236,6 +262,7 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
     private let content: OpenCodeFileContent
     private let capabilitiesDelay: Duration?
     private let listDelay: Duration?
+    nonisolated(unsafe) private var shouldFailNextSearch = false
 
     init(
         capabilities: OpenCodeProtocolCapabilities,
@@ -306,7 +333,14 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
         query: String
     ) async throws -> [OpenCodeFileEntry] {
         record(.search(query: query))
+        if takeSearchFailure() { throw MockFileBrowserError.searchUnavailable }
         return searchResults
+    }
+
+    func failNextSearch() {
+        lock.lock()
+        shouldFailNextSearch = true
+        lock.unlock()
     }
 
     private func record(_ step: Step) {
@@ -314,4 +348,16 @@ private final class MockFileBrowserService: OpenCodeFileBrowserServicing, @unche
         recordedSteps.append(step)
         lock.unlock()
     }
+
+    private func takeSearchFailure() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let result = shouldFailNextSearch
+        shouldFailNextSearch = false
+        return result
+    }
+}
+
+private enum MockFileBrowserError: Error {
+    case searchUnavailable
 }
