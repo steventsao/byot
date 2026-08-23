@@ -100,6 +100,21 @@ enum OpenCodeSessionHistoryEventProjection {
     }
 }
 
+enum OpenCodeSessionHistoryReconciliation {
+    static func keepsBoundaryUntilRefresh(
+        for mutation: OpenCodeSessionHistoryEventMutation
+    ) -> Bool {
+        mutation == .committed
+    }
+
+    static func acceptsFetchedSession(
+        mutationBaseline: Int,
+        currentMutation: Int
+    ) -> Bool {
+        mutationBaseline == currentMutation
+    }
+}
+
 struct OpenCodeSessionHistoryPolicy: Equatable, Sendable {
     let canRevert: Bool
     let canUnrevert: Bool

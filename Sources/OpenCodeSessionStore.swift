@@ -58,6 +58,7 @@ final class OpenCodeSessionStore: ObservableObject {
     private var diffMutationGeneration = 0
     private var statusMutationGeneration = 0
     private var todoMutationGeneration = 0
+    private var historyMutationGeneration = 0
     private var messageRefreshPending = false
     private var actionRefreshPending = false
     private var isRunning = false
@@ -228,6 +229,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let diffBaseline = diffMutationGeneration
         let statusBaseline = statusMutationGeneration
         let todoBaseline = todoMutationGeneration
+        let historyBaseline = historyMutationGeneration
         if showLoading { isLoading = true }
         defer {
             if generation == refreshGeneration { isLoading = false }
@@ -293,6 +295,13 @@ final class OpenCodeSessionStore: ObservableObject {
                     workspace: actionWorkspace
                 )
             }
+            async let sessionResult = Self.capture {
+                try await actionClient.getSession(
+                    sessionID: actionSessionID,
+                    directory: actionDirectory,
+                    workspace: actionWorkspace
+                )
+            }
 
             let results = await (
                 messageResult,
@@ -301,12 +310,24 @@ final class OpenCodeSessionStore: ObservableObject {
                 diffResult,
                 statusResult,
                 childResult,
-                todoResult
+                todoResult,
+                sessionResult
             )
             try Task.checkCancellation()
             guard generation == refreshGeneration else { return }
 
             var coreErrors: [Error] = []
+            switch results.7 {
+            case .success(let fetchedSession):
+                if OpenCodeSessionHistoryReconciliation.acceptsFetchedSession(
+                    mutationBaseline: historyBaseline,
+                    currentMutation: historyMutationGeneration
+                ) {
+                    session = fetchedSession
+                }
+            case .failure(let error):
+                coreErrors.append(error)
+            }
             switch results.0 {
             case .success(let messages):
                 if messageGeneration == messageRequestGeneration,
@@ -582,6 +603,7 @@ final class OpenCodeSessionStore: ObservableObject {
         refreshGeneration &+= 1
         messageRequestGeneration &+= 1
         diffMutationGeneration &+= 1
+        historyMutationGeneration &+= 1
     }
 
     private func prepareForHistoryRollback() async throws {
@@ -591,11 +613,21 @@ final class OpenCodeSessionStore: ObservableObject {
         OpenCodeSessionAbortPolicy.prepareQueueForRequest(&promptQueue)
         publishPromptQueue()
         cancelQueueRecovery()
-        try await client.abortSession(
-            sessionID: session.id,
-            directory: directory,
-            workspace: workspace
-        )
+        do {
+            try await client.abortSession(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace
+            )
+        } catch {
+            if isRunning { restoreQueueAfterFailedAbort() }
+            throw error
+        }
+        promptDispatchTask?.cancel()
+        promptDispatchTask = nil
+        promptDispatchID = nil
+        inFlightPrompt = nil
+        isSending = false
         statusMutationGeneration &+= 1
         status = .idle
         isStatusReady = true
@@ -606,6 +638,7 @@ final class OpenCodeSessionStore: ObservableObject {
         _ mutation: OpenCodeSessionHistoryMutation,
         clearsRevert: Bool
     ) {
+        historyMutationGeneration &+= 1
         if let updatedSession = mutation.session {
             session = updatedSession
         } else {
@@ -891,12 +924,19 @@ final class OpenCodeSessionStore: ObservableObject {
             case .staged(let mutation):
                 applyHistoryMutation(mutation, clearsRevert: false)
             case .cleared:
+                historyMutationGeneration &+= 1
                 session.revert = nil
                 diffMutationGeneration &+= 1
                 diffs = []
             case .committed:
-                session.revert = nil
-                scheduleMessageRefresh()
+                historyMutationGeneration &+= 1
+                if OpenCodeSessionHistoryReconciliation.keepsBoundaryUntilRefresh(
+                    for: historyMutation
+                ) {
+                    scheduleReconciliation()
+                } else {
+                    session.revert = nil
+                }
             }
             return
         }
