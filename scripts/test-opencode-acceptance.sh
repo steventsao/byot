@@ -27,14 +27,19 @@ fail() {
 start_mock() {
   local protocol="$1"
   local port_file="$acceptance_test_tmp/$protocol.port"
-  python3 "$fixture" "$protocol" "$port_file" opencode test-secret \
+  python3 -u "$fixture" "$protocol" "$port_file" opencode test-secret \
     >"$acceptance_test_tmp/$protocol.mock.log" 2>&1 &
-  pids+=("$!")
-  for _ in {1..100}; do
+  local mock_pid="$!"
+  pids+=("$mock_pid")
+  for _ in {1..300}; do
     [[ -s "$port_file" ]] && break
-    sleep 0.02
+    if ! kill -0 "$mock_pid" 2>/dev/null; then break; fi
+    sleep 0.1
   done
-  [[ -s "$port_file" ]] || fail "$protocol mock started"
+  if [[ ! -s "$port_file" ]]; then
+    sed 's/^/mock: /' "$acceptance_test_tmp/$protocol.mock.log" >&2 || true
+    fail "$protocol mock started"
+  fi
   cat "$port_file"
 }
 
