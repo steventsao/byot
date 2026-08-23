@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import byot
@@ -16,10 +17,18 @@ struct OpenCodeDiscoveryTests {
                 txt: ["path": "/"]
             ),
             OpenCodeBonjourServiceRecord(
-                name: "opencode-4096",
+                name: "opencode-spoof",
                 type: "_http._tcp.",
                 domain: "local.",
                 host: "opencode.local.",
+                port: 4096,
+                txt: ["path": "/"]
+            ),
+            OpenCodeBonjourServiceRecord(
+                name: "opencode-4096",
+                type: "_http._tcp.",
+                domain: "local.",
+                host: "192.168.1.8",
                 port: 4096,
                 txt: ["path": "/"]
             ),
@@ -30,15 +39,13 @@ struct OpenCodeDiscoveryTests {
         let server = try #require(servers.first)
         #expect(servers.count == 1)
         #expect(server.name == "opencode-4096")
-        #expect(server.endpoint.absoluteString == "http://opencode.local:4096/")
+        #expect(server.endpoint.absoluteString == "http://192.168.1.8:4096/")
         #expect(server.profile().allowsLocalHTTP)
     }
 
-    @Test("Local endpoint policy accepts only local names and address ranges")
+    @Test("Local endpoint policy accepts only parsed local address ranges")
     func localEndpointPolicy() {
         for host in [
-            "opencode.local",
-            "localhost",
             "192.168.1.4",
             "10.0.0.8",
             "172.20.1.4",
@@ -52,6 +59,8 @@ struct OpenCodeDiscoveryTests {
         }
         for host in [
             "example.com",
+            "opencode.local",
+            "localhost",
             "fd.example.com",
             "fe80.example.com",
             "fc-not-an-address",
@@ -61,6 +70,18 @@ struct OpenCodeDiscoveryTests {
         ] {
             #expect(!OpenCodeLocalEndpointPolicy.isLocalHost(host), "Expected public host: \(host)")
         }
+    }
+
+    @Test("Bonjour address selection rejects public targets and returns a numeric local address")
+    func resolvedBonjourAddressPolicy() {
+        let publicAddress = ipv4SocketAddress("203.0.113.8")
+        let localAddress = ipv4SocketAddress("192.168.1.8")
+
+        #expect(OpenCodeBonjourAddressResolver.localHost(from: [publicAddress]) == nil)
+        #expect(
+            OpenCodeBonjourAddressResolver.localHost(from: [publicAddress, localAddress])
+                == "192.168.1.8"
+        )
     }
 
     @Test("Only discovered local profiles may use HTTP and legacy profiles stay secure")
@@ -75,10 +96,19 @@ struct OpenCodeDiscoveryTests {
 
         let discovered = OpenCodeServerProfile(
             name: "Nearby Mac",
+            baseURL: "http://192.168.1.8:4096",
+            allowsLocalHTTP: true
+        )
+        #expect(try discovered.validatedBaseURL().absoluteString == "http://192.168.1.8:4096")
+
+        let spoofableHostname = OpenCodeServerProfile(
+            name: "Hostname is not a pinned local address",
             baseURL: "http://opencode.local:4096",
             allowsLocalHTTP: true
         )
-        #expect(try discovered.validatedBaseURL().absoluteString == "http://opencode.local:4096")
+        #expect(throws: OpenCodeConnectionError.self) {
+            try spoofableHostname.validatedBaseURL()
+        }
 
         let publicHTTP = OpenCodeServerProfile(
             name: "Unsafe",
@@ -206,6 +236,17 @@ struct OpenCodeDiscoveryTests {
         #expect(ats["NSAllowsLocalNetworking"] as? Bool == true)
         #expect(ats["NSAllowsArbitraryLoads"] == nil)
     }
+}
+
+private func ipv4SocketAddress(_ host: String) -> Data {
+    var address = sockaddr_in()
+    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    address.sin_family = sa_family_t(AF_INET)
+    let parsed = host.withCString { pointer in
+        inet_pton(AF_INET, pointer, &address.sin_addr)
+    }
+    precondition(parsed == 1)
+    return Data(bytes: &address, count: MemoryLayout<sockaddr_in>.size)
 }
 
 @MainActor
