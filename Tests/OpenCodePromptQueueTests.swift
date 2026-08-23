@@ -180,6 +180,23 @@ struct OpenCodePromptQueueTests {
         #expect(queue.prompts.map(\.text) == ["Second"])
     }
 
+    @Test("Server activity completed during a pending stop drains after restoration")
+    func completedActivityDuringPauseDrainsOnRestore() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(text: "First", model: nil, serverIsActive: false)
+        _ = queue.accept(text: "Second", model: nil, serverIsActive: false)
+        let snapshot = queue.pausePendingPrompts()
+
+        #expect(queue.dispatchSucceeded() == nil)
+        queue.serverBecameActive()
+        #expect(queue.serverBecameIdle() == nil)
+        let next = queue.restorePendingPrompts(after: snapshot)
+
+        #expect(next?.text == "Second")
+        #expect(queue.prompts.isEmpty)
+        #expect(queue.isTurnActive)
+    }
+
     @Test("A submission failed during a pending stop stays safely paused")
     func failedSubmissionDuringPauseStaysPaused() throws {
         var queue = OpenCodePromptQueue()
