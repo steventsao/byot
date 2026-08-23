@@ -10,11 +10,11 @@ struct OpenCodeServerProbe: Equatable, Sendable {
     let health: OpenCodeHealth
 }
 
-// Mirrors the desktop app's detectServerProtocol (packages/app/src/utils/
-// server-protocol.ts): probe /global/health first, then /api/health, and only
-// trust responses that are actually JSON. OpenCode 2 serves its web UI with a
-// 200 text/html fallback on every legacy v1 route, so a status code alone
-// proves nothing (#12, #19).
+// Probe /global/health first, then /api/health, and only trust responses that
+// are actually JSON. The current v2 protocol contract returns only
+// {healthy:true}; older betas also included pid/version and briefly wrapped the
+// payload in {data:...}. A valid /api/health response is therefore v2 whenever
+// the legacy health route is absent (#12, #13, #19).
 struct OpenCodeProtocolDetector: Sendable {
     let client: OpenCodeClient
 
@@ -30,22 +30,11 @@ struct OpenCodeProtocolDetector: Sendable {
             )
         }
         if let current = try await client.probeJSON(["api", "health"]) {
-            let healthy = current["healthy"] as? Bool ?? false
-            let version = current["version"] as? String ?? "unknown"
-            // A numeric pid is the v2 discriminator; a bare healthy:true
-            // without pid matches the legacy health shape.
-            if current["pid"] is NSNumber {
-                return OpenCodeServerProbe(
-                    protocol: .v2,
-                    health: OpenCodeHealth(healthy: healthy, version: version)
-                )
+            let payload = current["data"] as? [String: Any] ?? current
+            guard let healthy = payload["healthy"] as? Bool else {
+                throw OpenCodeConnectionError.invalidResponse
             }
-            if healthy {
-                return OpenCodeServerProbe(
-                    protocol: .v1,
-                    health: OpenCodeHealth(healthy: true, version: version)
-                )
-            }
+            let version = payload["version"] as? String ?? "v2"
             return OpenCodeServerProbe(
                 protocol: .v2,
                 health: OpenCodeHealth(healthy: healthy, version: version)

@@ -582,15 +582,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     nonisolated static func isPendingActionEventType(_ type: String) -> Bool {
-        switch type {
-        case "permission.asked", "permission.replied",
-             "permission.v2.asked", "permission.v2.replied",
-             "question.asked", "question.replied", "question.rejected",
-             "question.v2.asked", "question.v2.replied", "question.v2.rejected":
-            true
-        default:
-            false
-        }
+        OpenCodeEventSemantics.effect(for: type) == .pendingActions
     }
 
     private func handle(_ event: OpenCodeEvent) {
@@ -628,7 +620,23 @@ final class OpenCodeSessionStore: ObservableObject {
             actionMutationGeneration &+= 1
             scheduleActionRefresh()
         default:
-            break
+            switch OpenCodeEventSemantics.effect(for: event.type) {
+            case .messages:
+                scheduleMessageRefresh()
+            case .busyAndMessages:
+                statusMutationGeneration &+= 1
+                applyEventStatus(.busy)
+                scheduleMessageRefresh()
+            case .idleAndMessages:
+                statusMutationGeneration &+= 1
+                applyEventStatus(.idle)
+                scheduleMessageRefresh()
+            case .pendingActions:
+                actionMutationGeneration &+= 1
+                scheduleActionRefresh()
+            case .none:
+                break
+            }
         }
     }
 

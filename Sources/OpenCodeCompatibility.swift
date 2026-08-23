@@ -24,7 +24,14 @@ enum OpenCodeCompatibilityEvaluator {
         serverProtocol: OpenCodeServerProtocol
     ) -> OpenCodeCompatibility {
         if serverProtocol == .v2 {
-            return .unsupported(reason: openCode2Reason(version: health.version))
+            guard health.healthy else {
+                return .unsupported(
+                    reason: "OpenCode 2 reported an unhealthy status. Restart the OpenCode server on your Mac and try again."
+                )
+            }
+            return .degraded(
+                reason: "OpenCode 2 (\(health.version)) core chat is enabled against the current v2 protocol. Some legacy-only features remain unavailable while parity work continues."
+            )
         }
         return evaluate(health: health)
     }
