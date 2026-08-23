@@ -5,6 +5,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         case idle
         case submitting(observedActive: Bool, observedCompletion: Bool)
         case awaitingActivity
+        case awaitingSynchronousIdle
         case active
         case paused
     }
@@ -25,7 +26,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
 
     var isTurnActive: Bool {
         switch phase {
-        case .submitting, .awaitingActivity, .active: true
+        case .submitting, .awaitingActivity, .awaitingSynchronousIdle, .active: true
         case .idle, .paused: false
         }
     }
@@ -42,14 +43,14 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         switch phase {
         case .submitting(let observedActive, _): observedActive
         case .active: true
-        case .idle, .awaitingActivity, .paused: false
+        case .idle, .awaitingActivity, .awaitingSynchronousIdle, .paused: false
         }
     }
 
     var needsServerReconciliation: Bool {
         guard !prompts.isEmpty else { return false }
         return switch phase {
-        case .awaitingActivity, .active: true
+        case .awaitingActivity, .awaitingSynchronousIdle, .active: true
         case .idle, .submitting, .paused: false
         }
     }
@@ -65,10 +66,29 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         serverIsActive: Bool,
         id: UUID = UUID()
     ) -> OpenCodePromptSubmission {
+        accept(
+            intent: .prompt(text),
+            model: model,
+            agent: nil,
+            attachments: attachments,
+            serverIsActive: serverIsActive,
+            id: id
+        )
+    }
+
+    mutating func accept(
+        intent: OpenCodeSessionInputIntent,
+        model: OpenCodeModelOption?,
+        agent: String?,
+        attachments: [OpenCodePromptAttachment] = [],
+        serverIsActive: Bool,
+        id: UUID = UUID()
+    ) -> OpenCodePromptSubmission {
         let prompt = OpenCodeQueuedPrompt(
             id: id,
-            text: text,
+            intent: intent,
             model: model,
+            agent: agent,
             attachments: attachments
         )
         if phase == .idle, serverIsActive {
@@ -89,7 +109,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
                 observedActive: true,
                 observedCompletion: observedCompletion
             )
-        case .idle, .awaitingActivity, .active:
+        case .idle, .awaitingActivity, .awaitingSynchronousIdle, .active:
             phase = .active
         case .paused:
             recordPausedServerActive()
@@ -103,6 +123,8 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         case .paused:
             recordPausedServerIdle()
             return nil
+        case .awaitingSynchronousIdle:
+            return takeNextOrBecomeIdle()
         case .submitting(let observedActive, _):
             guard observedActive else { return nil }
             phase = .submitting(observedActive: true, observedCompletion: true)
@@ -119,6 +141,8 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         case .paused:
             recordPausedServerIdle()
             return nil
+        case .awaitingSynchronousIdle:
+            return takeNextOrBecomeIdle()
         case .submitting(let observedActive, _):
             guard observedActive else { return nil }
             phase = .submitting(observedActive: true, observedCompletion: true)
@@ -128,18 +152,33 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         }
     }
 
-    mutating func dispatchSucceeded() -> OpenCodeQueuedPrompt? {
+    mutating func dispatchSucceeded(
+        completesSynchronously: Bool = false
+    ) -> OpenCodeQueuedPrompt? {
         switch phase {
         case .submitting(let observedActive, let observedCompletion):
+            if completesSynchronously {
+                if observedActive, observedCompletion {
+                    return takeNextOrBecomeIdle()
+                }
+                if prompts.isEmpty {
+                    phase = .idle
+                } else {
+                    phase = .awaitingSynchronousIdle
+                }
+                return nil
+            }
             if observedActive, observedCompletion {
                 return takeNextOrBecomeIdle()
             }
             phase = observedActive ? .active : .awaitingActivity
             return nil
         case .paused:
-            recordPausedDispatchSucceeded()
+            recordPausedDispatchSucceeded(
+                completesSynchronously: completesSynchronously
+            )
             return nil
-        case .idle, .awaitingActivity, .active:
+        case .idle, .awaitingActivity, .awaitingSynchronousIdle, .active:
             return nil
         }
     }
@@ -172,9 +211,13 @@ struct OpenCodePromptQueue: Equatable, Sendable {
 
     mutating func remove(_ id: UUID) {
         prompts.removeAll { $0.id == id }
-        if phase == .paused, prompts.isEmpty {
+        guard prompts.isEmpty else { return }
+        switch phase {
+        case .paused, .awaitingSynchronousIdle:
             phase = .idle
             resetPausedTransition()
+        case .idle, .submitting, .awaitingActivity, .active:
+            break
         }
     }
 
@@ -221,7 +264,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
                 observedActive: true,
                 observedCompletion: observedCompletion
             )
-        case .idle, .awaitingActivity, .active:
+        case .idle, .awaitingActivity, .awaitingSynchronousIdle, .active:
             pausedResumePhase = .active
         case .paused, nil:
             break
@@ -237,17 +280,27 @@ struct OpenCodePromptQueue: Equatable, Sendable {
                 observedActive: true,
                 observedCompletion: true
             )
-        case .active:
+        case .awaitingSynchronousIdle, .active:
             pausedShouldAdvance = true
         case .idle, .awaitingActivity, .paused, nil:
             break
         }
     }
 
-    private mutating func recordPausedDispatchSucceeded() {
+    private mutating func recordPausedDispatchSucceeded(
+        completesSynchronously: Bool
+    ) {
         guard !pausedSubmissionFailed, !pausedShouldAdvance else { return }
         guard case .submitting(let observedActive, let observedCompletion) = pausedResumePhase
         else { return }
+        if completesSynchronously {
+            if observedActive, observedCompletion {
+                pausedShouldAdvance = true
+            } else {
+                pausedResumePhase = prompts.isEmpty ? .idle : .awaitingSynchronousIdle
+            }
+            return
+        }
         if observedActive, observedCompletion {
             pausedShouldAdvance = true
         } else {

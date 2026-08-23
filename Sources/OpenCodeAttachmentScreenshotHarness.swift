@@ -3,6 +3,7 @@ import SwiftUI
 
 struct OpenCodeAttachmentScreenshotHarness: View {
     @StateObject private var store: OpenCodeSessionStore
+    @StateObject private var inputStore: OpenCodeSessionInputStore
 
     init() {
         let profile = OpenCodeServerProfile(
@@ -29,11 +30,20 @@ struct OpenCodeAttachmentScreenshotHarness: View {
                 archived: nil
             )
         )
+        let client = OpenCodeClient(profile: profile, password: "screenshot")
         _store = StateObject(
             wrappedValue: OpenCodeSessionStore(
-                client: OpenCodeClient(profile: profile, password: "screenshot"),
+                client: client,
                 session: session,
                 directory: session.directory
+            )
+        )
+        _inputStore = StateObject(
+            wrappedValue: OpenCodeSessionInputStore(
+                client: client,
+                directory: session.directory,
+                workspace: session.workspaceID,
+                initialAgentID: session.agent
             )
         )
     }
@@ -52,6 +62,7 @@ struct OpenCodeAttachmentScreenshotHarness: View {
             .safeAreaInset(edge: .bottom) {
                 OpenCodeSessionComposerView(
                     store: store,
+                    inputStore: inputStore,
                     screenshotAttachment: OpenCodePromptAttachment(
                         filename: "byot-design.png",
                         mimeType: "image/png",

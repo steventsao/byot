@@ -434,7 +434,24 @@ final class OpenCodeSessionStore: ObservableObject {
         attachments: [OpenCodePromptAttachment] = []
     ) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (!trimmed.isEmpty || !attachments.isEmpty), canSubmitPrompt else { return false }
+        return send(.prompt(trimmed), agent: nil, attachments: attachments)
+    }
+
+    func send(
+        _ intent: OpenCodeSessionInputIntent,
+        agent: String?,
+        attachments: [OpenCodePromptAttachment] = []
+    ) -> Bool {
+        guard (!intent.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !attachments.isEmpty),
+              canSubmitPrompt
+        else { return false }
+        if case .prompt = intent {
+            // Prompt attachments are transported as native v1 parts or v2 files.
+        } else if !attachments.isEmpty {
+            errorMessage = "File attachments can only be sent with a message."
+            return false
+        }
         do {
             try OpenCodePromptAttachment.validate(attachments)
         } catch {
@@ -442,8 +459,9 @@ final class OpenCodeSessionStore: ObservableObject {
             return false
         }
         let submission = promptQueue.accept(
-            text: trimmed,
+            intent: intent,
             model: selectedModel,
+            agent: agent,
             attachments: attachments,
             serverIsActive: status.isActive || isSending
         )
@@ -781,19 +799,51 @@ final class OpenCodeSessionStore: ObservableObject {
         markOptimisticBusy()
         isSending = true
         do {
-            try await client.sendMessage(
-                sessionID: session.id,
-                directory: directory,
-                workspace: workspace,
-                model: prompt.model,
-                text: prompt.text,
-                attachments: prompt.attachments
-            )
+            let completesSynchronously: Bool
+            switch prompt.intent {
+            case .prompt(let text):
+                try await client.sendMessage(
+                    sessionID: session.id,
+                    directory: directory,
+                    workspace: workspace,
+                    model: prompt.model,
+                    agent: prompt.agent,
+                    text: text,
+                    attachments: prompt.attachments
+                )
+                completesSynchronously = false
+            case .command(let name, let arguments):
+                try await client.executeCommand(
+                    sessionID: session.id,
+                    directory: directory,
+                    workspace: workspace,
+                    command: name,
+                    arguments: arguments,
+                    agent: prompt.agent,
+                    model: prompt.model
+                )
+                completesSynchronously = false
+            case .shell(let command):
+                guard let agent = prompt.agent else {
+                    throw OpenCodeSessionInputError.shellAgentRequired
+                }
+                try await client.runShell(
+                    sessionID: session.id,
+                    directory: directory,
+                    workspace: workspace,
+                    command: command,
+                    agent: agent,
+                    model: prompt.model
+                )
+                completesSynchronously = true
+            }
             try Task.checkCancellation()
             guard isCurrentPromptDispatch(dispatchID) else { return }
             let observedServerActivity = promptQueue.hasObservedServerActivity
             statusMutationGeneration &+= 1
-            let nextPrompt = promptQueue.dispatchSucceeded()
+            let nextPrompt = promptQueue.dispatchSucceeded(
+                completesSynchronously: completesSynchronously
+            )
             publishPromptQueue()
             finishPromptDispatch(dispatchID)
             switch historyRefreshScope {
@@ -802,6 +852,7 @@ final class OpenCodeSessionStore: ObservableObject {
             case .session:
                 scheduleReconciliation()
             }
+            if completesSynchronously { clearOptimisticBusy() }
             if let nextPrompt {
                 schedulePromptDispatch(nextPrompt)
             } else if observedServerActivity == false || isEventConnected == false {

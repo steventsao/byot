@@ -401,6 +401,68 @@ struct OpenCodeClient: Sendable {
         )
     }
 
+    func commands(
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> [OpenCodeCommandOption] {
+        try await protocolAdapter().commands(
+            using: transport,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func agents(
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> [OpenCodeAgentOption] {
+        try await protocolAdapter().agents(
+            using: transport,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func executeCommand(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil,
+        command: String,
+        arguments: String,
+        agent: String?,
+        model: OpenCodeModelOption?
+    ) async throws {
+        try await protocolAdapter().executeCommand(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace,
+            command: command,
+            arguments: arguments,
+            agent: agent,
+            model: model
+        )
+    }
+
+    func runShell(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil,
+        command: String,
+        agent: String,
+        model: OpenCodeModelOption?
+    ) async throws {
+        try await protocolAdapter().runShell(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace,
+            command: command,
+            agent: agent,
+            model: model
+        )
+    }
+
     func connectedProviderModels(
         directory: String,
         workspace: String? = nil
@@ -430,6 +492,7 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil,
         model: OpenCodeModelOption? = nil,
+        agent: String? = nil,
         text: String,
         attachments: [OpenCodePromptAttachment] = []
     ) async throws {
@@ -439,6 +502,7 @@ struct OpenCodeClient: Sendable {
             directory: directory,
             workspace: workspace,
             model: model,
+            agent: agent,
             text: text,
             attachments: attachments
         )
@@ -449,6 +513,7 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil,
         model: OpenCodeModelOption? = nil,
+        agent: String? = nil,
         text: String,
         attachments: [OpenCodePromptAttachment] = []
     ) throws -> URLRequest {
@@ -458,6 +523,7 @@ struct OpenCodeClient: Sendable {
             directory: directory,
             workspace: workspace,
             model: model,
+            agent: agent,
             text: text,
             attachments: attachments
         )

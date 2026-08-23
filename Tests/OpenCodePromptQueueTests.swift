@@ -266,8 +266,8 @@ struct OpenCodePromptQueueTests {
         #expect(prompt.model == model)
     }
 
-    @Test("Queued prompts retain attachments for later dispatch and retry")
-    func queuedPromptCapturesAttachments() throws {
+    @Test("Queued prompts retain attachments and agent for later dispatch and retry")
+    func queuedPromptCapturesAttachmentsAndAgent() throws {
         var queue = OpenCodePromptQueue()
         let attachment = OpenCodePromptAttachment(
             filename: "design.png",
@@ -276,16 +276,129 @@ struct OpenCodePromptQueueTests {
         )
 
         let result = queue.accept(
-            text: "",
+            intent: .prompt(""),
             model: nil,
+            agent: "build",
             attachments: [attachment],
             serverIsActive: true
         )
         let prompt = try #require(result.queuedPrompt)
 
         #expect(prompt.text.isEmpty)
+        #expect(prompt.agent == "build")
         #expect(prompt.attachments == [attachment])
         #expect(queue.serverBecameIdle()?.attachments == [attachment])
+    }
+
+    @Test("Queued inputs retain command intent and agent selected at submission")
+    func queuedInputCapturesIntentAndAgent() throws {
+        var queue = OpenCodePromptQueue()
+        let intent = OpenCodeSessionInputIntent.command(
+            name: "review",
+            arguments: "staged changes"
+        )
+
+        let result = queue.accept(
+            intent: intent,
+            model: nil,
+            agent: "plan",
+            serverIsActive: true
+        )
+        let prompt = try #require(result.queuedPrompt)
+
+        #expect(prompt.intent == intent)
+        #expect(prompt.agent == "plan")
+        #expect(prompt.text == "/review staged changes")
+    }
+
+    @Test("A synchronous shell response waits for an idle barrier before the next turn")
+    func shellCompletionWaitsForIdleBarrier() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            intent: .shell("git status"),
+            model: nil,
+            agent: "build",
+            serverIsActive: false
+        )
+        _ = queue.accept(text: "Explain that", model: nil, serverIsActive: false)
+
+        #expect(queue.dispatchSucceeded(completesSynchronously: true) == nil)
+        #expect(queue.serverBecameIdle()?.text == "Explain that")
+        #expect(queue.prompts.isEmpty)
+    }
+
+    @Test("A delayed shell idle cannot complete the next queued prompt")
+    func delayedShellIdleCannotDrainNextTurn() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            intent: .shell("git status"),
+            model: nil,
+            agent: "build",
+            serverIsActive: false
+        )
+        _ = queue.accept(text: "Second", model: nil, serverIsActive: false)
+        _ = queue.accept(text: "Third", model: nil, serverIsActive: false)
+
+        #expect(queue.dispatchSucceeded(completesSynchronously: true) == nil)
+        #expect(queue.serverBecameIdle()?.text == "Second")
+        #expect(queue.serverBecameIdle() == nil)
+        #expect(queue.dispatchSucceeded() == nil)
+        #expect(queue.serverBecameIdle() == nil)
+        #expect(queue.prompts.map(\.text) == ["Third"])
+
+        queue.serverBecameActive()
+        #expect(queue.serverBecameIdle()?.text == "Third")
+    }
+
+    @Test("Removing the final shell follow-up clears its synchronous idle barrier")
+    func removingFinalShellFollowUpClearsBarrier() throws {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            intent: .shell("git status"),
+            model: nil,
+            agent: "build",
+            serverIsActive: false
+        )
+        let followUp = try #require(
+            queue.accept(
+                intent: .prompt("Explain it"),
+                model: nil,
+                agent: nil,
+                serverIsActive: false
+            ).queuedPrompt
+        )
+        #expect(queue.dispatchSucceeded(completesSynchronously: true) == nil)
+
+        queue.remove(followUp.id)
+
+        #expect(!queue.isTurnActive)
+        #expect(
+            queue.accept(
+                intent: .prompt("Start fresh"),
+                model: nil,
+                agent: nil,
+                serverIsActive: false
+            ).dispatchedPrompt?.text == "Start fresh"
+        )
+    }
+
+    @Test("A shell completed during an abort pause restores its synchronous idle barrier")
+    func pausedShellCompletionKeepsSynchronousBarrier() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            intent: .shell("git status"),
+            model: nil,
+            agent: "build",
+            serverIsActive: false
+        )
+        _ = queue.accept(text: "Explain it", model: nil, serverIsActive: false)
+        let snapshot = queue.pausePendingPrompts()
+
+        #expect(queue.dispatchSucceeded(completesSynchronously: true) == nil)
+        #expect(queue.restorePendingPrompts(after: snapshot) == nil)
+
+        #expect(queue.serverBecameIdle()?.text == "Explain it")
+        #expect(queue.prompts.isEmpty)
     }
 }
 
