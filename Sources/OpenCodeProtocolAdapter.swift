@@ -316,6 +316,8 @@ final class OpenCodeProtocolCache: @unchecked Sendable {
 }
 
 struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
+    static let automaticOAuthCallbackTimeout: TimeInterval = 10 * 60
+
     let serverProtocol = OpenCodeServerProtocol.v1
     let capabilities = OpenCodeProtocolCapabilities.v1
 
@@ -746,6 +748,26 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         directory: String,
         workspace: String?
     ) async throws {
+        try await performProviderOAuthCallback(
+            using: transport,
+            providerID: providerID,
+            attemptID: attemptID,
+            code: code,
+            directory: directory,
+            workspace: workspace,
+            timeout: nil
+        )
+    }
+
+    private func performProviderOAuthCallback(
+        using transport: OpenCodeTransport,
+        providerID: String,
+        attemptID: String,
+        code: String?,
+        directory: String,
+        workspace: String?,
+        timeout: TimeInterval?
+    ) async throws {
         guard let method = Int(attemptID.split(separator: ":").last ?? "") else {
             throw OpenCodeProviderConnectionError.invalidMethod
         }
@@ -756,7 +778,8 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         let _: Bool = try await transport.post(
             ["provider", providerID, "oauth", "callback"],
             query: instanceQuery(directory: directory, workspace: workspace),
-            body: Body(method: method, code: code)
+            body: Body(method: method, code: code),
+            timeout: timeout
         )
     }
 
@@ -767,13 +790,14 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         directory: String,
         workspace: String?
     ) async throws -> OpenCodeProviderOAuthStatus {
-        try await completeProviderOAuth(
+        try await performProviderOAuthCallback(
             using: transport,
             providerID: providerID,
             attemptID: attemptID,
             code: nil,
             directory: directory,
-            workspace: workspace
+            workspace: workspace,
+            timeout: Self.automaticOAuthCallbackTimeout
         )
         return .complete
     }

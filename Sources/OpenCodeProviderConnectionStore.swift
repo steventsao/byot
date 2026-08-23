@@ -59,6 +59,10 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
         selectedMethod?.visiblePrompts(inputs: inputs) ?? []
     }
 
+    var isOAuthStartInFlight: Bool {
+        phase == .startingOAuth
+    }
+
     func load() async {
         loadGeneration &+= 1
         let generation = loadGeneration
@@ -309,6 +313,7 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
     }
 
     private func cancelActiveOAuthIfNeeded() async -> Bool {
+        guard !isOAuthStartInFlight else { return false }
         guard let provider = selectedProvider, let authorization else {
             invalidateFlow()
             return true
