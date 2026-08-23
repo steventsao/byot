@@ -86,7 +86,9 @@ final class OpenCodeBonjourBrowser: NSObject,
 
     func netServiceDidResolveAddress(_ sender: NetService) {
         let key = serviceKey(sender)
-        guard let host = sender.hostName else {
+        guard let host = OpenCodeBonjourAddressResolver.localHost(
+            from: sender.addresses ?? []
+        ) else {
             services.removeValue(forKey: key)
             records.removeValue(forKey: key)
             publishRecords()

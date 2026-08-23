@@ -230,7 +230,7 @@ private struct OpenCodeProfileEditorView: View {
                     Section {
                         Label("Local HTTP", systemImage: "wifi")
                     } footer: {
-                        Text("This address was discovered through Bonjour and is allowed only while it resolves to a local-network host. Manually added servers remain HTTPS-only.")
+                        Text("This numeric local-network address was resolved through Bonjour. Manually added servers remain HTTPS-only.")
                     }
                 }
 

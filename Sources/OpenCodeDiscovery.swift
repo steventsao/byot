@@ -42,7 +42,6 @@ enum OpenCodeLocalEndpointPolicy {
             host = String(host[..<zone])
         }
 
-        if host == "localhost" || host.hasSuffix(".local") { return true }
         if isLocalIPv4(host) { return true }
         return isLocalIPv6(host)
     }
@@ -74,6 +73,42 @@ enum OpenCodeLocalEndpointPolicy {
         let isLinkLocal = bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80
         let isUniqueLocal = (bytes[0] & 0xfe) == 0xfc
         return isLoopback || isLinkLocal || isUniqueLocal
+    }
+}
+
+enum OpenCodeBonjourAddressResolver {
+    static func localHost(from addresses: [Data]) -> String? {
+        for address in addresses {
+            guard let host = numericHost(from: address) else { continue }
+            if OpenCodeLocalEndpointPolicy.isLocalHost(host) {
+                return host
+            }
+        }
+        return nil
+    }
+
+    private static func numericHost(from address: Data) -> String? {
+        guard address.count >= MemoryLayout<sockaddr>.size else { return nil }
+        var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        let result = host.withUnsafeMutableBufferPointer { hostBuffer in
+            address.withUnsafeBytes { addressBuffer in
+                guard let addressBase = addressBuffer.baseAddress,
+                      let hostBase = hostBuffer.baseAddress
+                else { return Int32(EAI_FAIL) }
+                return getnameinfo(
+                    addressBase.assumingMemoryBound(to: sockaddr.self),
+                    socklen_t(address.count),
+                    hostBase,
+                    socklen_t(hostBuffer.count),
+                    nil,
+                    0,
+                    NI_NUMERICHOST
+                )
+            }
+        }
+        guard result == 0 else { return nil }
+        let bytes = host.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        return String(decoding: bytes, as: UTF8.self)
     }
 }
 
