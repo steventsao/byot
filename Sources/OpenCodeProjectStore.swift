@@ -35,7 +35,12 @@ final class OpenCodeProjectStore: ObservableObject {
     }
 
     func reconcileSession(_ session: OpenCodeSession) {
-        lifecycleState.upsert(session)
+        OpenCodeSessionLifecycleReconciliation.apply(
+            session,
+            to: &lifecycleState,
+            requestVersion: &requestVersion
+        )
+        isLoading = false
     }
 
     func load() async {
