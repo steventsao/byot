@@ -99,6 +99,17 @@ enum OpenCodeFileBrowserPath {
     }
 }
 
+struct OpenCodeFileBrowserChromePresentation: Equatable, Sendable {
+    let title: String
+    let showsModePicker: Bool
+
+    init(path: String, canListChanges: Bool, query: String) {
+        title = OpenCodeFileBrowserPath.title(for: path)
+        showsModePicker = canListChanges
+            && query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 struct OpenCodeFileContentPresentation: Equatable, Sendable {
     let path: String
     let content: OpenCodeFileContent?

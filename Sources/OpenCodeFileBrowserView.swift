@@ -22,43 +22,47 @@ struct OpenCodeFileBrowserView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if store.isLoading && store.entries.isEmpty {
-                    BYOTActivityView(
-                        .loading,
-                        title: "Loading project files",
-                        detail: "Reading the OpenCode workspace.",
-                        layout: .blocking
-                    )
-                } else if shouldPromptForSearch {
-                    ContentUnavailableView(
-                        "Search project files",
-                        systemImage: "magnifyingglass",
-                        description: Text(
-                            store.policy?.searchOnlyDescription
-                                ?? "Enter a filename to search this project."
-                        )
-                    )
-                } else {
-                    fileList
+            VStack(spacing: 0) {
+                if chromePresentation.showsModePicker {
+                    Picker("File view", selection: $store.mode) {
+                        ForEach(OpenCodeFileBrowserMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 190)
+                    .padding(.vertical, 8)
+
+                    Divider()
                 }
+
+                Group {
+                    if store.isLoading && store.entries.isEmpty {
+                        BYOTActivityView(
+                            .loading,
+                            title: "Loading project files",
+                            detail: "Reading the OpenCode workspace.",
+                            layout: .blocking
+                        )
+                    } else if shouldPromptForSearch {
+                        ContentUnavailableView(
+                            "Search project files",
+                            systemImage: "magnifyingglass",
+                            description: Text(
+                                store.policy?.searchOnlyDescription
+                                    ?? "Enter a filename to search this project."
+                            )
+                        )
+                    } else {
+                        fileList
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .navigationTitle(OpenCodeFileBrowserPath.title(for: store.currentPath))
+            .navigationTitle(chromePresentation.title)
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $store.query, prompt: "Find files")
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    if store.policy?.canListChanges == true,
-                       store.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Picker("File view", selection: $store.mode) {
-                            ForEach(OpenCodeFileBrowserMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 190)
-                    }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
@@ -74,6 +78,14 @@ struct OpenCodeFileBrowserView: View {
                 await store.search()
             }
         }
+    }
+
+    private var chromePresentation: OpenCodeFileBrowserChromePresentation {
+        OpenCodeFileBrowserChromePresentation(
+            path: store.currentPath,
+            canListChanges: store.policy?.canListChanges == true,
+            query: store.query
+        )
     }
 
     private var shouldPromptForSearch: Bool {
