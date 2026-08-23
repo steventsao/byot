@@ -28,6 +28,8 @@ If v2 creates an attempt with an unsafe authorization URL, the adapter rejects
 the URL and immediately requests cancellation with the returned attempt ID. A
 poll transport failure keeps its authorization in the store so Done, Back, or
 Cancel can still delete the server attempt.
+Authorization links must use HTTPS, cannot contain URL userinfo, and label the
+exact percent-encoded destination host and non-default port before Safari opens.
 
 ## Desktop parity behavior
 

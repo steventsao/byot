@@ -13,6 +13,11 @@ struct OpenCodeProviderConnectionPolicyTests {
             OpenCodeProviderAuthorizationURLPolicy.destinationLabel(for: safe)
                 == "Open auth.example.test:8443"
         )
+        #expect(
+            OpenCodeProviderAuthorizationURLPolicy.destinationLabel(
+                for: URL(string: "https://auth.example.test:443/oauth")!
+            ) == "Open auth.example.test"
+        )
         #expect(throws: OpenCodeProviderConnectionError.self) {
             try OpenCodeProviderAuthorizationURLPolicy.validate(
                 "http://auth.example.test/oauth/start"

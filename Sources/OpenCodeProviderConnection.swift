@@ -201,6 +201,31 @@ struct OpenCodeProviderOAuthAuthorization: Equatable, Sendable {
     let expiresAt: Double
 }
 
+enum OpenCodeProviderAuthorizationURLPolicy {
+    static func validate(_ value: String) throws -> URL {
+        guard let components = URLComponents(string: value),
+              components.scheme?.lowercased() == "https",
+              let host = components.percentEncodedHost,
+              !host.isEmpty,
+              components.user == nil,
+              components.password == nil,
+              let url = components.url
+        else { throw OpenCodeProviderConnectionError.invalidAuthorizationURL }
+        return url
+    }
+
+    static func destinationLabel(for url: URL) -> String {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let host = components.percentEncodedHost,
+              !host.isEmpty
+        else { return "Open authorization page" }
+        let destination = components.port.flatMap { port in
+            port == 443 ? nil : "\(host):\(port)"
+        } ?? host
+        return "Open \(destination)"
+    }
+}
+
 enum OpenCodeProviderOAuthStatus: Equatable, Sendable {
     case pending
     case complete

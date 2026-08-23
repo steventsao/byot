@@ -354,7 +354,12 @@ private struct OpenCodeProviderOAuthCodeView: View {
         if let authorization = store.authorization {
             Section("Open provider sign-in") {
                 Link(destination: authorization.url) {
-                    Label("Open authorization page", systemImage: "safari")
+                    Label(
+                        OpenCodeProviderAuthorizationURLPolicy.destinationLabel(
+                            for: authorization.url
+                        ),
+                        systemImage: "safari"
+                    )
                 }
                 if !authorization.instructions.isEmpty {
                     Text(authorization.instructions)
@@ -375,7 +380,12 @@ private struct OpenCodeProviderOAuthWaitingView: View {
             if let authorization = store.authorization {
                 Section("Finish in your browser") {
                     Link(destination: authorization.url) {
-                        Label("Open authorization page", systemImage: "safari")
+                        Label(
+                            OpenCodeProviderAuthorizationURLPolicy.destinationLabel(
+                                for: authorization.url
+                            ),
+                            systemImage: "safari"
+                        )
                     }
                     if !authorization.instructions.isEmpty {
                         Text(authorization.instructions)

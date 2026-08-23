@@ -724,11 +724,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
             query: instanceQuery(directory: directory, workspace: workspace),
             body: Body(method: method, inputs: inputs)
         )
-        guard let url = URL(string: response.url),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http",
-              url.host != nil
-        else { throw OpenCodeProviderConnectionError.invalidAuthorizationURL }
+        let url = try OpenCodeProviderAuthorizationURLPolicy.validate(response.url)
         let createdAt = Date().timeIntervalSince1970 * 1_000
         return OpenCodeProviderOAuthAuthorization(
             attemptID: "\(providerID):\(method)",
@@ -1840,11 +1836,7 @@ private struct OpenCodeV2IntegrationAttempt: Decodable {
 
     var normalized: OpenCodeProviderOAuthAuthorization {
         get throws {
-            guard let url = URL(string: url),
-                  let scheme = url.scheme?.lowercased(),
-                  scheme == "https" || scheme == "http",
-                  url.host != nil
-            else { throw OpenCodeProviderConnectionError.invalidAuthorizationURL }
+            let url = try OpenCodeProviderAuthorizationURLPolicy.validate(url)
             return OpenCodeProviderOAuthAuthorization(
                 attemptID: attemptID,
                 url: url,
