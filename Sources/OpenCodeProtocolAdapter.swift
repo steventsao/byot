@@ -1428,7 +1428,20 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
                 query: locationQuery(directory: directory, workspace: workspace),
                 body: Body(methodID: methodID, inputs: inputs)
             )
-        return try response.data.normalized
+        do {
+            return try response.data.normalized
+        } catch let error as OpenCodeProviderConnectionError {
+            if error == .invalidAuthorizationURL {
+                try? await cancelProviderOAuth(
+                    using: transport,
+                    providerID: providerID,
+                    attemptID: response.data.attemptID,
+                    directory: directory,
+                    workspace: workspace
+                )
+            }
+            throw error
+        }
     }
 
     func completeProviderOAuth(

@@ -222,7 +222,8 @@ final class OpenCodeProviderConnectionStore: ObservableObject {
             return
         } catch {
             guard generation == flowGeneration else { return }
-            failOAuthAttempt(message: error.localizedDescription)
+            phase = .oauthWaiting
+            errorMessage = error.localizedDescription
         }
     }
 

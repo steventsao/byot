@@ -24,6 +24,10 @@ The v1 adapter assigns stable string IDs from auth-method indices and synthesize
 - Provider, method, key, prompt, code, waiting, and completion views are independent SwiftUI components driven only by normalized state.
 
 API keys and OAuth codes stay in transient view/store state. BYOT sends them directly to the configured OpenCode server and does not persist or log them.
+If v2 creates an attempt with an unsafe authorization URL, the adapter rejects
+the URL and immediately requests cancellation with the returned attempt ID. A
+poll transport failure keeps its authorization in the store so Done, Back, or
+Cancel can still delete the server attempt.
 
 ## Desktop parity behavior
 
