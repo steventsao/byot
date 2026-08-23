@@ -16,6 +16,7 @@ final class OpenCodeDiscoveryStore: ObservableObject {
     func start() {
         guard !isSearching else { return }
         isSearching = true
+        servers = []
         errorMessage = nil
         browser.start { [weak self] update in
             guard let self else { return }
