@@ -52,6 +52,7 @@ OPENCODE_PROTOCOL=v1 \
 OPENCODE_USERNAME=opencode \
 OPENCODE_PASSWORD=test-secret \
 OPENCODE_DIRECTORY=/repo \
+OPENCODE_WORKSPACE=workspace-that-v1-list-reads-must-ignore \
 OPENCODE_ALLOW_LOCAL_HTTP=1 \
   "$harness" >"$acceptance_test_tmp/v1.out"
 grep -q "ok - v1 health" "$acceptance_test_tmp/v1.out" || fail "v1 health was checked"

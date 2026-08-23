@@ -34,12 +34,15 @@ class Handler(BaseHTTPRequestHandler):
                 body["version"] = "1.18.18"
             self.respond(200, body)
         elif path == "/project":
-            self.require_query(query, "directory", "/repo")
+            self.require_exact_query(query, {"directory": "/repo"})
             self.respond(200, [{"id": "proj_1", "worktree": "/repo", "time": {"created": 1, "updated": 2}, "sandboxes": []}])
         elif path == "/session":
-            self.require_query(query, "directory", "/repo")
-            self.require_query(query, "scope", "project")
-            self.require_query(query, "roots", "true")
+            self.require_exact_query(query, {
+                "directory": "/repo",
+                "scope": "project",
+                "roots": "true",
+                "limit": "100",
+            })
             self.respond(200, [])
         else:
             self.respond(404, {"message": "not found"})
@@ -61,6 +64,12 @@ class Handler(BaseHTTPRequestHandler):
     def require_query(self, query, key, expected):
         if query.get(key) != [expected]:
             self.respond(400, {"message": f"expected {key}={expected}"})
+            raise QueryFailure()
+
+    def require_exact_query(self, query, expected):
+        expected_query = {key: [value] for key, value in expected.items()}
+        if query != expected_query:
+            self.respond(400, {"message": "unexpected query shape"})
             raise QueryFailure()
 
     def respond(self, status, body):
