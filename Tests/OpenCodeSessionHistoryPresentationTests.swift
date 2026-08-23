@@ -125,6 +125,44 @@ struct OpenCodeSessionHistoryPresentationTests {
         )
     }
 
+    @Test("A newer reconciliation supersedes an in-flight committed-boundary refresh")
+    func reconciliationVersioning() {
+        var version = OpenCodeSessionReconciliationVersion()
+        let stale = version.begin()
+        let current = version.begin()
+
+        #expect(!version.accepts(stale))
+        #expect(version.accepts(current))
+    }
+
+    @Test("V2 history mutations clear stale diffs when files are omitted")
+    func omittedV2FilesClearDiffs() {
+        let stale = [
+            OpenCodeDiff(
+                file: "Old.swift",
+                patch: "@@",
+                additions: 1,
+                deletions: 0,
+                status: "modified"
+            ),
+        ]
+
+        #expect(
+            OpenCodeSessionHistoryReconciliation.diffs(
+                delivered: nil,
+                current: stale,
+                capabilities: .v2
+            ).isEmpty
+        )
+        #expect(
+            OpenCodeSessionHistoryReconciliation.diffs(
+                delivered: nil,
+                current: stale,
+                capabilities: .v1
+            ) == stale
+        )
+    }
+
     private func message(
         id: String,
         role: String,
