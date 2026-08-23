@@ -137,4 +137,23 @@ if grep -q "$sensitive_host" "$acceptance_test_tmp/curl-failure.out"; then
 fi
 grep -q "v1 health request failed" "$acceptance_test_tmp/curl-failure.out" || fail "curl failure is actionable"
 
+ipv6_hosts=("[fe80::1]" "[fd00::1]" "[::1]")
+for index in "${!ipv6_hosts[@]}"; do
+  output_name="ipv6-local-$index.out"
+  if PATH="$fake_curl_dir:$PATH" \
+     OPENCODE_BASE_URL="http://${ipv6_hosts[$index]}" \
+     OPENCODE_PROTOCOL=v1 \
+     OPENCODE_PASSWORD=test-secret \
+     OPENCODE_DIRECTORY=/repo \
+     OPENCODE_ALLOW_LOCAL_HTTP=1 \
+       "$harness" >"$acceptance_test_tmp/$output_name" 2>&1; then
+    fail "local IPv6 acceptance must reach the request boundary"
+  fi
+  grep -q "v1 health request failed" "$acceptance_test_tmp/$output_name" \
+    || fail "local IPv6 address passed validation before the request failed"
+  if grep -q "numeric local network" "$acceptance_test_tmp/$output_name"; then
+    fail "local IPv6 address must not be rejected by local-network validation"
+  fi
+done
+
 echo "ok - dual-stack acceptance harness self-test"
