@@ -64,8 +64,8 @@ def is_local(value):
             or (packed[0] == 192 and packed[1] == 168)
         )
     is_loopback = packed[:-1] == bytes(15) and packed[-1] == 1
-    is_link_local = packed[0] == 0xFE and packed[1] & 0xC0 == 0x80
-    is_unique_local = packed[0] & 0xFE == 0xFC
+    is_link_local = packed[0] == 0xFE and (packed[1] & 0xC0) == 0x80
+    is_unique_local = (packed[0] & 0xFE) == 0xFC
     return is_loopback or is_link_local or is_unique_local
 
 if scheme == "https":
