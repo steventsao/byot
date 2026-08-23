@@ -191,6 +191,46 @@ struct OpenCodeSessionInputStoreTests {
         #expect(store.selectedAgentID == "helper")
         #expect(store.selectedAgent == nil)
     }
+
+    @Test("A failed catalog refresh preserves the last trusted commands and agents")
+    func failedRefreshPreservesCatalogs() async {
+        let command = OpenCodeCommandOption(
+            name: "review",
+            description: nil,
+            template: "Review",
+            source: nil,
+            agent: nil,
+            subtask: nil,
+            hints: []
+        )
+        let agent = OpenCodeAgentOption(
+            id: "build",
+            description: nil,
+            mode: "primary",
+            hidden: false
+        )
+        let service = MockSessionInputService(
+            capabilities: .v1,
+            commands: [command],
+            agents: [agent]
+        )
+        let store = OpenCodeSessionInputStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil,
+            initialAgentID: "build"
+        )
+        await store.load()
+        service.failNextCatalogRefresh()
+
+        await store.refresh()
+
+        #expect(store.hasLoadedCommandCatalog)
+        #expect(store.commands == [command])
+        #expect(store.agents == [agent])
+        #expect(store.selectedAgent?.id == "build")
+        #expect(store.errorMessage != nil)
+    }
 }
 
 private final class MockSessionInputService: OpenCodeSessionInputServicing, @unchecked Sendable {
@@ -206,6 +246,7 @@ private final class MockSessionInputService: OpenCodeSessionInputServicing, @unc
     private let commands: [OpenCodeCommandOption]
     private let agents: [OpenCodeAgentOption]
     nonisolated(unsafe) private var commandFailuresRemaining: Int
+    nonisolated(unsafe) private var agentFailuresRemaining = 0
 
     init(
         capabilities: OpenCodeProtocolCapabilities,
@@ -238,7 +279,15 @@ private final class MockSessionInputService: OpenCodeSessionInputServicing, @unc
 
     func agents(directory: String, workspace: String?) async throws -> [OpenCodeAgentOption] {
         record(.agents)
+        if takeAgentFailure() { throw MockSessionInputError.agentCatalogUnavailable }
         return agents
+    }
+
+    func failNextCatalogRefresh() {
+        lock.lock()
+        commandFailuresRemaining += 1
+        agentFailuresRemaining += 1
+        lock.unlock()
     }
 
     private func record(_ step: Step) {
@@ -254,8 +303,17 @@ private final class MockSessionInputService: OpenCodeSessionInputServicing, @unc
         commandFailuresRemaining -= 1
         return true
     }
+
+    private func takeAgentFailure() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard agentFailuresRemaining > 0 else { return false }
+        agentFailuresRemaining -= 1
+        return true
+    }
 }
 
 private enum MockSessionInputError: Error {
     case commandCatalogUnavailable
+    case agentCatalogUnavailable
 }
