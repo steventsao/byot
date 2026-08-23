@@ -212,7 +212,24 @@ struct OpenCodeSessionHistoryPresentationTests {
             queue: &queue
         )
 
-        #expect(queue.isPaused)
+        #expect(preparation.requiresRemoteAbort)
+    }
+
+    @Test("A submitting prompt requires rollback abort before the server reports active")
+    func inFlightRollbackPreparationRequiresAbort() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            text: "Still submitting",
+            model: nil,
+            serverIsActive: false
+        )
+
+        let preparation = OpenCodeSessionHistoryRollbackPolicy.prepare(
+            status: .idle,
+            hasInFlightPrompt: true,
+            queue: &queue
+        )
+
         #expect(preparation.requiresRemoteAbort)
     }
 
@@ -260,6 +277,62 @@ struct OpenCodeSessionHistoryPresentationTests {
 
         #expect(next?.text == "Continue after aborted rollback")
         #expect(queue.prompts.isEmpty)
+    }
+
+    @Test("A failed rollback replays the interrupted prompt before follow-ups")
+    func failedMutationAfterAbortRestoresInterruptedPrompt() {
+        var queue = OpenCodePromptQueue()
+        let submission = queue.accept(
+            text: "Interrupted prompt",
+            model: nil,
+            serverIsActive: false
+        )
+        guard case .dispatch(let interrupted) = submission else {
+            Issue.record("Expected the first prompt to dispatch")
+            return
+        }
+        _ = queue.accept(
+            text: "Queued follow-up",
+            model: nil,
+            serverIsActive: false
+        )
+        let preparation = OpenCodeSessionHistoryRollbackPolicy.prepare(
+            status: .busy,
+            queue: &queue
+        )
+
+        let next = OpenCodeSessionHistoryRollbackPolicy.restore(
+            preparation,
+            remoteAbortSucceeded: true,
+            interruptedPrompt: interrupted,
+            queue: &queue
+        )
+
+        #expect(next == interrupted)
+        #expect(queue.prompts.map(\.text) == ["Queued follow-up"])
+    }
+
+    @Test("Restore is unavailable while any history action owns the lock")
+    func restoreActionAvailability() {
+        #expect(
+            OpenCodeSessionHistoryActionAvailability.canRestore(
+                hasRevertedMessages: true,
+                actionInFlight: nil
+            )
+        )
+        for action in [
+            OpenCodeSessionHistoryAction.revert,
+            .unrevert,
+            .summarize,
+            .fork,
+        ] {
+            #expect(
+                !OpenCodeSessionHistoryActionAvailability.canRestore(
+                    hasRevertedMessages: true,
+                    actionInFlight: action
+                )
+            )
+        }
     }
 
     private func message(
