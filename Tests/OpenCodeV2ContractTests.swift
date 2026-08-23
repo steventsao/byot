@@ -1062,6 +1062,42 @@ final class OpenCodeV2ContractTests: XCTestCase {
         XCTAssertNil(requests[5].httpBody)
     }
 
+    func testV2InvalidOAuthURLCancelsTheCreatedAttempt() async throws {
+        let (client, session) = makeClient { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("POST", "/api/integration/openai/connect/oauth"):
+                return .json(#"{"location":{"directory":"/repo"},"data":{"attemptID":"attempt_bad_url","url":"javascript:alert(1)","instructions":"","mode":"auto","time":{"created":10,"expires":20}}}"#)
+            case ("DELETE", "/api/integration/attempt/attempt_bad_url"):
+                return .empty(statusCode: 204)
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        do {
+            _ = try await client.startProviderOAuth(
+                providerID: "openai",
+                methodID: "oauth-browser",
+                inputs: [:],
+                directory: "/repo",
+                workspace: nil
+            )
+            XCTFail("Expected the invalid authorization URL to be rejected")
+        } catch let error as OpenCodeProviderConnectionError {
+            XCTAssertEqual(error, .invalidAuthorizationURL)
+        }
+
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { ($0.httpMethod ?? "") + " " + ($0.url?.path ?? "") }, [
+            "POST /api/integration/openai/connect/oauth",
+            "DELETE /api/integration/attempt/attempt_bad_url",
+        ])
+        XCTAssertTrue(requests.allSatisfy {
+            v2QueryValues(for: $0) == ["location[directory]": "/repo"]
+        })
+    }
+
     private func makeClient(
         serverProtocol: OpenCodeServerProtocol = .v2,
         handler: @escaping @Sendable (URLRequest) -> OpenCodeV2URLProtocolStub.Response

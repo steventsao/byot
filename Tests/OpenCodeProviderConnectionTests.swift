@@ -202,7 +202,7 @@ struct OpenCodeProviderConnectionStoreTests {
         #expect(store.errorMessage == "Provider authorization expired. Start again.")
     }
 
-    @Test("OAuth polling transport failures leave a retryable flow")
+    @Test("OAuth polling transport failures retain a cancelable attempt")
     func failedOAuthPollRequest() async {
         let provider = oauthProvider()
         let service = MockProviderConnectionService(
@@ -217,9 +217,13 @@ struct OpenCodeProviderConnectionStoreTests {
         await store.beginOAuth()
         await store.pollOAuthOnce()
 
-        #expect(store.phase == .oauthReady)
-        #expect(store.authorization == nil)
+        #expect(store.phase == .oauthWaiting)
+        #expect(store.authorization?.attemptID == "attempt_1")
         #expect(store.errorMessage == TestProviderConnectionError.statusFailed.localizedDescription)
+
+        #expect(await store.prepareToDismiss())
+        #expect(service.steps.contains(.cancel(attemptID: "attempt_1")))
+        #expect(store.authorization == nil)
     }
 
     @Test("A late cancel cannot navigate away from completed OAuth")
