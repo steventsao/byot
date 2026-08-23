@@ -82,6 +82,52 @@ struct OpenCodeSessionSharingTests {
         #expect(store.presentation.canPublish)
     }
 
+    @Test("Cancelling capability discovery does not present an error")
+    func cancelledCapabilityDiscovery() async {
+        let store = OpenCodeSessionSharingStore(
+            service: CancelledCapabilitySessionSharingService(),
+            session: makeSession(shareURL: nil)
+        )
+
+        await store.loadCapabilities()
+
+        #expect(store.support == nil)
+        #expect(!store.isLoadingCapabilities)
+        #expect(store.errorMessage == nil)
+    }
+
+    @Test("Sharing and history changes exclusively own the session mutation coordinator")
+    func sessionMutationCoordinatorIsExclusive() {
+        let coordinator = OpenCodeSessionMutationCoordinator()
+
+        #expect(coordinator.acquire(.history(.revert)))
+        #expect(!coordinator.acquire(.sharing))
+        coordinator.release(.history(.revert))
+
+        #expect(coordinator.acquire(.sharing))
+        #expect(!coordinator.acquire(.history(.unrevert)))
+        coordinator.release(.sharing)
+        #expect(coordinator.owner == nil)
+    }
+
+    @Test("A history change blocks sharing before the service mutation")
+    func historyMutationBlocksSharing() async {
+        let coordinator = OpenCodeSessionMutationCoordinator()
+        let service = MockSessionSharingService()
+        let store = OpenCodeSessionSharingStore(
+            service: service,
+            session: makeSession(shareURL: nil),
+            mutationCoordinator: coordinator
+        )
+        await store.loadCapabilities()
+        #expect(coordinator.acquire(.history(.revert)))
+
+        await store.publish()
+
+        #expect(!store.presentation.canPublish)
+        #expect(service.steps == [.capabilities])
+    }
+
     @Test("Server-returned sharing changes propagate to the owning session list")
     func propagatesSessionChanges() async {
         let service = MockSessionSharingService()
@@ -247,6 +293,30 @@ struct OpenCodeSessionSharingTests {
                 archived: nil
             )
         )
+    }
+}
+
+private final class CancelledCapabilitySessionSharingService: OpenCodeSessionSharingServicing,
+    @unchecked Sendable
+{
+    func protocolCapabilities() async throws -> OpenCodeProtocolCapabilities {
+        throw CancellationError()
+    }
+
+    func shareSession(
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        throw OpenCodeConnectionError.invalidResponse
+    }
+
+    func unshareSession(
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> OpenCodeSession {
+        throw OpenCodeConnectionError.invalidResponse
     }
 }
 
