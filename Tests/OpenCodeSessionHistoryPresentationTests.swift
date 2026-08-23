@@ -123,6 +123,22 @@ struct OpenCodeSessionHistoryPresentationTests {
                 currentMutation: 5
             )
         )
+        #expect(
+            !OpenCodeSessionHistoryReconciliation.acceptsFetchedSession(
+                mutationBaseline: 4,
+                currentMutation: 4,
+                clearsBoundary: true,
+                transcriptAccepted: false
+            )
+        )
+        #expect(
+            OpenCodeSessionHistoryReconciliation.acceptsFetchedSession(
+                mutationBaseline: 4,
+                currentMutation: 4,
+                clearsBoundary: true,
+                transcriptAccepted: true
+            )
+        )
     }
 
     @Test("A newer reconciliation supersedes an in-flight committed-boundary refresh")
@@ -198,6 +214,29 @@ struct OpenCodeSessionHistoryPresentationTests {
 
         #expect(queue.isPaused)
         #expect(preparation.requiresRemoteAbort)
+    }
+
+    @Test("A failed history mutation restores its prepared follow-up queue")
+    func failedMutationRestoresPreparedQueue() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(
+            text: "Continue after failure",
+            model: nil,
+            serverIsActive: true
+        )
+        let preparation = OpenCodeSessionHistoryRollbackPolicy.prepare(
+            status: .idle,
+            queue: &queue
+        )
+
+        let next = OpenCodeSessionHistoryRollbackPolicy.restore(
+            preparation,
+            queue: &queue
+        )
+
+        #expect(next == nil)
+        #expect(!queue.isPaused)
+        #expect(queue.serverBecameIdle()?.text == "Continue after failure")
     }
 
     private func message(
