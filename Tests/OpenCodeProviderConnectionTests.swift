@@ -39,11 +39,61 @@ struct OpenCodeProviderConnectionPolicyTests {
         #expect(method.missingRequiredInput(inputs: ["account": "enterprise"]) == "hostname")
         #expect(method.missingRequiredInput(inputs: ["account": "enterprise", "hostname": "acme.example"]) == nil)
     }
+
+    @Test("Provider catalog distinguishes empty data from empty search results")
+    func providerCatalogEmptyStates() {
+        let emptyCatalog = OpenCodeProviderCatalogPresentation(
+            providers: [],
+            query: "",
+            errorMessage: nil
+        )
+        #expect(emptyCatalog.emptyState == .catalog)
+
+        let provider = OpenCodeProviderConnection(
+            id: "openai",
+            name: "OpenAI",
+            isConnected: false,
+            methods: []
+        )
+        let emptySearch = OpenCodeProviderCatalogPresentation(
+            providers: [provider],
+            query: "missing",
+            errorMessage: nil
+        )
+        #expect(emptySearch.emptyState == .search)
+    }
 }
 
 @MainActor
 @Suite(.serialized)
 struct OpenCodeProviderConnectionStoreTests {
+    @Test("Refresh failures stay visible beside the trusted provider catalog")
+    func providerRefreshFailurePresentation() async {
+        let provider = OpenCodeProviderConnection(
+            id: "openai",
+            name: "OpenAI",
+            isConnected: false,
+            methods: []
+        )
+        let service = MockProviderConnectionService(providers: [provider])
+        let store = makeStore(service: service)
+        await store.load()
+        service.failNextLoad()
+
+        await store.load()
+
+        let presentation = OpenCodeProviderCatalogPresentation(
+            providers: store.providers,
+            query: "",
+            errorMessage: store.errorMessage
+        )
+        #expect(presentation.filteredProviders == [provider])
+        #expect(
+            presentation.refreshErrorMessage
+                == TestProviderConnectionError.loadFailed.localizedDescription
+        )
+    }
+
     @Test("Store drives API key and code OAuth flows through an injectable service")
     func connectionFlows() async {
         let provider = OpenCodeProviderConnection(
@@ -244,6 +294,36 @@ struct OpenCodeProviderConnectionStoreTests {
         #expect(store.phase == .methodSelection)
     }
 
+    @Test("A duplicate OAuth start cannot reset the active start phase")
+    func duplicateOAuthStartIsIgnored() async {
+        let provider = oauthProvider()
+        let barrier = ProviderConnectionBarrier()
+        let service = MockProviderConnectionService(
+            providers: [provider],
+            startBarrier: barrier
+        )
+        let store = makeStore(service: service)
+        await store.load()
+        store.selectProvider(provider)
+
+        let firstStart = Task { await store.beginOAuth() }
+        await barrier.waitForArrival()
+        await store.beginOAuth()
+
+        #expect(store.phase == .startingOAuth)
+        #expect(store.isSubmitting)
+        #expect(
+            service.steps.filter {
+                if case .startOAuth = $0 { return true }
+                return false
+            }.count == 1
+        )
+
+        await barrier.release()
+        await firstStart.value
+        #expect(store.phase == .oauthCode)
+    }
+
     @Test("Leaving an active OAuth flow cancels its server attempt")
     func leavingOAuthCancelsAttempt() async {
         let provider = oauthProvider()
@@ -358,12 +438,14 @@ struct OpenCodeProviderConnectionStoreTests {
 }
 
 private enum TestProviderConnectionError: LocalizedError {
+    case loadFailed
     case startFailed
     case cancelFailed
     case statusFailed
 
     var errorDescription: String? {
         switch self {
+        case .loadFailed: "Could not refresh providers."
         case .startFailed: "Could not start provider sign-in."
         case .cancelFailed: "Could not cancel provider sign-in."
         case .statusFailed: "Could not check provider sign-in."
@@ -409,6 +491,7 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
 
     private let lock = NSLock()
     nonisolated(unsafe) private var recordedSteps: [Step] = []
+    nonisolated(unsafe) private var loadFailuresRemaining = 0
     private let providers: [OpenCodeProviderConnection]
     private let keyBarrier: ProviderConnectionBarrier?
     private let startBarrier: ProviderConnectionBarrier?
@@ -446,6 +529,7 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
 
     func providerConnections(directory: String, workspace: String?) async throws -> [OpenCodeProviderConnection] {
         record(.load)
+        if takeLoadFailure() { throw TestProviderConnectionError.loadFailed }
         return providers
     }
 
@@ -510,9 +594,23 @@ private final class MockProviderConnectionService: OpenCodeProviderConnectionSer
         if let cancelError { throw cancelError }
     }
 
+    func failNextLoad() {
+        lock.lock()
+        loadFailuresRemaining += 1
+        lock.unlock()
+    }
+
     private func record(_ step: Step) {
         lock.lock()
         recordedSteps.append(step)
         lock.unlock()
+    }
+
+    private func takeLoadFailure() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard loadFailuresRemaining > 0 else { return false }
+        loadFailuresRemaining -= 1
+        return true
     }
 }
