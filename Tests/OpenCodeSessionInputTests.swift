@@ -287,6 +287,7 @@ struct OpenCodeSessionInputStoreTests {
 
         #expect(store.selectedAgent == nil)
         #expect(store.submissionAgentID == "helper")
+        #expect(store.agentPresentationValue == "helper")
         #expect(store.validate(.prompt("continue")))
         #expect(store.validate(.shell("git status")))
         #expect(store.prepareShellMode())
