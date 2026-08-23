@@ -134,6 +134,63 @@ struct OpenCodeSessionInputStoreTests {
         #expect(store.validate(.command(name: "review", arguments: "staged"), sourceText: "/review staged"))
         #expect(store.validate(.prompt("/unknown literal"), sourceText: "/unknown literal"))
     }
+
+    @Test("Pull-to-refresh retries a failed command catalog")
+    func refreshRetriesCommandCatalog() async {
+        let service = MockSessionInputService(
+            capabilities: .v1,
+            commands: [
+                OpenCodeCommandOption(
+                    name: "review",
+                    description: nil,
+                    template: "Review",
+                    source: nil,
+                    agent: nil,
+                    subtask: nil,
+                    hints: []
+                ),
+            ],
+            agents: [],
+            commandFailuresRemaining: 1
+        )
+        let store = OpenCodeSessionInputStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil,
+            initialAgentID: nil
+        )
+
+        await store.load()
+        #expect(!store.hasLoadedCommandCatalog)
+
+        await store.refresh()
+
+        #expect(store.hasLoadedCommandCatalog)
+        #expect(store.validate(.command(name: "review", arguments: ""), sourceText: "/review"))
+    }
+
+    @Test("A hidden or subagent session agent is never replaced implicitly")
+    func preservesSubagentSessionSelection() async {
+        let service = MockSessionInputService(
+            capabilities: .v2,
+            commands: [],
+            agents: [
+                OpenCodeAgentOption(id: "build", description: nil, mode: "primary", hidden: false),
+                OpenCodeAgentOption(id: "helper", description: nil, mode: "subagent", hidden: false),
+            ]
+        )
+        let store = OpenCodeSessionInputStore(
+            service: service,
+            directory: "/repo",
+            workspace: nil,
+            initialAgentID: "helper"
+        )
+
+        await store.load()
+
+        #expect(store.selectedAgentID == "helper")
+        #expect(store.selectedAgent == nil)
+    }
 }
 
 private final class MockSessionInputService: OpenCodeSessionInputServicing, @unchecked Sendable {
@@ -148,15 +205,18 @@ private final class MockSessionInputService: OpenCodeSessionInputServicing, @unc
     private let capabilities: OpenCodeProtocolCapabilities
     private let commands: [OpenCodeCommandOption]
     private let agents: [OpenCodeAgentOption]
+    nonisolated(unsafe) private var commandFailuresRemaining: Int
 
     init(
         capabilities: OpenCodeProtocolCapabilities,
         commands: [OpenCodeCommandOption],
-        agents: [OpenCodeAgentOption]
+        agents: [OpenCodeAgentOption],
+        commandFailuresRemaining: Int = 0
     ) {
         self.capabilities = capabilities
         self.commands = commands
         self.agents = agents
+        self.commandFailuresRemaining = commandFailuresRemaining
     }
 
     var steps: [Step] {
@@ -172,6 +232,7 @@ private final class MockSessionInputService: OpenCodeSessionInputServicing, @unc
 
     func commands(directory: String, workspace: String?) async throws -> [OpenCodeCommandOption] {
         record(.commands)
+        if takeCommandFailure() { throw MockSessionInputError.commandCatalogUnavailable }
         return commands
     }
 
@@ -185,4 +246,16 @@ private final class MockSessionInputService: OpenCodeSessionInputServicing, @unc
         recordedSteps.append(step)
         lock.unlock()
     }
+
+    private func takeCommandFailure() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard commandFailuresRemaining > 0 else { return false }
+        commandFailuresRemaining -= 1
+        return true
+    }
+}
+
+private enum MockSessionInputError: Error {
+    case commandCatalogUnavailable
 }
