@@ -10,6 +10,11 @@ enum OpenCodeFileBrowserMode: String, CaseIterable, Identifiable, Sendable {
 
 @MainActor
 final class OpenCodeFileBrowserStore: ObservableObject {
+    private enum ErrorOwner {
+        case browser
+        case search
+    }
+
     @Published private(set) var capabilities: OpenCodeProtocolCapabilities?
     @Published private(set) var entries: [OpenCodeFileEntry] = []
     @Published private(set) var searchResults: [OpenCodeFileEntry] = []
@@ -27,6 +32,7 @@ final class OpenCodeFileBrowserStore: ObservableObject {
     private var navigationVersion = OpenCodeFileBrowserRequestVersion()
     private var searchVersion = OpenCodeFileBrowserRequestVersion()
     private var loadingTracker = OpenCodeFileBrowserLoadingTracker()
+    private var errorOwner: ErrorOwner?
 
     init(client: OpenCodeClient, directory: String, workspace: String?) {
         service = client
@@ -79,7 +85,7 @@ final class OpenCodeFileBrowserStore: ObservableObject {
             let capabilities = try await service.protocolCapabilities()
             try Task.checkCancellation()
             self.capabilities = capabilities
-            errorMessage = nil
+            clearError()
             let policy = OpenCodeFileBrowserPolicy(capabilities: capabilities)
             if policy.canBrowseTree {
                 await load(path: "", managesLoadingState: false)
@@ -92,7 +98,7 @@ final class OpenCodeFileBrowserStore: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            record(error, owner: .browser)
         }
     }
 
@@ -112,7 +118,7 @@ final class OpenCodeFileBrowserStore: ObservableObject {
             _ = searchVersion.begin()
             searchResults = []
             isSearching = false
-            errorMessage = nil
+            clearSearchError()
             return
         }
         guard policy?.canSearch == true else { return }
@@ -130,13 +136,13 @@ final class OpenCodeFileBrowserStore: ObservableObject {
             )
             guard searchVersion.accepts(request) else { return }
             searchResults = sort(results)
-            errorMessage = nil
+            clearError()
         } catch is CancellationError {
             return
         } catch {
             guard searchVersion.accepts(request) else { return }
             searchResults = []
-            errorMessage = error.localizedDescription
+            record(error, owner: .search)
         }
     }
 
@@ -155,12 +161,12 @@ final class OpenCodeFileBrowserStore: ObservableObject {
             guard navigationVersion.accepts(request) else { return }
             currentPath = path
             self.entries = sort(entries)
-            errorMessage = nil
+            clearError()
         } catch is CancellationError {
             return
         } catch {
             guard navigationVersion.accepts(request) else { return }
-            errorMessage = error.localizedDescription
+            record(error, owner: .browser)
         }
     }
 
@@ -173,7 +179,7 @@ final class OpenCodeFileBrowserStore: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            record(error, owner: .browser)
         }
     }
 
@@ -182,6 +188,21 @@ final class OpenCodeFileBrowserStore: ObservableObject {
             if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
             return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
         }
+    }
+
+    private func record(_ error: Error, owner: ErrorOwner) {
+        errorOwner = owner
+        errorMessage = error.localizedDescription
+    }
+
+    private func clearError() {
+        errorOwner = nil
+        errorMessage = nil
+    }
+
+    private func clearSearchError() {
+        guard errorOwner == .search else { return }
+        clearError()
     }
 
     private func beginLoading() -> Int {
