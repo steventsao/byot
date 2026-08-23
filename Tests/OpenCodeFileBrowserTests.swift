@@ -313,6 +313,13 @@ struct OpenCodeFileBrowserStoreTests {
 
         #expect(store.searchResults.isEmpty)
         #expect(store.errorMessage != nil)
+
+        store.query = ""
+        await store.search()
+
+        #expect(store.searchResults.isEmpty)
+        #expect(!store.isSearching)
+        #expect(store.errorMessage == nil)
     }
 
     @Test("reader checks capabilities before attempting a read")
