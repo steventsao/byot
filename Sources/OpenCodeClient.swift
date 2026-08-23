@@ -204,6 +204,11 @@ struct OpenCodeClient: Sendable {
         try await protocolAdapter().listProjects(using: transport, profile: profile)
     }
 
+    func protocolCapabilities() async throws -> OpenCodeProtocolCapabilities {
+        let adapter = try await protocolAdapter()
+        return adapter.capabilities
+    }
+
     func listSessions(directory: String) async throws -> [OpenCodeSession] {
         try await protocolAdapter().listSessions(
             using: transport,

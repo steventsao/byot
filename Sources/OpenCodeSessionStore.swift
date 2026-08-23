@@ -7,6 +7,7 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var permissions: [OpenCodePermissionRequest] = []
     @Published private(set) var questions: [OpenCodeQuestionRequest] = []
     @Published private(set) var diffs: [OpenCodeDiff] = []
+    @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
     @Published private(set) var status: OpenCodeSessionStatus = .idle
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false
@@ -84,6 +85,13 @@ final class OpenCodeSessionStore: ObservableObject {
 
     var pendingActionCount: Int {
         permissions.count + questions.count
+    }
+
+    var diffPresentation: OpenCodeSessionDiffPresentation {
+        OpenCodeSessionDiffPresentation(
+            diffs: diffs,
+            support: protocolCapabilities?.sessionDiff
+        )
     }
 
     var willQueueNextPrompt: Bool {
@@ -168,6 +176,11 @@ final class OpenCodeSessionStore: ObservableObject {
             if generation == refreshGeneration { isLoading = false }
         }
         do {
+            let capabilities = try await client.protocolCapabilities()
+            try Task.checkCancellation()
+            guard generation == refreshGeneration else { return }
+            protocolCapabilities = capabilities
+
             let actionClient = client
             let actionDirectory = directory
             let actionWorkspace = workspace
@@ -232,7 +245,13 @@ final class OpenCodeSessionStore: ObservableObject {
             }
             switch results.3 {
             case .success(let diffs):
-                if diffBaseline == diffMutationGeneration { self.diffs = diffs }
+                if OpenCodeSessionDiffReconciliation.shouldApplyFetchedSnapshot(
+                    support: capabilities.sessionDiff,
+                    mutationBaseline: diffBaseline,
+                    currentMutation: diffMutationGeneration
+                ) {
+                    self.diffs = diffs
+                }
             case .failure(let error):
                 coreErrors.append(error)
             }

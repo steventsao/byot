@@ -188,9 +188,23 @@ final class OpenCodeV2ContractTests: XCTestCase {
 
         XCTAssertEqual(providers.map(\.providerID), ["openai"])
         XCTAssertEqual(providers.first?.models.map(\.modelID), ["gpt-5"])
+        XCTAssertEqual(providers.first?.connectionState, .unreported)
         for request in OpenCodeV2URLProtocolStub.recordedRequests() {
             XCTAssertEqual(v2QueryValues(for: request)["location[directory]"], "/repo")
         }
+    }
+
+    func testV2CapabilitiesRequireNoSpeculativeNetworkProbe() async throws {
+        let (client, session) = makeClient { _ in
+            .json(#"{"message":"no capability route"}"#, statusCode: 500)
+        }
+        defer { session.invalidateAndCancel() }
+
+        let capabilities = try await client.protocolCapabilities()
+
+        XCTAssertFalse(capabilities.sessionDiff.isSupported)
+        XCTAssertFalse(capabilities.providerConnectionState.isSupported)
+        XCTAssertTrue(OpenCodeV2URLProtocolStub.recordedRequests().isEmpty)
     }
 
     func testProjectListDerivesUniqueLocationsFromV2Sessions() async throws {

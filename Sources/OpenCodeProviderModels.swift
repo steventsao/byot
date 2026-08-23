@@ -1,9 +1,27 @@
 import Foundation
 
 struct OpenCodeProviderModels: Identifiable, Equatable, Sendable {
+    enum ConnectionState: Equatable, Sendable {
+        case confirmed
+        case unreported
+    }
+
     let providerID: String
     let providerName: String
     let models: [OpenCodeModelOption]
+    let connectionState: ConnectionState
+
+    init(
+        providerID: String,
+        providerName: String,
+        models: [OpenCodeModelOption],
+        connectionState: ConnectionState = .confirmed
+    ) {
+        self.providerID = providerID
+        self.providerName = providerName
+        self.models = models
+        self.connectionState = connectionState
+    }
 
     var id: String { providerID }
 
@@ -23,7 +41,8 @@ struct OpenCodeProviderModels: Identifiable, Equatable, Sendable {
         return OpenCodeProviderModels(
             providerID: providerID,
             providerName: providerName,
-            models: matchingModels
+            models: matchingModels,
+            connectionState: connectionState
         )
     }
 }

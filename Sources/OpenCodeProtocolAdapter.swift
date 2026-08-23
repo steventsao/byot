@@ -7,6 +7,7 @@ struct OpenCodeEventRoute: Equatable, Sendable {
 
 protocol OpenCodeProtocolAdapting: Sendable {
     var serverProtocol: OpenCodeServerProtocol { get }
+    var capabilities: OpenCodeProtocolCapabilities { get }
 
     func listProjects(
         using transport: OpenCodeTransport,
@@ -139,6 +140,7 @@ final class OpenCodeProtocolCache: @unchecked Sendable {
 
 struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
     let serverProtocol = OpenCodeServerProtocol.v1
+    let capabilities = OpenCodeProtocolCapabilities.v1
 
     func listProjects(
         using transport: OpenCodeTransport,
@@ -420,6 +422,7 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
 
 struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
     let serverProtocol = OpenCodeServerProtocol.v2
+    let capabilities = OpenCodeProtocolCapabilities.v2
 
     func listProjects(
         using transport: OpenCodeTransport,
@@ -510,7 +513,8 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
                 return OpenCodeProviderModels(
                     providerID: provider.id,
                     providerName: provider.name,
-                    models: models
+                    models: models,
+                    connectionState: .unreported
                 )
             }
             .sorted {

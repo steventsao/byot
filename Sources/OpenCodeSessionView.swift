@@ -171,11 +171,11 @@ struct OpenCodeSessionView: View {
                     isShowingDiff = true
                 }
                 .labelStyle(.iconOnly)
-                .disabled(store.diffs.isEmpty)
+                .disabled(!store.diffPresentation.canPresent)
             }
         }
         .sheet(isPresented: $isShowingDiff) {
-            OpenCodeDiffView(diffs: store.diffs)
+            OpenCodeDiffView(presentation: store.diffPresentation)
         }
         .task { await store.start() }
         .onDisappear { store.stop() }
@@ -395,27 +395,37 @@ private struct OpenCodePartView: View {
 
 private struct OpenCodeDiffView: View {
     @Environment(\.dismiss) private var dismiss
-    let diffs: [OpenCodeDiff]
+    let presentation: OpenCodeSessionDiffPresentation
 
     var body: some View {
         NavigationStack {
-            List(diffs) { diff in
-                DisclosureGroup {
-                    if let patch = diff.patch, !patch.isEmpty {
-                        ScrollView(.horizontal) {
-                            Text(patch)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                                .padding(.vertical, 8)
+            Group {
+                if let reason = presentation.unavailableReason {
+                    ContentUnavailableView(
+                        "Session changes unavailable",
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text(reason)
+                    )
+                } else {
+                    List(presentation.diffs) { diff in
+                        DisclosureGroup {
+                            if let patch = diff.patch, !patch.isEmpty {
+                                ScrollView(.horizontal) {
+                                    Text(patch)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .textSelection(.enabled)
+                                        .padding(.vertical, 8)
+                                }
+                            }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(diff.file ?? "Changed file")
+                                    .font(.cleanBodySemibold)
+                                Text("+\(diff.additions) −\(diff.deletions)")
+                                    .font(.cleanCaptionBold)
+                                    .foregroundStyle(BYOTBrand.accent)
+                            }
                         }
-                    }
-                } label: {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(diff.file ?? "Changed file")
-                            .font(.cleanBodySemibold)
-                        Text("+\(diff.additions) −\(diff.deletions)")
-                            .font(.cleanCaptionBold)
-                            .foregroundStyle(BYOTBrand.accent)
                     }
                 }
             }

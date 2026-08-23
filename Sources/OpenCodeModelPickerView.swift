@@ -30,7 +30,7 @@ struct OpenCodeModelPickerView: View {
                 }
 
                 ForEach(filteredProviders) { provider in
-                    Section(provider.providerName) {
+                    Section {
                         ForEach(provider.models) { model in
                             Button {
                                 choose(model)
@@ -77,6 +77,17 @@ struct OpenCodeModelPickerView: View {
                             .accessibilityValue(
                                 store.selectedModel?.id == model.id ? "Selected" : ""
                             )
+                            .accessibilityHint(
+                                provider.connectionState == .unreported
+                                    ? "OpenCode does not report this provider's connection state."
+                                    : ""
+                            )
+                        }
+                    } header: {
+                        Text(provider.providerName)
+                    } footer: {
+                        if provider.connectionState == .unreported {
+                            Text("OpenCode v2 does not report provider connection state. Availability is verified when the model is used.")
                         }
                     }
                 }
@@ -95,7 +106,7 @@ struct OpenCodeModelPickerView: View {
                 if store.isLoadingModels && store.providerModels.isEmpty {
                     BYOTActivityView(
                         .loading,
-                        title: "Loading connected models",
+                        title: "Loading available models",
                         detail: "Checking providers available to OpenCode.",
                         layout: .blocking
                     )
@@ -103,7 +114,7 @@ struct OpenCodeModelPickerView: View {
                           store.providerModels.isEmpty,
                           store.modelErrorMessage == nil {
                     ContentUnavailableView(
-                        "No connected models",
+                        "No available models",
                         systemImage: "cpu",
                         description: Text("Connect a provider in OpenCode, then refresh.")
                     )
