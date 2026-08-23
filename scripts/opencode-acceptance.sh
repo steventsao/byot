@@ -182,9 +182,6 @@ fi
 
 if [[ "$OPENCODE_PROTOCOL" == "v1" ]]; then
   location_query="directory=$encoded_directory"
-  if [[ -n "$encoded_workspace" ]]; then
-    location_query="$location_query&workspace=$encoded_workspace"
-  fi
   request_json "v1 health" "$validated_base_url/global/health" v1_health
   request_json "v1 project list" "$validated_base_url/project?$location_query" array
   request_json "v1 session list" "$validated_base_url/session?$location_query&scope=project&roots=true&limit=100" array
