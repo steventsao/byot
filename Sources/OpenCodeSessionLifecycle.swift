@@ -61,6 +61,23 @@ struct OpenCodeSessionLifecycleRequestVersion: Equatable, Sendable {
     }
 }
 
+enum OpenCodeSessionLifecycleReconciliation {
+    static func apply(
+        _ session: OpenCodeSession,
+        to state: inout OpenCodeSessionLifecycleState,
+        requestVersion: inout OpenCodeSessionLifecycleRequestVersion
+    ) {
+        requestVersion.beginMutation()
+        state.upsert(session)
+    }
+}
+
+enum OpenCodeProjectSessionReconciliation {
+    static func accepts(_ session: OpenCodeSession) -> Bool {
+        session.parentID == nil
+    }
+}
+
 enum OpenCodeSessionAbortPolicy {
     static func canRequest(
         status: OpenCodeSessionStatus,

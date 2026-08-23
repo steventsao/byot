@@ -143,6 +143,64 @@ final class OpenCodeV2ContractTests: XCTestCase {
         XCTAssertTrue(v2QueryValues(for: request).isEmpty)
     }
 
+    func testV1SessionSharingUsesCurrentRoutesAndReturnedSessionState() async throws {
+        let sharedJSON = #"{"id":"ses_1","slug":"first","projectID":"proj_1","directory":"/repo","share":{"url":"https://share.example.test/ses_1"},"title":"First","version":"1","time":{"created":10,"updated":30}}"#
+        let privateJSON = #"{"id":"ses_1","slug":"first","projectID":"proj_1","directory":"/repo","title":"First","version":"1","time":{"created":10,"updated":40}}"#
+        let (client, session) = makeClient(serverProtocol: .v1) { request in
+            switch request.httpMethod {
+            case "POST": .json(sharedJSON)
+            case "DELETE": .json(privateJSON)
+            default: .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        let shared = try await client.shareSession(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let unshared = try await client.unshareSession(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+
+        XCTAssertEqual(shared.share?.url.absoluteString, "https://share.example.test/ses_1")
+        XCTAssertNil(unshared.share)
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { ($0.httpMethod ?? "") + " " + ($0.url?.path ?? "") }, [
+            "POST /session/ses_1/share",
+            "DELETE /session/ses_1/share",
+        ])
+        XCTAssertTrue(requests.allSatisfy {
+            v2QueryValues(for: $0) == ["directory": "/repo", "workspace": "wrk_1"]
+        })
+        XCTAssertTrue(requests.allSatisfy { $0.httpBody == nil })
+    }
+
+    func testV2UnavailableSharingNeverProbesAGuessedRoute() async throws {
+        let (client, session) = makeClient { _ in
+            .json(#"{"message":"must not request"}"#, statusCode: 500)
+        }
+        defer { session.invalidateAndCancel() }
+
+        do {
+            _ = try await client.shareSession(sessionID: "ses_1", directory: "/repo")
+            XCTFail("Expected sharing to be unavailable")
+        } catch let error as OpenCodeFeatureUnavailableError {
+            XCTAssertEqual(error.feature, "Share session")
+        }
+        do {
+            _ = try await client.unshareSession(sessionID: "ses_1", directory: "/repo")
+            XCTFail("Expected unsharing to be unavailable")
+        } catch let error as OpenCodeFeatureUnavailableError {
+            XCTAssertEqual(error.feature, "Unshare session")
+        }
+
+        XCTAssertTrue(OpenCodeV2URLProtocolStub.recordedRequests().isEmpty)
+    }
+
     func testV2UnavailableLifecycleMethodsNeverProbeGuessedRoutes() async throws {
         let (client, session) = makeClient { _ in
             .json(#"{"message":"must not request"}"#, statusCode: 500)

@@ -4,16 +4,19 @@ struct OpenCodeSessionView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
     @StateObject private var inputStore: OpenCodeSessionInputStore
+    @StateObject private var sharingStore: OpenCodeSessionSharingStore
     @State private var isShowingDiff = false
     @State private var isShowingChildren = false
     @State private var isShowingTodos = false
     @State private var isShowingFiles = false
+    @State private var isShowingSharing = false
     @State private var isAtBottom = true
     @State private var pendingRevertTarget: OpenCodeSessionRevertTarget?
     @State private var isConfirmingRestore = false
     @State private var forkedSession: OpenCodeSession?
     let openAppNavigation: () -> Void
     private let client: OpenCodeClient
+    private let sessionDidChange: @MainActor (OpenCodeSession) -> Void
 
     private let bottomAnchorID = "opencode-session-bottom"
 
@@ -21,16 +24,21 @@ struct OpenCodeSessionView: View {
         client: OpenCodeClient,
         session: OpenCodeSession,
         directory: String,
+        sessionDidChange: @escaping @MainActor (OpenCodeSession) -> Void = { _ in },
         openAppNavigation: @escaping () -> Void
     ) {
         self.client = client
+        self.sessionDidChange = sessionDidChange
         self.openAppNavigation = openAppNavigation
+        let mutationCoordinator = OpenCodeSessionMutationCoordinator()
+        let sessionStore = OpenCodeSessionStore(
+            client: client,
+            session: session,
+            directory: directory,
+            mutationCoordinator: mutationCoordinator
+        )
         _store = StateObject(
-            wrappedValue: OpenCodeSessionStore(
-                client: client,
-                session: session,
-                directory: directory
-            )
+            wrappedValue: sessionStore
         )
         _inputStore = StateObject(
             wrappedValue: OpenCodeSessionInputStore(
@@ -38,6 +46,17 @@ struct OpenCodeSessionView: View {
                 directory: directory,
                 workspace: session.workspaceID,
                 initialAgentID: session.agent
+            )
+        )
+        _sharingStore = StateObject(
+            wrappedValue: OpenCodeSessionSharingStore(
+                service: client,
+                session: session,
+                mutationCoordinator: mutationCoordinator,
+                sessionDidChange: { updatedSession in
+                    sessionStore.reconcileSession(updatedSession)
+                    sessionDidChange(updatedSession)
+                }
             )
         )
     }
@@ -88,9 +107,9 @@ struct OpenCodeSessionView: View {
                         OpenCodeMessageView(
                             message: message,
                             canRevert: store.historyPolicy?.canRevert == true
-                                && store.historyActionInFlight == nil,
+                                && store.canPerformHistoryAction,
                             canFork: store.historyPolicy?.canFork == true
-                                && store.historyActionInFlight == nil,
+                                && store.canPerformHistoryAction,
                             revert: { messageID in
                                 pendingRevertTarget = store.historyPresentation.revertTarget(
                                     messageID: messageID
@@ -223,6 +242,11 @@ struct OpenCodeSessionView: View {
                     status: store.status,
                     eventConnected: store.isEventConnected
                 )
+                Button("Share", systemImage: "square.and.arrow.up") {
+                    isShowingSharing = true
+                }
+                .labelStyle(.iconOnly)
+                .disabled(!store.canPresentSharing)
                 Button("Changes", systemImage: "doc.text.magnifyingglass") {
                     isShowingDiff = true
                 }
@@ -267,16 +291,22 @@ struct OpenCodeSessionView: View {
                     }
                 }
                 .labelStyle(.iconOnly)
-                .disabled(store.historyActionInFlight != nil)
+                .disabled(!store.canPerformHistoryAction)
             }
         }
         .sheet(isPresented: $isShowingDiff) {
             OpenCodeDiffView(presentation: store.diffPresentation)
         }
+        .sheet(isPresented: $isShowingSharing) {
+            OpenCodeSessionSharingView(store: sharingStore)
+        }
         .sheet(isPresented: $isShowingChildren) {
             OpenCodeSessionChildrenView(
                 client: client,
                 children: store.childSessions,
+                sessionDidChange: { updatedSession in
+                    store.reconcileChildSession(updatedSession)
+                },
                 openAppNavigation: openAppNavigation
             )
         }
@@ -334,12 +364,17 @@ struct OpenCodeSessionView: View {
                     client: client,
                     session: forkedSession,
                     directory: forkedSession.directory,
+                    sessionDidChange: sessionDidChange,
                     openAppNavigation: openAppNavigation
                 )
             }
         }
         .task { await store.start() }
         .task { await inputStore.load() }
+        .task { await sharingStore.loadCapabilities() }
+        .onChange(of: store.session) { _, updatedSession in
+            sharingStore.reconcileSession(updatedSession)
+        }
         .onDisappear { store.stop() }
     }
 
@@ -603,6 +638,7 @@ private struct OpenCodeSessionChildrenView: View {
     @Environment(\.dismiss) private var dismiss
     let client: OpenCodeClient
     let children: [OpenCodeSession]
+    let sessionDidChange: @MainActor (OpenCodeSession) -> Void
     let openAppNavigation: () -> Void
 
     var body: some View {
@@ -621,6 +657,7 @@ private struct OpenCodeSessionChildrenView: View {
                                 client: client,
                                 session: child,
                                 directory: child.directory,
+                                sessionDidChange: sessionDidChange,
                                 openAppNavigation: openAppNavigation
                             )
                         } label: {

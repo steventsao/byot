@@ -237,6 +237,32 @@ struct OpenCodeClient: Sendable {
         )
     }
 
+    func shareSession(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> OpenCodeSession {
+        try await protocolAdapter().shareSession(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
+    func unshareSession(
+        sessionID: String,
+        directory: String,
+        workspace: String? = nil
+    ) async throws -> OpenCodeSession {
+        try await protocolAdapter().unshareSession(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace
+        )
+    }
+
     func renameSession(
         sessionID: String,
         title: String,

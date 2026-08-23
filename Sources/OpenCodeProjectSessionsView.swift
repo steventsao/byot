@@ -35,6 +35,7 @@ struct OpenCodeProjectSessionsView: View {
                         client: store.client,
                         session: session,
                         directory: session.directory,
+                        sessionDidChange: { store.reconcileSession($0) },
                         openAppNavigation: openAppNavigation
                     )
                 } label: {

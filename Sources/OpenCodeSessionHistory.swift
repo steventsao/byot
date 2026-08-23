@@ -10,9 +10,10 @@ enum OpenCodeSessionHistoryAction: String, Equatable, Sendable {
 enum OpenCodeSessionHistoryActionAvailability {
     static func canRestore(
         hasRevertedMessages: Bool,
-        actionInFlight: OpenCodeSessionHistoryAction?
+        actionInFlight: OpenCodeSessionHistoryAction?,
+        isMutationAvailable: Bool = true
     ) -> Bool {
-        hasRevertedMessages && actionInFlight == nil
+        hasRevertedMessages && actionInFlight == nil && isMutationAvailable
     }
 }
 
