@@ -1,12 +1,20 @@
 import Foundation
 
 struct OpenCodePromptQueue: Equatable, Sendable {
-    private enum TurnPhase: Equatable, Sendable {
+    fileprivate enum TurnPhase: Equatable, Sendable {
         case idle
         case submitting(observedActive: Bool, observedCompletion: Bool)
         case awaitingActivity
         case active
         case paused
+    }
+
+    struct PauseSnapshot: Equatable, Sendable {
+        fileprivate let phase: TurnPhase
+
+        fileprivate init(phase: TurnPhase) {
+            self.phase = phase
+        }
     }
 
     private(set) var prompts: [OpenCodeQueuedPrompt] = []
@@ -152,13 +160,15 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         phase = prompts.isEmpty ? .idle : .paused
     }
 
-    mutating func pausePendingPrompts() {
+    mutating func pausePendingPrompts() -> PauseSnapshot {
+        let snapshot = PauseSnapshot(phase: phase)
         phase = prompts.isEmpty ? .idle : .paused
+        return snapshot
     }
 
-    mutating func restorePendingPromptsAfterFailedPause(serverIsActive: Bool) {
+    mutating func restorePendingPrompts(after snapshot: PauseSnapshot) {
         guard phase == .paused else { return }
-        phase = serverIsActive || !prompts.isEmpty ? .active : .idle
+        phase = snapshot.phase
     }
 
     private mutating func takeNextOrBecomeIdle() -> OpenCodeQueuedPrompt? {

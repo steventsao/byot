@@ -69,14 +69,24 @@ enum OpenCodeSessionAbortPolicy {
         status.isActive && !isRequesting
     }
 
-    static func prepareQueueForRequest(_ queue: inout OpenCodePromptQueue) {
+    static func prepareQueueForRequest(
+        _ queue: inout OpenCodePromptQueue
+    ) -> OpenCodePromptQueue.PauseSnapshot {
         queue.pausePendingPrompts()
     }
 
     static func restoreQueueAfterFailedRequest(
         _ queue: inout OpenCodePromptQueue,
-        serverIsActive: Bool
+        snapshot: OpenCodePromptQueue.PauseSnapshot
     ) {
-        queue.restorePendingPromptsAfterFailedPause(serverIsActive: serverIsActive)
+        queue.restorePendingPrompts(after: snapshot)
+    }
+
+    static func shouldRestoreQueue(
+        isRunning: Bool,
+        requestGeneration: Int,
+        currentGeneration: Int
+    ) -> Bool {
+        isRunning && requestGeneration == currentGeneration
     }
 }

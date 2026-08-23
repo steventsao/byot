@@ -160,7 +160,7 @@ final class OpenCodeSessionStore: ObservableObject {
         if let inFlightPrompt {
             promptQueue.dispatchFailed(inFlightPrompt, requeue: true)
         } else {
-            promptQueue.pausePendingPrompts()
+            _ = promptQueue.pausePendingPrompts()
         }
         self.inFlightPrompt = nil
         queueRecoveryTask?.cancel()
@@ -343,9 +343,10 @@ final class OpenCodeSessionStore: ObservableObject {
 
     func abortSession() async {
         guard canAbortSession else { return }
+        let requestGeneration = lifecycleGeneration
         isAborting = true
         defer { isAborting = false }
-        OpenCodeSessionAbortPolicy.prepareQueueForRequest(&promptQueue)
+        let queueSnapshot = OpenCodeSessionAbortPolicy.prepareQueueForRequest(&promptQueue)
         publishPromptQueue()
         cancelQueueRecovery()
         do {
@@ -354,6 +355,7 @@ final class OpenCodeSessionStore: ObservableObject {
                 directory: directory,
                 workspace: workspace
             )
+            guard isRunning, requestGeneration == lifecycleGeneration else { return }
             promptDispatchTask?.cancel()
             promptDispatchTask = nil
             promptDispatchID = nil
@@ -366,21 +368,38 @@ final class OpenCodeSessionStore: ObservableObject {
             scheduleMessageRefresh()
             errorMessage = nil
         } catch is CancellationError {
-            if isRunning { restoreQueueAfterFailedAbort() }
+            restoreQueueAfterFailedAbort(
+                snapshot: queueSnapshot,
+                requestGeneration: requestGeneration
+            )
             return
         } catch {
-            restoreQueueAfterFailedAbort()
-            errorMessage = error.localizedDescription
+            if restoreQueueAfterFailedAbort(
+                snapshot: queueSnapshot,
+                requestGeneration: requestGeneration
+            ) {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
-    private func restoreQueueAfterFailedAbort() {
+    @discardableResult
+    private func restoreQueueAfterFailedAbort(
+        snapshot: OpenCodePromptQueue.PauseSnapshot,
+        requestGeneration: Int
+    ) -> Bool {
+        guard OpenCodeSessionAbortPolicy.shouldRestoreQueue(
+            isRunning: isRunning,
+            requestGeneration: requestGeneration,
+            currentGeneration: lifecycleGeneration
+        ) else { return false }
         OpenCodeSessionAbortPolicy.restoreQueueAfterFailedRequest(
             &promptQueue,
-            serverIsActive: status.isActive || isSending
+            snapshot: snapshot
         )
         publishPromptQueue()
         scheduleQueueRecoveryIfNeeded()
+        return true
     }
 
     func removeQueuedPrompt(_ id: UUID) {

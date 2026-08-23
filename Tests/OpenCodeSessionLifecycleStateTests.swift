@@ -79,7 +79,7 @@ struct OpenCodeSessionLifecycleStateTests {
             serverIsActive: true
         )
 
-        OpenCodeSessionAbortPolicy.prepareQueueForRequest(&queue)
+        _ = OpenCodeSessionAbortPolicy.prepareQueueForRequest(&queue)
 
         #expect(queue.isPaused)
         #expect(queue.serverBecameIdle() == nil)
@@ -94,12 +94,9 @@ struct OpenCodeSessionLifecycleStateTests {
             model: nil,
             serverIsActive: true
         )
-        OpenCodeSessionAbortPolicy.prepareQueueForRequest(&queue)
+        let snapshot = OpenCodeSessionAbortPolicy.prepareQueueForRequest(&queue)
 
-        OpenCodeSessionAbortPolicy.restoreQueueAfterFailedRequest(
-            &queue,
-            serverIsActive: true
-        )
+        OpenCodeSessionAbortPolicy.restoreQueueAfterFailedRequest(&queue, snapshot: snapshot)
 
         #expect(queue.isPaused == false)
         #expect(queue.serverBecameIdle()?.text == "Send after the failed stop")
