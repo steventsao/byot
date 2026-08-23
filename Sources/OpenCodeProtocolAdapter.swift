@@ -60,6 +60,43 @@ protocol OpenCodeProtocolAdapting: Sendable {
         workspace: String?
     ) async throws -> [String: OpenCodeSessionStatus]
 
+    func permissions(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodePermissionRequest]
+
+    func reply(
+        using transport: OpenCodeTransport,
+        to permission: OpenCodePermissionRequest,
+        directory: String,
+        workspace: String?,
+        reply: OpenCodePermissionReply
+    ) async throws
+
+    func questions(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeQuestionRequest]
+
+    func answer(
+        using transport: OpenCodeTransport,
+        question: OpenCodeQuestionRequest,
+        directory: String,
+        workspace: String?,
+        answers: [[String]]
+    ) async throws
+
+    func reject(
+        using transport: OpenCodeTransport,
+        question: OpenCodeQuestionRequest,
+        directory: String,
+        workspace: String?
+    ) async throws
+
     func abortSession(
         using transport: OpenCodeTransport,
         sessionID: String,
@@ -247,6 +284,82 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
     ) async throws -> [String: OpenCodeSessionStatus] {
         try await transport.get(
             ["session", "status"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+    }
+
+    func permissions(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodePermissionRequest] {
+        let requests: [OpenCodePermissionRequest] = try await transport.get(
+            ["permission"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+        return requests.filter { $0.sessionID == sessionID }.map { request in
+            var request = request
+            request.apiVersion = .legacy
+            return request
+        }
+    }
+
+    func reply(
+        using transport: OpenCodeTransport,
+        to permission: OpenCodePermissionRequest,
+        directory: String,
+        workspace: String?,
+        reply: OpenCodePermissionReply
+    ) async throws {
+        struct Body: Encodable { let reply: OpenCodePermissionReply }
+        let _: Bool = try await transport.post(
+            ["permission", permission.id, "reply"],
+            query: instanceQuery(directory: directory, workspace: workspace),
+            body: Body(reply: reply)
+        )
+    }
+
+    func questions(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeQuestionRequest] {
+        let requests: [OpenCodeQuestionRequest] = try await transport.get(
+            ["question"],
+            query: instanceQuery(directory: directory, workspace: workspace)
+        )
+        return requests.filter { $0.sessionID == sessionID }.map { request in
+            var request = request
+            request.apiVersion = .legacy
+            return request
+        }
+    }
+
+    func answer(
+        using transport: OpenCodeTransport,
+        question: OpenCodeQuestionRequest,
+        directory: String,
+        workspace: String?,
+        answers: [[String]]
+    ) async throws {
+        struct Body: Encodable { let answers: [[String]] }
+        let _: Bool = try await transport.post(
+            ["question", question.id, "reply"],
+            query: instanceQuery(directory: directory, workspace: workspace),
+            body: Body(answers: answers)
+        )
+    }
+
+    func reject(
+        using transport: OpenCodeTransport,
+        question: OpenCodeQuestionRequest,
+        directory: String,
+        workspace: String?
+    ) async throws {
+        let _: Bool = try await transport.postWithoutBody(
+            ["question", question.id, "reject"],
             query: instanceQuery(directory: directory, workspace: workspace)
         )
     }
@@ -490,6 +603,90 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         let response: OpenCodeV2DataResponse<[String: OpenCodeV2ActiveSession]> =
             try await transport.get(["api", "session", "active"], query: [])
         return response.data.mapValues { _ in .busy }
+    }
+
+    func permissions(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodePermissionRequest] {
+        let response: OpenCodeV2LocationDataResponse<[OpenCodePermissionV2Request]> =
+            try await transport.get(
+                ["api", "permission", "request"],
+                query: locationQuery(directory: directory, workspace: workspace)
+            )
+        return response.data
+            .filter { $0.sessionID == sessionID }
+            .map(\.normalized)
+    }
+
+    func reply(
+        using transport: OpenCodeTransport,
+        to permission: OpenCodePermissionRequest,
+        directory: String,
+        workspace: String?,
+        reply: OpenCodePermissionReply
+    ) async throws {
+        struct Body: Encodable { let reply: OpenCodePermissionReply }
+        try await transport.postExpectingEmptyResponse(
+            [
+                "api", "session", permission.sessionID,
+                "permission", permission.id, "reply",
+            ],
+            body: Body(reply: reply)
+        )
+    }
+
+    func questions(
+        using transport: OpenCodeTransport,
+        sessionID: String,
+        directory: String,
+        workspace: String?
+    ) async throws -> [OpenCodeQuestionRequest] {
+        let response: OpenCodeV2LocationDataResponse<[OpenCodeQuestionRequest]> =
+            try await transport.get(
+                ["api", "question", "request"],
+                query: locationQuery(directory: directory, workspace: workspace)
+            )
+        return response.data
+            .filter { $0.sessionID == sessionID }
+            .map { request in
+                var request = request
+                request.apiVersion = .v2
+                return request
+            }
+    }
+
+    func answer(
+        using transport: OpenCodeTransport,
+        question: OpenCodeQuestionRequest,
+        directory: String,
+        workspace: String?,
+        answers: [[String]]
+    ) async throws {
+        struct Body: Encodable { let answers: [[String]] }
+        try await transport.postExpectingEmptyResponse(
+            [
+                "api", "session", question.sessionID,
+                "question", question.id, "reply",
+            ],
+            body: Body(answers: answers)
+        )
+    }
+
+    func reject(
+        using transport: OpenCodeTransport,
+        question: OpenCodeQuestionRequest,
+        directory: String,
+        workspace: String?
+    ) async throws {
+        try await transport.postWithoutBodyExpectingEmptyResponse(
+            [
+                "api", "session", question.sessionID,
+                "question", question.id, "reject",
+            ]
+        )
     }
 
     func abortSession(

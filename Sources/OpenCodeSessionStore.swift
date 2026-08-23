@@ -181,21 +181,17 @@ final class OpenCodeSessionStore: ObservableObject {
             }
             async let permissionResult = Self.capture {
                 try await actionClient.permissions(
+                    sessionID: actionSessionID,
                     directory: actionDirectory,
                     workspace: actionWorkspace
                 )
-            }
-            async let v2PermissionResult = Self.capture {
-                try await actionClient.v2Permissions(sessionID: actionSessionID)
             }
             async let questionResult = Self.capture {
                 try await actionClient.questions(
+                    sessionID: actionSessionID,
                     directory: actionDirectory,
                     workspace: actionWorkspace
                 )
-            }
-            async let v2QuestionResult = Self.capture {
-                try await actionClient.v2Questions(sessionID: actionSessionID)
             }
             async let diffResult = Self.capture {
                 try await actionClient.diffs(
@@ -214,9 +210,7 @@ final class OpenCodeSessionStore: ObservableObject {
             let results = await (
                 messageResult,
                 permissionResult,
-                v2PermissionResult,
                 questionResult,
-                v2QuestionResult,
                 diffResult,
                 statusResult
             )
@@ -236,13 +230,13 @@ final class OpenCodeSessionStore: ObservableObject {
                     coreErrors.append(error)
                 }
             }
-            switch results.5 {
+            switch results.3 {
             case .success(let diffs):
                 if diffBaseline == diffMutationGeneration { self.diffs = diffs }
             case .failure(let error):
                 coreErrors.append(error)
             }
-            switch results.6 {
+            switch results.4 {
             case .success(let statuses):
                 if statusBaseline == statusMutationGeneration {
                     applyReconciledStatus(statuses[session.id] ?? .idle)
@@ -256,9 +250,7 @@ final class OpenCodeSessionStore: ObservableObject {
                actionBaseline == actionMutationGeneration {
                 applyPendingActionResults(
                     permissionResult: results.1,
-                    v2PermissionResult: results.2,
-                    questionResult: results.3,
-                    v2QuestionResult: results.4
+                    questionResult: results.2
                 )
             }
         } catch is CancellationError {
@@ -544,28 +536,6 @@ final class OpenCodeSessionStore: ObservableObject {
             "Live updates exceeded the safe event size. Reconnecting and reconciling with OpenCode."
         default:
             "Live updates disconnected. Reconnecting and reconciling with OpenCode."
-        }
-    }
-
-    nonisolated static func mergePermissions(
-        legacy: [OpenCodePermissionRequest],
-        v2: [OpenCodePermissionRequest],
-        sessionID: String
-    ) -> [OpenCodePermissionRequest] {
-        var seen = Set<String>()
-        return (legacy + v2).filter { request in
-            request.sessionID == sessionID && seen.insert(request.presentationID).inserted
-        }
-    }
-
-    nonisolated static func mergeQuestions(
-        legacy: [OpenCodeQuestionRequest],
-        v2: [OpenCodeQuestionRequest],
-        sessionID: String
-    ) -> [OpenCodeQuestionRequest] {
-        var seen = Set<String>()
-        return (legacy + v2).filter { request in
-            request.sessionID == sessionID && seen.insert(request.presentationID).inserted
         }
     }
 
@@ -906,37 +876,26 @@ final class OpenCodeSessionStore: ObservableObject {
             let actionSessionID = session.id
             async let permissionResult = Self.capture {
                 try await actionClient.permissions(
+                    sessionID: actionSessionID,
                     directory: actionDirectory,
                     workspace: actionWorkspace
                 )
-            }
-            async let v2PermissionResult = Self.capture {
-                try await actionClient.v2Permissions(sessionID: actionSessionID)
             }
             async let questionResult = Self.capture {
                 try await actionClient.questions(
+                    sessionID: actionSessionID,
                     directory: actionDirectory,
                     workspace: actionWorkspace
                 )
             }
-            async let v2QuestionResult = Self.capture {
-                try await actionClient.v2Questions(sessionID: actionSessionID)
-            }
-            let results = await (
-                permissionResult,
-                v2PermissionResult,
-                questionResult,
-                v2QuestionResult
-            )
+            let results = await (permissionResult, questionResult)
             try Task.checkCancellation()
             guard requestGeneration == actionRequestGeneration,
                   mutationBaseline == actionMutationGeneration
             else { return }
             applyPendingActionResults(
                 permissionResult: results.0,
-                v2PermissionResult: results.1,
-                questionResult: results.2,
-                v2QuestionResult: results.3
+                questionResult: results.1
             )
         } catch is CancellationError {
             return
@@ -948,43 +907,19 @@ final class OpenCodeSessionStore: ObservableObject {
 
     private func applyPendingActionResults(
         permissionResult: Result<[OpenCodePermissionRequest], Error>,
-        v2PermissionResult: Result<[OpenCodePermissionRequest], Error>,
-        questionResult: Result<[OpenCodeQuestionRequest], Error>,
-        v2QuestionResult: Result<[OpenCodeQuestionRequest], Error>
+        questionResult: Result<[OpenCodeQuestionRequest], Error>
     ) {
-        var errors: [Error] = []
-        let legacyPermissionOutcome = Self.recoverActionValues(
+        let permissionOutcome = Self.recoverActionValues(
             from: permissionResult,
-            fallback: permissions.filter { $0.resolvedAPIVersion == .legacy }
+            fallback: permissions
         )
-        let v2PermissionOutcome = Self.recoverActionValues(
-            from: v2PermissionResult,
-            fallback: permissions.filter { $0.resolvedAPIVersion == .v2 }
-        )
-        let legacyQuestionOutcome = Self.recoverActionValues(
+        let questionOutcome = Self.recoverActionValues(
             from: questionResult,
-            fallback: questions.filter { $0.resolvedAPIVersion == .legacy }
+            fallback: questions
         )
-        let v2QuestionOutcome = Self.recoverActionValues(
-            from: v2QuestionResult,
-            fallback: questions.filter { $0.resolvedAPIVersion == .v2 }
-        )
-        errors.append(contentsOf: [
-            legacyPermissionOutcome.error,
-            v2PermissionOutcome.error,
-            legacyQuestionOutcome.error,
-            v2QuestionOutcome.error,
-        ].compactMap { $0 })
-        permissions = Self.mergePermissions(
-            legacy: legacyPermissionOutcome.values,
-            v2: v2PermissionOutcome.values,
-            sessionID: session.id
-        )
-        questions = Self.mergeQuestions(
-            legacy: legacyQuestionOutcome.values,
-            v2: v2QuestionOutcome.values,
-            sessionID: session.id
-        )
+        permissions = permissionOutcome.values
+        questions = questionOutcome.values
+        let errors = [permissionOutcome.error, questionOutcome.error].compactMap { $0 }
         if let firstError = errors.first {
             actionErrorMessage =
                 "Some OpenCode actions could not be refreshed: \(firstError.localizedDescription)"

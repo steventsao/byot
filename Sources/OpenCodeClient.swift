@@ -319,20 +319,16 @@ struct OpenCodeClient: Sendable {
     }
 
     func permissions(
+        sessionID: String,
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodePermissionRequest] {
-        let adapter = try await protocolAdapter()
-        guard adapter.serverProtocol == .v1 else { return [] }
-        let requests: [OpenCodePermissionRequest] = try await get(
-            ["permission"],
-            query: instanceQuery(directory: directory, workspace: workspace)
+        try await protocolAdapter().permissions(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace
         )
-        return requests.map { request in
-            var request = request
-            request.apiVersion = .legacy
-            return request
-        }
     }
 
     func reply(
@@ -341,47 +337,26 @@ struct OpenCodeClient: Sendable {
         workspace: String? = nil,
         reply: OpenCodePermissionReply
     ) async throws {
-        struct Body: Encodable { let reply: OpenCodePermissionReply }
-        switch permission.resolvedAPIVersion {
-        case .legacy:
-            let _: Bool = try await post(
-                ["permission", permission.id, "reply"],
-                query: instanceQuery(directory: directory, workspace: workspace),
-                body: Body(reply: reply)
-            )
-        case .v2:
-            try await postExpectingEmptyResponse(
-                ["api", "session", permission.sessionID, "permission", permission.id, "reply"],
-                body: Body(reply: reply)
-            )
-        }
+        try await protocolAdapter().reply(
+            using: transport,
+            to: permission,
+            directory: directory,
+            workspace: workspace,
+            reply: reply
+        )
     }
 
     func questions(
+        sessionID: String,
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodeQuestionRequest] {
-        let adapter = try await protocolAdapter()
-        guard adapter.serverProtocol == .v1 else { return [] }
-        let requests: [OpenCodeQuestionRequest] = try await get(
-            ["question"],
-            query: instanceQuery(directory: directory, workspace: workspace)
+        try await protocolAdapter().questions(
+            using: transport,
+            sessionID: sessionID,
+            directory: directory,
+            workspace: workspace
         )
-        return requests.map { request in
-            var request = request
-            request.apiVersion = .legacy
-            return request
-        }
-    }
-
-    func v2Permissions(sessionID: String) async throws -> [OpenCodePermissionRequest] {
-        // Current pending-action routes are implemented by the issue #14
-        // adapter. Core v2 deliberately makes no speculative request here.
-        []
-    }
-
-    func v2Questions(sessionID: String) async throws -> [OpenCodeQuestionRequest] {
-        []
     }
 
     func answer(
@@ -390,20 +365,13 @@ struct OpenCodeClient: Sendable {
         workspace: String? = nil,
         answers: [[String]]
     ) async throws {
-        struct Body: Encodable { let answers: [[String]] }
-        switch question.resolvedAPIVersion {
-        case .legacy:
-            let _: Bool = try await post(
-                ["question", question.id, "reply"],
-                query: instanceQuery(directory: directory, workspace: workspace),
-                body: Body(answers: answers)
-            )
-        case .v2:
-            try await postExpectingEmptyResponse(
-                ["api", "session", question.sessionID, "question", question.id, "reply"],
-                body: Body(answers: answers)
-            )
-        }
+        try await protocolAdapter().answer(
+            using: transport,
+            question: question,
+            directory: directory,
+            workspace: workspace,
+            answers: answers
+        )
     }
 
     func reject(
@@ -411,21 +379,12 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws {
-        switch question.resolvedAPIVersion {
-        case .legacy:
-            let _: Bool = try await postWithoutBody(
-                ["question", question.id, "reject"],
-                query: instanceQuery(directory: directory, workspace: workspace)
-            )
-        case .v2:
-            let request = try makeRequest(
-                path: ["api", "session", question.sessionID, "question", question.id, "reject"],
-                query: [],
-                method: "POST",
-                body: nil
-            )
-            try await transport.performExpectingEmptyResponse(request)
-        }
+        try await protocolAdapter().reject(
+            using: transport,
+            question: question,
+            directory: directory,
+            workspace: workspace
+        )
     }
 
     func events(
@@ -508,45 +467,8 @@ struct OpenCodeClient: Sendable {
         try await transport.get(path, query: query)
     }
 
-    private func post<Body: Encodable, Response: Decodable>(
-        _ path: [String],
-        query: [URLQueryItem],
-        body: Body,
-        timeout: TimeInterval? = nil
-    ) async throws -> Response {
-        try await transport.post(path, query: query, body: body, timeout: timeout)
-    }
-
-    private func postWithoutBody<Response: Decodable>(
-        _ path: [String],
-        query: [URLQueryItem]
-    ) async throws -> Response {
-        try await transport.postWithoutBody(path, query: query)
-    }
-
-    private func postExpectingEmptyResponse<Body: Encodable>(
-        _ path: [String],
-        body: Body
-    ) async throws {
-        try await transport.postExpectingEmptyResponse(path, body: body)
-    }
-
     func validateEmptyResponse(data: Data, response: URLResponse) throws {
         try transport.validateEmptyResponse(data: data, response: response)
-    }
-
-    private func instanceQuery(
-        directory: String?,
-        workspace: String? = nil
-    ) -> [URLQueryItem] {
-        var items: [URLQueryItem] = []
-        if let directory, !directory.isEmpty {
-            items.append(URLQueryItem(name: "directory", value: directory))
-        }
-        if let workspace, !workspace.isEmpty {
-            items.append(URLQueryItem(name: "workspace", value: workspace))
-        }
-        return items
     }
 
     private func protocolAdapter() async throws -> any OpenCodeProtocolAdapting {

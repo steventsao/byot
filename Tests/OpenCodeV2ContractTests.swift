@@ -209,24 +209,6 @@ final class OpenCodeV2ContractTests: XCTestCase {
         XCTAssertEqual(projects[0].time, OpenCodeProjectTime(created: 10, updated: 40))
     }
 
-    func testV2CoreDoesNotProbePendingActionRoutesBeforeActionAdapterLands() async throws {
-        let (client, session) = makeClient { _ in
-            .json(#"{"message":"pending actions belong to issue 14"}"#, statusCode: 500)
-        }
-        defer { session.invalidateAndCancel() }
-
-        let legacyPermissions = try await client.permissions(directory: "/repo")
-        let legacyQuestions = try await client.questions(directory: "/repo")
-        let v2Permissions = try await client.v2Permissions(sessionID: "ses_1")
-        let v2Questions = try await client.v2Questions(sessionID: "ses_1")
-
-        XCTAssertTrue(legacyPermissions.isEmpty)
-        XCTAssertTrue(legacyQuestions.isEmpty)
-        XCTAssertTrue(v2Permissions.isEmpty)
-        XCTAssertTrue(v2Questions.isEmpty)
-        XCTAssertTrue(OpenCodeV2URLProtocolStub.recordedRequests().isEmpty)
-    }
-
     func testV2EventSemanticsReconcileCurrentSessionNextFamilies() {
         XCTAssertEqual(OpenCodeEventSemantics.effect(for: "session.next.prompted"), .busyAndMessages)
         XCTAssertEqual(OpenCodeEventSemantics.effect(for: "session.next.text.delta"), .messages)
@@ -236,7 +218,143 @@ final class OpenCodeV2ContractTests: XCTestCase {
         XCTAssertEqual(OpenCodeEventSemantics.effect(for: "unrelated"), .none)
     }
 
+    func testV2PendingActionsUseLocationRoutesAndFilterTheSession() async throws {
+        let (client, session) = makeClient { request in
+            switch request.url?.path {
+            case "/api/permission/request":
+                return .json(
+                    #"{"location":{"directory":"/repo","project":{"id":"proj_1","directory":"/repo"}},"data":[{"id":"per_keep","sessionID":"ses_1","action":"bash","resources":["git status"],"save":["git *"],"metadata":{}},{"id":"per_other","sessionID":"ses_2","action":"read","resources":["README.md"]}]}"#
+                )
+            case "/api/question/request":
+                return .json(
+                    #"{"location":{"directory":"/repo","project":{"id":"proj_1","directory":"/repo"}},"data":[{"id":"que_keep","sessionID":"ses_1","questions":[{"question":"Ship?","header":"Decision","options":[{"label":"Yes","description":"Ship it"}],"multiple":false}]},{"id":"que_other","sessionID":"ses_2","questions":[{"question":"Other?","header":"Other","options":[],"multiple":false}]}]}"#
+                )
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        let permissions = try await client.permissions(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let questions = try await client.questions(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+
+        XCTAssertEqual(permissions.map(\.id), ["per_keep"])
+        XCTAssertEqual(permissions.first?.resolvedAPIVersion, .v2)
+        XCTAssertEqual(questions.map(\.id), ["que_keep"])
+        XCTAssertEqual(questions.first?.resolvedAPIVersion, .v2)
+        for request in OpenCodeV2URLProtocolStub.recordedRequests() {
+            XCTAssertEqual(v2QueryValues(for: request)["location[directory]"], "/repo")
+            XCTAssertEqual(v2QueryValues(for: request)["location[workspace]"], "wrk_1")
+        }
+    }
+
+    func testV2ActionResponsesUseDetectedProtocolRoutesAndBodies() async throws {
+        let (client, session) = makeClient { _ in .empty(statusCode: 204) }
+        defer { session.invalidateAndCancel() }
+        let permission = OpenCodePermissionRequest(
+            id: "per_1",
+            sessionID: "ses_1",
+            permission: "bash",
+            patterns: ["git status"],
+            metadata: [:],
+            always: ["git *"],
+            apiVersion: .legacy
+        )
+        let question = OpenCodeQuestionRequest(
+            id: "que_1",
+            sessionID: "ses_1",
+            questions: [
+                OpenCodeQuestion(
+                    question: "Ship?",
+                    header: "Decision",
+                    options: [],
+                    multiple: false,
+                    custom: true
+                ),
+            ],
+            apiVersion: .legacy
+        )
+
+        try await client.reply(
+            to: permission,
+            directory: "/not/sent",
+            workspace: "not-sent",
+            reply: .always
+        )
+        try await client.answer(
+            question,
+            directory: "/not/sent",
+            workspace: "not-sent",
+            answers: [["Yes"]]
+        )
+        try await client.reject(
+            question,
+            directory: "/not/sent",
+            workspace: "not-sent"
+        )
+
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { $0.url?.path }, [
+            "/api/session/ses_1/permission/per_1/reply",
+            "/api/session/ses_1/question/que_1/reply",
+            "/api/session/ses_1/question/que_1/reject",
+        ])
+        XCTAssertEqual(try v2JSONObject(for: requests[0])["reply"] as? String, "always")
+        XCTAssertEqual(
+            try v2JSONObject(for: requests[1])["answers"] as? [[String]],
+            [["Yes"]]
+        )
+        XCTAssertNil(requests[2].httpBody)
+        XCTAssertTrue(requests.allSatisfy { v2QueryValues(for: $0).isEmpty })
+    }
+
+    func testV1PendingActionsStayOnLegacyRoutesAndFilterTheSession() async throws {
+        let (client, session) = makeClient(serverProtocol: .v1) { request in
+            switch request.url?.path {
+            case "/permission":
+                return .json(
+                    #"[{"id":"per_keep","sessionID":"ses_1","permission":"bash","patterns":["git status"],"metadata":{},"always":[]},{"id":"per_other","sessionID":"ses_2","permission":"read","patterns":["README.md"],"metadata":{},"always":[]}]"#
+                )
+            case "/question":
+                return .json(
+                    #"[{"id":"que_keep","sessionID":"ses_1","questions":[{"question":"Ship?","header":"Decision","options":[],"multiple":false}]},{"id":"que_other","sessionID":"ses_2","questions":[{"question":"Other?","header":"Other","options":[],"multiple":false}]}]"#
+                )
+            default:
+                return .json(#"{"message":"unexpected"}"#, statusCode: 404)
+            }
+        }
+        defer { session.invalidateAndCancel() }
+
+        let permissions = try await client.permissions(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+        let questions = try await client.questions(
+            sessionID: "ses_1",
+            directory: "/repo",
+            workspace: "wrk_1"
+        )
+
+        XCTAssertEqual(permissions.map(\.id), ["per_keep"])
+        XCTAssertEqual(questions.map(\.id), ["que_keep"])
+        let requests = OpenCodeV2URLProtocolStub.recordedRequests()
+        XCTAssertEqual(requests.map { $0.url?.path }, ["/permission", "/question"])
+        XCTAssertTrue(requests.allSatisfy {
+            v2QueryValues(for: $0) == ["directory": "/repo", "workspace": "wrk_1"]
+        })
+    }
+
     private func makeClient(
+        serverProtocol: OpenCodeServerProtocol = .v2,
         handler: @escaping @Sendable (URLRequest) -> OpenCodeV2URLProtocolStub.Response
     ) -> (OpenCodeClient, URLSession) {
         OpenCodeV2URLProtocolStub.reset(handler: handler)
@@ -253,7 +371,7 @@ final class OpenCodeV2ContractTests: XCTestCase {
                 profile: profile,
                 password: "secret",
                 session: session,
-                serverProtocol: .v2
+                serverProtocol: serverProtocol
             ),
             session
         )
