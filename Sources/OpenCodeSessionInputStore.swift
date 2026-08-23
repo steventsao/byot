@@ -158,6 +158,10 @@ final class OpenCodeSessionInputStore: ObservableObject {
             }
             return false
         }
+        if case .shell = intent, selectedAgent == nil {
+            errorMessage = OpenCodeSessionInputError.shellAgentRequired.localizedDescription
+            return false
+        }
         errorMessage = nil
         return true
     }

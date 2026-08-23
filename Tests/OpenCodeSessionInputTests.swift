@@ -73,7 +73,8 @@ struct OpenCodeSessionInputStoreTests {
         let store = OpenCodeSessionInputStore(
             service: service,
             directory: "/repo",
-            workspace: nil
+            workspace: nil,
+            initialAgentID: nil
         )
         await store.load()
 

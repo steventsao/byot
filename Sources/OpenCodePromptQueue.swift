@@ -174,7 +174,9 @@ struct OpenCodePromptQueue: Equatable, Sendable {
             phase = observedActive ? .active : .awaitingActivity
             return nil
         case .paused:
-            recordPausedDispatchSucceeded()
+            recordPausedDispatchSucceeded(
+                completesSynchronously: completesSynchronously
+            )
             return nil
         case .idle, .awaitingActivity, .awaitingSynchronousIdle, .active:
             return nil
@@ -262,7 +264,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
                 observedActive: true,
                 observedCompletion: observedCompletion
             )
-        case .idle, .awaitingActivity, .active:
+        case .idle, .awaitingActivity, .awaitingSynchronousIdle, .active:
             pausedResumePhase = .active
         case .paused, nil:
             break
@@ -278,17 +280,27 @@ struct OpenCodePromptQueue: Equatable, Sendable {
                 observedActive: true,
                 observedCompletion: true
             )
-        case .active:
+        case .awaitingSynchronousIdle, .active:
             pausedShouldAdvance = true
         case .idle, .awaitingActivity, .paused, nil:
             break
         }
     }
 
-    private mutating func recordPausedDispatchSucceeded() {
+    private mutating func recordPausedDispatchSucceeded(
+        completesSynchronously: Bool
+    ) {
         guard !pausedSubmissionFailed, !pausedShouldAdvance else { return }
         guard case .submitting(let observedActive, let observedCompletion) = pausedResumePhase
         else { return }
+        if completesSynchronously {
+            if observedActive, observedCompletion {
+                pausedShouldAdvance = true
+            } else {
+                pausedResumePhase = prompts.isEmpty ? .idle : .awaitingSynchronousIdle
+            }
+            return
+        }
         if observedActive, observedCompletion {
             pausedShouldAdvance = true
         } else {
