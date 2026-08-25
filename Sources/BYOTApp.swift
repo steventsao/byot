@@ -49,8 +49,6 @@ private struct AboutView: View {
             List {
                 Section {
                     LabeledContent("Version", value: version)
-                } footer: {
-                    Text("BYOT is a native client for an OpenCode server you run yourself. No account, no tracking — the app talks only to servers you configure.")
                 }
                 Section {
                     Link("byot.app", destination: URL(string: "https://byot.app")!)

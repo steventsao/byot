@@ -40,16 +40,12 @@ struct OpenCodeAttachmentScreenshotHarness: View {
 
     var body: some View {
         NavigationStack {
-            ContentUnavailableView(
-                "Ready for a prompt",
-                systemImage: "terminal",
-                description: Text("Attach a screenshot, document, or text file for OpenCode to inspect.")
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(BYOTBrand.canvas)
-            .navigationTitle(store.session.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .safeAreaInset(edge: .bottom) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(BYOTBrand.canvas)
+                .navigationTitle(store.session.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .safeAreaInset(edge: .bottom) {
                 OpenCodeSessionComposerView(
                     store: store,
                     screenshotAttachment: OpenCodePromptAttachment(

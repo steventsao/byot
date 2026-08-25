@@ -37,7 +37,7 @@ struct OpenCodePermissionCard: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Text("OpenCode did not provide a reusable scope, so no future request can be remembered.")
+                Text("This request can’t be remembered.")
                     .font(.cleanCaption)
                     .foregroundStyle(.secondary)
             }

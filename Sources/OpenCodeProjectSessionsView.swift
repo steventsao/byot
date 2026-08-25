@@ -47,7 +47,6 @@ struct OpenCodeProjectSessionsView: View {
                 BYOTActivityView(
                     .loading,
                     title: "Loading sessions",
-                    detail: "Syncing recent OpenCode work.",
                     layout: .blocking
                 )
             } else if !store.isLoading,
@@ -68,8 +67,6 @@ struct OpenCodeProjectSessionsView: View {
                       store.errorMessage == nil {
                 ContentUnavailableView {
                     Label("No sessions", systemImage: "bubble.left.and.bubble.right")
-                } description: {
-                    Text("Start a coding session for this project.")
                 } actions: {
                     Button("New session", systemImage: "plus") {
                         isCreatingSession = true
@@ -93,7 +90,7 @@ struct OpenCodeProjectSessionsView: View {
         }
         .refreshable { await store.load() }
         .task { await store.load() }
-        .alert("New OpenCode session", isPresented: $isCreatingSession) {
+        .alert("New session", isPresented: $isCreatingSession) {
             TextField("Optional title", text: $newSessionTitle)
             Button("Cancel", role: .cancel) {
                 newSessionTitle = ""

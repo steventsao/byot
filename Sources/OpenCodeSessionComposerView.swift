@@ -30,7 +30,7 @@ struct OpenCodeSessionComposerView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Button(action: showModelPicker) {
                     Label(
-                        store.selectedModel?.modelName ?? "Automatic model",
+                        store.selectedModel?.modelName ?? "Automatic",
                         systemImage: "cpu"
                     )
                     .font(.cleanCaptionBold)
@@ -118,7 +118,7 @@ struct OpenCodeSessionComposerView: View {
                             || attachments.count >= OpenCodePromptAttachment.maximumCount
                     )
 
-                    TextField("Message OpenCode", text: $text, axis: .vertical)
+                    TextField("Message", text: $text, axis: .vertical)
                         .focused($isFocused)
                         .lineLimit(1...8)
                         .padding(.horizontal, 14)

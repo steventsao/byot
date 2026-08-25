@@ -32,12 +32,12 @@ enum OpenCodeCompatibilityEvaluator {
     static func evaluate(health: OpenCodeHealth) -> OpenCodeCompatibility {
         guard health.healthy else {
             return .unsupported(
-                reason: "OpenCode reported an unhealthy status. Restart the OpenCode server on your Mac and try again."
+                reason: "OpenCode reported an unhealthy status. Restart the server and try again."
             )
         }
         guard let version = OpenCodeServerVersion(parsing: health.version) else {
             return .degraded(
-                reason: "OpenCode reported an unrecognized version “\(health.version)”, so compatibility cannot be verified. Core chat remains available."
+                reason: "OpenCode reported an unrecognized version “\(health.version)”."
             )
         }
         if version.major == 0 {
@@ -45,7 +45,7 @@ enum OpenCodeCompatibilityEvaluator {
         }
         guard version >= minimumSupported else {
             return .unsupported(
-                reason: "OpenCode \(version) is older than the minimum supported \(minimumSupported). Upgrade the OpenCode CLI on your Mac to \(verifiedBaseline) or later."
+                reason: "OpenCode \(version) is older than the minimum supported \(minimumSupported). Upgrade to \(verifiedBaseline) or later."
             )
         }
         if version == verifiedBaseline {
@@ -55,11 +55,11 @@ enum OpenCodeCompatibilityEvaluator {
             return .compatible(isVerifiedBaseline: false)
         }
         return .degraded(
-            reason: "OpenCode \(version) is older than the verified \(verifiedBaseline) baseline. Core chat remains available, but some behaviors may differ."
+            reason: "OpenCode \(version) is older than the verified \(verifiedBaseline) baseline."
         )
     }
 
     private static func openCode2Reason(version: String) -> String {
-        "This server runs the OpenCode 2 beta (\(version)), which uses a different API. This app supports OpenCode \(minimumSupported)+ (v1) for now — OpenCode 2 support is in progress."
+        "OpenCode 2 (\(version)) is not supported. This app requires OpenCode \(minimumSupported)+ (v1)."
     }
 }
