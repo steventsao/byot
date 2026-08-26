@@ -73,35 +73,25 @@ struct OpenCodeSessionView: View {
                         BYOTActivityView(
                             .loading,
                             title: "Loading transcript",
-                            detail: "Syncing messages and tool activity.",
                             layout: .blocking
                         )
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 48)
                     } else if !store.isLoading,
-                              !hasConversationContent {
-                        if let errorMessage = store.errorMessage {
-                            ContentUnavailableView {
-                                Label("Couldn’t load this session", systemImage: "exclamationmark.triangle")
-                            } description: {
-                                Text(errorMessage.agentDisplayErrorText)
-                            } actions: {
-                                Button("Try again", systemImage: "arrow.clockwise") {
-                                    Task { await store.refresh(showLoading: true) }
-                                }
-                                .buttonStyle(.borderedProminent)
+                              !hasConversationContent,
+                              let errorMessage = store.errorMessage {
+                        ContentUnavailableView {
+                            Label("Couldn’t load this session", systemImage: "exclamationmark.triangle")
+                        } description: {
+                            Text(errorMessage.agentDisplayErrorText)
+                        } actions: {
+                            Button("Try again", systemImage: "arrow.clockwise") {
+                                Task { await store.refresh(showLoading: true) }
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 48)
-                        } else {
-                            ContentUnavailableView(
-                                "Ready for a prompt",
-                                systemImage: "terminal",
-                                description: Text("Ask OpenCode to inspect, change, or explain this project.")
-                            )
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 48)
+                            .buttonStyle(.borderedProminent)
                         }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 48)
                     }
 
                     if store.pendingActionCount > 0 {
@@ -137,7 +127,7 @@ struct OpenCodeSessionView: View {
             .onChange(of: store.pendingActionCount) { oldValue, newValue in
                 guard newValue > oldValue else { return }
                 AccessibilityNotification.Announcement(
-                    "OpenCode requires your response"
+                    "Response required"
                 ).post()
                 if reduceMotion {
                     proxy.scrollTo("opencode-pending-actions", anchor: .bottom)
@@ -208,31 +198,22 @@ struct OpenCodeSessionView: View {
         }
     }
 
-    private var sessionActivityTitle: String {
-        if store.pendingActionCount > 0 {
-            return "Waiting for your response"
-        }
+    private var sessionActivityTitle: String? {
         switch store.status {
-        case .idle:
-            return "Waiting for your response"
-        case .busy:
-            return sessionActivityPhase == .thinking
-                ? "OpenCode is thinking"
-                : "OpenCode is working"
-        case .retry(let attempt, _, _):
-            return "Retrying request · attempt \(attempt)"
+        case .retry(let attempt, _, _) where store.pendingActionCount == 0:
+            "Retrying · attempt \(attempt)"
+        default:
+            nil
         }
     }
 
     private var sessionActivityDetail: String? {
-        if store.pendingActionCount > 0 {
-            return "Review the request below to continue."
-        }
+        guard store.pendingActionCount == 0 else { return nil }
         switch store.status {
-        case .idle, .busy:
-            return nil
         case .retry(_, let message, _):
-            return message.trimmedNonEmpty
+            message.trimmedNonEmpty
+        default:
+            nil
         }
     }
 
@@ -247,7 +228,7 @@ struct OpenCodeSessionView: View {
         guard showsSessionActivity else { return nil }
         return [
             sessionActivityPhase.rawValue,
-            sessionActivityTitle,
+            sessionActivityTitle ?? "",
             sessionActivityDetail ?? "",
         ].joined(separator: "|")
     }

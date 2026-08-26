@@ -23,7 +23,7 @@ struct OpenCodeRootView: View {
                     ContentUnavailableView {
                         Label("Connect OpenCode", systemImage: "network")
                     } description: {
-                        Text("Add the secure HTTPS address for the OpenCode server on your Mac.")
+                        Text("Add the HTTPS address of your OpenCode server.")
                     } actions: {
                         Button("Add server", systemImage: "plus") {
                             edit(nil)
@@ -204,7 +204,7 @@ private struct OpenCodeProfileEditorView: View {
                 } header: {
                     Text("Working directory (optional)")
                 } footer: {
-                    Text("Leave blank to browse projects already known to this OpenCode server.")
+                    Text("Leave blank to list known projects.")
                 }
 
                 Section {
@@ -249,7 +249,7 @@ private struct OpenCodeProfileEditorView: View {
                     } header: {
                         Text("Compatibility")
                     } footer: {
-                        Text("Only non-secret facts are shown. The server address, username, and password are never included.")
+                        Text("Does not include the server address or credentials.")
                     }
                 }
             }
@@ -330,7 +330,7 @@ private struct OpenCodeProfileEditorView: View {
                 case .compatible:
                     let projects = projects ?? []
                     let projectLine = projects.isEmpty
-                        ? "No projects are open yet."
+                        ? "No projects."
                         : "Connected to \(projects.count) project\(projects.count == 1 ? "" : "s")."
                     statusIsError = false
                     statusMessage = "\(projectLine) \(summary.stateTitle)."
@@ -461,8 +461,6 @@ private struct OpenCodeConnectedView: View {
             if store.isLoading && store.projects.isEmpty {
                 BYOTActivityView(
                     .connecting,
-                    title: "Connecting to OpenCode",
-                    detail: "Looking for projects on your Mac.",
                     layout: .blocking
                 )
             } else if !store.isLoading,
@@ -483,9 +481,9 @@ private struct OpenCodeConnectedView: View {
                       configuredDirectory == nil,
                       store.errorMessage == nil {
                 ContentUnavailableView(
-                    "No OpenCode projects",
+                    "No projects",
                     systemImage: "folder",
-                    description: Text("Open a project on the Mac, then refresh.")
+                    description: Text("Open a project, then refresh.")
                 )
             }
         }

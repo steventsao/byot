@@ -10,7 +10,7 @@ struct OpenCodeQuestionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("OpenCode has a question", systemImage: "questionmark.bubble.fill")
+            Label("Question", systemImage: "questionmark.bubble.fill")
                 .font(.cleanBodySemibold)
                 .foregroundStyle(BYOTBrand.accent)
 

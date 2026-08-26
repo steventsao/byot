@@ -11,7 +11,7 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         app.launchArguments = ["--attachment-screenshot"]
         app.launch()
 
-        let composer = app.textFields["Message OpenCode"]
+        let composer = app.textFields["Message"]
         XCTAssertTrue(composer.waitForExistence(timeout: 10))
         composer.tap()
         composer.typeText("Review this design and suggest the next implementation step")

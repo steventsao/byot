@@ -19,6 +19,6 @@ struct AppNavigationButton: View {
                     .stroke(isToolbarItem ? Color.clear : BYOTBrand.hairline, lineWidth: 1)
             }
             .buttonStyle(.agentPressFeedback)
-            .accessibilityHint("Shows Agents and OpenCode")
+            .accessibilityHint("Opens app information")
     }
 }

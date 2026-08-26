@@ -26,7 +26,7 @@ struct OpenCodeCompatibilitySummary: Codable, Equatable, Sendable {
             self.isVerifiedBaseline = isVerifiedBaseline
             detail = isVerifiedBaseline
                 ? nil
-                : "OpenCode \(health.version) is newer than the verified \(OpenCodeCompatibilityEvaluator.verifiedBaseline) baseline and has not been fully verified. Core chat is enabled."
+                : "OpenCode \(health.version) is newer than the verified \(OpenCodeCompatibilityEvaluator.verifiedBaseline) baseline."
         case .degraded(let reason):
             state = .degraded
             isVerifiedBaseline = false

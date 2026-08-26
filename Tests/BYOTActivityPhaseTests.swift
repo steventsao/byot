@@ -36,9 +36,9 @@ struct BYOTActivityPhaseTests {
     func accessibilityDescription() {
         #expect(
             BYOTActivityPhase.thinking.accessibilityDescription(
-                title: "OpenCode is thinking",
-                detail: "Reviewing the project"
-            ) == "OpenCode is thinking, Reviewing the project"
+                title: "Thinking",
+                detail: "bash"
+            ) == "Thinking, bash"
         )
         #expect(
             BYOTActivityPhase.loading.accessibilityDescription(detail: "   ")

@@ -16,7 +16,7 @@ struct OpenCodeModelPickerView: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("Automatic")
                                         .font(.cleanBodySemibold)
-                                    Text("Use the OpenCode server default")
+                                    Text("Server default")
                                         .font(.cleanCaption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -95,17 +95,16 @@ struct OpenCodeModelPickerView: View {
                 if store.isLoadingModels && store.providerModels.isEmpty {
                     BYOTActivityView(
                         .loading,
-                        title: "Loading connected models",
-                        detail: "Checking providers available to OpenCode.",
+                        title: "Loading models",
                         layout: .blocking
                     )
                 } else if !store.isLoadingModels,
                           store.providerModels.isEmpty,
                           store.modelErrorMessage == nil {
                     ContentUnavailableView(
-                        "No connected models",
+                        "No models",
                         systemImage: "cpu",
-                        description: Text("Connect a provider in OpenCode, then refresh.")
+                        description: Text("Connect a provider, then refresh.")
                     )
                 } else if !normalizedSearchText.isEmpty,
                           filteredProviders.isEmpty,
@@ -135,7 +134,7 @@ struct OpenCodeModelPickerView: View {
 
     private var automaticMatchesSearch: Bool {
         normalizedSearchText.isEmpty
-            || "automatic use the opencode server default".contains(normalizedSearchText)
+            || "automatic server default".contains(normalizedSearchText)
     }
 
     private func modelStatus(_ status: String) -> some View {

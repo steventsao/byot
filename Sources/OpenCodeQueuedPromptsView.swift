@@ -117,7 +117,7 @@ struct OpenCodeQueuedPromptsView: View {
     private func queueLabel(for index: Int, prompt: OpenCodeQueuedPrompt) -> String {
         let state = index == 0 && canRetryFirst
             ? "Waiting to retry"
-            : "Queued \(index + 1) · sends after the current turn"
+            : "Queued \(index + 1)"
         guard let model = prompt.model else { return state }
         return "\(state) · \(model.modelName)"
     }
