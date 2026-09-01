@@ -1,6 +1,11 @@
 import Combine
 import Foundation
 
+private struct OpenCodeRecoverablePrompt: Sendable {
+    let messageID: String
+    let text: String
+}
+
 @MainActor
 final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var messages: [OpenCodeMessageEnvelope] = []
@@ -24,6 +29,7 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var isLoadingModels = false
     @Published private(set) var modelErrorMessage: String?
     @Published private(set) var isStoppingTurn = false
+    @Published private(set) var hasRecoverableUnansweredPrompt = false
     @Published var errorMessage: String?
 
     let session: OpenCodeSession
@@ -45,6 +51,10 @@ final class OpenCodeSessionStore: ObservableObject {
     private var promptDispatchID: UUID?
     private var inFlightPrompt: OpenCodeQueuedPrompt?
     private var currentTurnActivityBaseline: Set<String>?
+    private var recoverableUnansweredPrompt: OpenCodeRecoverablePrompt?
+    private var dismissedUnansweredMessageID: String?
+    private var recoveryIdleUserMessageID: String?
+    private var didStatusProbeFailWithFreshTranscript = false
     private var queueRecoveryTask: Task<Void, Never>?
     private var queueRecoveryID: UUID?
     private var refreshGeneration = 0
@@ -94,7 +104,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     var canSubmitPrompt: Bool {
-        isRunning && isStatusReady
+        isRunning && isStatusReady && isStoppingTurn == false
     }
 
     var canRetryFirstQueuedPrompt: Bool {
@@ -105,7 +115,24 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     var canStopTurn: Bool {
-        isRunning && status.isActive && isStoppingTurn == false
+        isRunning
+            && isStoppingTurn == false
+            && (
+                status.isActive
+                    || (
+                        didStatusProbeFailWithFreshTranscript
+                            && hasUnansweredLatestUserMessageWithoutAssistantEnvelope
+                    )
+            )
+    }
+
+    var canRetryUnansweredPrompt: Bool {
+        isRunning
+            && isStatusReady
+            && status.isActive == false
+            && isSending == false
+            && isStoppingTurn == false
+            && recoverableUnansweredPrompt != nil
     }
 
     func start() async {
@@ -113,6 +140,8 @@ final class OpenCodeSessionStore: ObservableObject {
         let generation = lifecycleGeneration
         isRunning = true
         isStatusReady = false
+        didStatusProbeFailWithFreshTranscript = false
+        recoveryIdleUserMessageID = nil
         connectEvents()
         modelTask?.cancel()
         modelTask = Task { [weak self] in
@@ -126,6 +155,8 @@ final class OpenCodeSessionStore: ObservableObject {
         lifecycleGeneration &+= 1
         isRunning = false
         isStatusReady = false
+        didStatusProbeFailWithFreshTranscript = false
+        recoveryIdleUserMessageID = nil
         statusMutationGeneration &+= 1
         status = .idle
         refreshGeneration &+= 1
@@ -155,6 +186,7 @@ final class OpenCodeSessionStore: ObservableObject {
         messageRefreshPending = false
         actionRefreshPending = false
         isSending = false
+        isStoppingTurn = false
         finishCurrentTurnActivityTracking()
         isEventConnected = false
     }
@@ -231,12 +263,14 @@ final class OpenCodeSessionStore: ObservableObject {
             guard generation == refreshGeneration else { return }
 
             var coreErrors: [Error] = []
+            var didApplyFreshMessages = false
             switch results.0 {
             case .success(let messages):
                 if messageGeneration == messageRequestGeneration,
                    transcriptBaseline == transcriptMutationGeneration {
                     transcript.replace(with: messages)
                     publishTranscript()
+                    didApplyFreshMessages = true
                 }
             case .failure(let error):
                 if messageGeneration == messageRequestGeneration {
@@ -252,9 +286,18 @@ final class OpenCodeSessionStore: ObservableObject {
             switch results.6 {
             case .success(let statuses):
                 if statusBaseline == statusMutationGeneration {
+                    didStatusProbeFailWithFreshTranscript = false
                     applyReconciledStatus(statuses[session.id] ?? .idle)
                 }
             case .failure(let error):
+                if statusBaseline == statusMutationGeneration {
+                    didStatusProbeFailWithFreshTranscript = didApplyFreshMessages
+                    if didApplyFreshMessages {
+                        isStatusReady = false
+                        recoveryIdleUserMessageID = nil
+                        clearUnansweredPromptRecovery()
+                    }
+                }
                 coreErrors.append(error)
             }
             errorMessage = coreErrors.first?.localizedDescription
@@ -279,6 +322,9 @@ final class OpenCodeSessionStore: ObservableObject {
     func send(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, canSubmitPrompt else { return false }
+        didStatusProbeFailWithFreshTranscript = false
+        recoveryIdleUserMessageID = nil
+        dismissUnansweredPromptRecovery()
         let submission = promptQueue.accept(
             text: trimmed,
             model: selectedModel,
@@ -309,10 +355,70 @@ final class OpenCodeSessionStore: ObservableObject {
         schedulePromptDispatch(prompt)
     }
 
+    @discardableResult
+    func retryUnansweredPrompt() async -> Bool {
+        guard canRetryUnansweredPrompt,
+              let prompt = recoverableUnansweredPrompt
+        else { return false }
+
+        let generation = lifecycleGeneration
+        isStoppingTurn = true
+        defer {
+            if generation == lifecycleGeneration {
+                isStoppingTurn = false
+            }
+        }
+
+        do {
+            let didAbort = try await client.abort(
+                sessionID: session.id,
+                directory: directory,
+                workspace: workspace
+            )
+            try Task.checkCancellation()
+            guard generation == lifecycleGeneration, isRunning else { return false }
+            guard didAbort else {
+                errorMessage = "OpenCode did not confirm that the stalled turn was stopped."
+                return false
+            }
+
+            errorMessage = nil
+            let stillUnanswered =
+                Self.latestUserMessageIDWithoutAssistantEnvelope(in: messages) == prompt.messageID
+            settleTurnLocally(dismissingUnansweredPrompt: true)
+            guard stillUnanswered else {
+                scheduleMessageRefresh()
+                return false
+            }
+            guard let dispatchPrompt = promptQueue.beginExplicitDispatch(
+                text: prompt.text,
+                model: selectedModel
+            ) else {
+                dismissedUnansweredMessageID = nil
+                updateUnansweredPromptRecovery()
+                return false
+            }
+            publishPromptQueue()
+            schedulePromptDispatch(dispatchPrompt)
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            guard generation == lifecycleGeneration, isRunning else { return false }
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func stopTurn() async {
         guard canStopTurn else { return }
+        let generation = lifecycleGeneration
         isStoppingTurn = true
-        defer { isStoppingTurn = false }
+        defer {
+            if generation == lifecycleGeneration {
+                isStoppingTurn = false
+            }
+        }
         // Pause before aborting so the idle transition the abort triggers does
         // not immediately auto-dispatch the next queued prompt — stopping means
         // the user wants to steer, and paused prompts keep their manual
@@ -320,13 +426,25 @@ final class OpenCodeSessionStore: ObservableObject {
         promptQueue.pausePendingPrompts()
         publishPromptQueue()
         do {
-            try await client.abort(
+            let didAbort = try await client.abort(
                 sessionID: session.id,
                 directory: directory,
                 workspace: workspace
             )
+            try Task.checkCancellation()
+            guard generation == lifecycleGeneration, isRunning else { return }
+            guard didAbort else {
+                errorMessage = "OpenCode did not confirm that the turn was stopped."
+                return
+            }
+
+            errorMessage = nil
+            settleTurnLocally(dismissingUnansweredPrompt: true)
             scheduleMessageRefresh()
+        } catch is CancellationError {
+            return
         } catch {
+            guard generation == lifecycleGeneration, isRunning else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -336,9 +454,6 @@ final class OpenCodeSessionStore: ObservableObject {
         dispatchID: UUID
     ) async {
         guard isCurrentPromptDispatch(dispatchID), !Task.isCancelled else { return }
-        beginCurrentTurnActivityTracking()
-        markOptimisticBusy()
-        isSending = true
         do {
             try await client.sendMessage(
                 sessionID: session.id,
@@ -621,7 +736,7 @@ final class OpenCodeSessionStore: ObservableObject {
         }
     }
 
-    private func handle(_ event: OpenCodeEvent) {
+    func handle(_ event: OpenCodeEvent) {
         if let eventSessionID = event.sessionID, eventSessionID != session.id {
             return
         }
@@ -651,6 +766,13 @@ final class OpenCodeSessionStore: ObservableObject {
             applyEventStatus(.idle)
             scheduleMessageRefresh()
         case "session.error":
+            if let sessionError: OpenCodeMessageError = decode(event.properties["error"]) {
+                errorMessage = sessionError.displayMessage
+            }
+            // OpenCode normally follows session.error with idle, but clients
+            // cannot depend on that event arriving. Pause queued work before
+            // settling so a failed turn never auto-dispatches its follow-up.
+            settleTurnLocally(dismissingUnansweredPrompt: false)
             scheduleMessageRefresh()
         case let type where Self.isPendingActionEventType(type):
             actionMutationGeneration &+= 1
@@ -663,13 +785,17 @@ final class OpenCodeSessionStore: ObservableObject {
     private func publishTranscript() {
         messages = transcript.messages
         updateCurrentTurnActivityTracking()
+        updateUnansweredPromptRecovery()
         transcriptRevision &+= 1
     }
 
     private func applyReconciledStatus(_ value: OpenCodeSessionStatus) {
         status = value
         isStatusReady = true
+        didStatusProbeFailWithFreshTranscript = false
         if value.isActive {
+            recoveryIdleUserMessageID = nil
+            clearUnansweredPromptRecovery()
             promptQueue.serverBecameActive()
             publishPromptQueue()
             if isEventConnected == false {
@@ -678,17 +804,22 @@ final class OpenCodeSessionStore: ObservableObject {
             return
         }
         finishCurrentTurnActivityTracking()
+        recoveryIdleUserMessageID = Self.latestUserMessageID(in: messages)
         let nextPrompt = promptQueue.reconciledServerIdle()
         publishPromptQueue()
         if let nextPrompt {
             schedulePromptDispatch(nextPrompt)
         }
+        updateUnansweredPromptRecovery()
     }
 
     private func applyEventStatus(_ value: OpenCodeSessionStatus) {
         status = value
         isStatusReady = true
+        didStatusProbeFailWithFreshTranscript = false
         if value.isActive {
+            recoveryIdleUserMessageID = nil
+            clearUnansweredPromptRecovery()
             promptQueue.serverBecameActive()
             publishPromptQueue()
             if isEventConnected {
@@ -697,6 +828,7 @@ final class OpenCodeSessionStore: ObservableObject {
             return
         }
         finishCurrentTurnActivityTracking()
+        recoveryIdleUserMessageID = Self.latestUserMessageID(in: messages)
         let nextPrompt = promptQueue.serverBecameIdle()
         publishPromptQueue()
         if let nextPrompt {
@@ -704,6 +836,7 @@ final class OpenCodeSessionStore: ObservableObject {
         } else if promptQueue.needsServerReconciliation == false {
             cancelQueueRecovery()
         }
+        updateUnansweredPromptRecovery()
     }
 
     private func publishPromptQueue() {
@@ -713,12 +846,120 @@ final class OpenCodeSessionStore: ObservableObject {
     private func markOptimisticBusy() {
         statusMutationGeneration &+= 1
         status = .busy
+        recoveryIdleUserMessageID = nil
+        didStatusProbeFailWithFreshTranscript = false
+        clearUnansweredPromptRecovery()
     }
 
     private func clearOptimisticBusy() {
         statusMutationGeneration &+= 1
         status = .idle
+        recoveryIdleUserMessageID = nil
         finishCurrentTurnActivityTracking()
+        updateUnansweredPromptRecovery()
+    }
+
+    private var hasUnansweredLatestUserMessageWithoutAssistantEnvelope: Bool {
+        guard let messageID = Self.latestUserMessageIDWithoutAssistantEnvelope(in: messages)
+        else { return false }
+        return messageID != dismissedUnansweredMessageID
+    }
+
+    private func settleTurnLocally(dismissingUnansweredPrompt: Bool) {
+        if dismissingUnansweredPrompt {
+            dismissUnansweredPromptRecovery()
+        }
+        promptQueue.pausePendingPrompts()
+        let dispatchTask = invalidatePromptDispatch()
+        cancelQueueRecovery()
+        reconciliationTask?.cancel()
+        reconciliationTask = nil
+        statusMutationGeneration &+= 1
+        status = .idle
+        isStatusReady = true
+        didStatusProbeFailWithFreshTranscript = false
+        recoveryIdleUserMessageID = Self.latestUserMessageID(in: messages)
+        finishCurrentTurnActivityTracking()
+        dispatchTask?.cancel()
+        publishPromptQueue()
+        updateUnansweredPromptRecovery()
+    }
+
+    private func updateUnansweredPromptRecovery() {
+        guard isRunning,
+              isStatusReady,
+              status.isActive == false,
+              isSending == false,
+              let prompt = Self.recoverablePrompt(in: messages),
+              prompt.messageID == recoveryIdleUserMessageID,
+              prompt.messageID != dismissedUnansweredMessageID
+        else {
+            clearUnansweredPromptRecovery()
+            return
+        }
+        recoverableUnansweredPrompt = prompt
+        hasRecoverableUnansweredPrompt = true
+    }
+
+    private func dismissUnansweredPromptRecovery() {
+        if let messageID = recoverableUnansweredPrompt?.messageID
+            ?? Self.recoverablePrompt(in: messages)?.messageID {
+            dismissedUnansweredMessageID = messageID
+        }
+        clearUnansweredPromptRecovery()
+    }
+
+    private func clearUnansweredPromptRecovery() {
+        recoverableUnansweredPrompt = nil
+        hasRecoverableUnansweredPrompt = false
+    }
+
+    private static func recoverablePrompt(
+        in messages: [OpenCodeMessageEnvelope]
+    ) -> OpenCodeRecoverablePrompt? {
+        guard let latestUserIndex = messages.lastIndex(where: { message in
+            message.info.role.lowercased() == "user"
+        }) else { return nil }
+
+        let messagesAfterUser = messages.suffix(
+            from: messages.index(after: latestUserIndex)
+        )
+        let hasAssistantEnvelope = messagesAfterUser.contains { message in
+            message.info.role.lowercased() == "assistant"
+        }
+        guard hasAssistantEnvelope == false else { return nil }
+
+        let userMessage = messages[latestUserIndex]
+        let text = userMessage.parts
+            .filter { $0.type.lowercased() == "text" }
+            .compactMap(\.text)
+            .joined(separator: "\n\n")
+        guard let text = text.trimmedNonEmpty else { return nil }
+
+        return OpenCodeRecoverablePrompt(
+            messageID: userMessage.id,
+            text: text
+        )
+    }
+
+    private static func latestUserMessageID(
+        in messages: [OpenCodeMessageEnvelope]
+    ) -> String? {
+        messages.last { $0.info.role.lowercased() == "user" }?.id
+    }
+
+    private static func latestUserMessageIDWithoutAssistantEnvelope(
+        in messages: [OpenCodeMessageEnvelope]
+    ) -> String? {
+        guard let latestUserIndex = messages.lastIndex(where: { message in
+            message.info.role.lowercased() == "user"
+        }) else { return nil }
+        let hasAssistantEnvelope = messages.suffix(
+            from: messages.index(after: latestUserIndex)
+        ).contains { message in
+            message.info.role.lowercased() == "assistant"
+        }
+        return hasAssistantEnvelope ? nil : messages[latestUserIndex].id
     }
 
     var hasVisibleAssistantActivityAfterLatestUserMessage: Bool {
@@ -792,6 +1033,11 @@ final class OpenCodeSessionStore: ObservableObject {
         }
         cancelQueueRecovery()
         errorMessage = nil
+        recoveryIdleUserMessageID = nil
+        didStatusProbeFailWithFreshTranscript = false
+        beginCurrentTurnActivityTracking()
+        markOptimisticBusy()
+        isSending = true
         let dispatchID = UUID()
         promptDispatchID = dispatchID
         inFlightPrompt = prompt
@@ -810,6 +1056,15 @@ final class OpenCodeSessionStore: ObservableObject {
         promptDispatchID = nil
         inFlightPrompt = nil
         isSending = false
+    }
+
+    private func invalidatePromptDispatch() -> Task<Void, Never>? {
+        let task = promptDispatchTask
+        promptDispatchID = nil
+        promptDispatchTask = nil
+        inFlightPrompt = nil
+        isSending = false
+        return task
     }
 
     private func scheduleQueueRecoveryIfNeeded() {
@@ -847,15 +1102,28 @@ final class OpenCodeSessionStore: ObservableObject {
                 statusMutationGeneration &+= 1
                 status = reconciledStatus
                 isStatusReady = true
+                didStatusProbeFailWithFreshTranscript = false
                 if reconciledStatus.isActive {
+                    recoveryIdleUserMessageID = nil
+                    clearUnansweredPromptRecovery()
                     promptQueue.serverBecameActive()
                     publishPromptQueue()
                 } else if promptQueue.isAwaitingActivity {
+                    let hadQueuedFollowUps = promptQueue.prompts.isEmpty == false
                     promptQueue.pauseAwaitingActivity()
                     publishPromptQueue()
-                    errorMessage =
-                        "Live session activity could not be confirmed. Your queued message is paused to avoid sending it twice."
+                    if hadQueuedFollowUps {
+                        errorMessage =
+                            "Live session activity could not be confirmed. Your queued message is paused to avoid sending it twice."
+                    }
+                    await refreshMessages()
+                    guard isCurrentQueueRecovery(recoveryID), status.isActive == false
+                    else { return }
+                    recoveryIdleUserMessageID = Self.latestUserMessageID(in: messages)
+                    updateUnansweredPromptRecovery()
+                    return
                 } else {
+                    recoveryIdleUserMessageID = Self.latestUserMessageID(in: messages)
                     let nextPrompt = promptQueue.reconciledServerIdle()
                     publishPromptQueue()
                     if let nextPrompt {
@@ -863,6 +1131,7 @@ final class OpenCodeSessionStore: ObservableObject {
                         schedulePromptDispatch(nextPrompt)
                         return
                     }
+                    updateUnansweredPromptRecovery()
                 }
                 delay = min(delay * 2, .seconds(15))
             } catch is CancellationError {

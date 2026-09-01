@@ -19,12 +19,23 @@ extension ButtonStyle where Self == AgentPressFeedbackButtonStyle {
 
 struct ErrorBanner: View {
     let message: String
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
 
     var body: some View {
-        Text(message.agentDisplayErrorText)
-            .font(.cleanCaptionBold)
-            .foregroundStyle(.primary)
-            .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(message.agentDisplayErrorText)
+                .font(.cleanCaptionBold)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .font(.cleanCaptionBold)
+                    .buttonStyle(.bordered)
+            }
+        }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
