@@ -228,6 +228,56 @@ struct OpenCodePromptQueueTests {
         #expect(prompt.attachments == [attachment])
         #expect(queue.serverBecameIdle()?.attachments == [attachment])
     }
+
+    @Test("An explicit recovery dispatch stays ahead of paused follow-ups")
+    func recoveredPromptPreservesPausedFollowUps() throws {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(text: "Follow-up one", model: nil, serverIsActive: true)
+        _ = queue.accept(text: "Follow-up two", model: nil, serverIsActive: true)
+        queue.pausePendingPrompts()
+
+        let pendingRecovered = queue.beginExplicitDispatch(
+            text: "Recovered",
+            model: nil
+        )
+        let recovered = try #require(pendingRecovered)
+
+        #expect(recovered.text == "Recovered")
+        #expect(queue.prompts.map(\.text) == ["Follow-up one", "Follow-up two"])
+        queue.serverBecameActive()
+        #expect(queue.dispatchSucceeded() == nil)
+        #expect(queue.serverBecameIdle() == nil)
+        #expect(queue.isPaused)
+        #expect(queue.prompts.map(\.text) == ["Follow-up one", "Follow-up two"])
+    }
+
+    @Test("A failed recovery dispatch is requeued before paused follow-ups")
+    func failedRecoveredPromptIsFirst() throws {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(text: "Follow-up", model: nil, serverIsActive: true)
+        queue.pausePendingPrompts()
+        let pendingRecovered = queue.beginExplicitDispatch(
+            text: "Recovered",
+            model: nil
+        )
+        let recovered = try #require(pendingRecovered)
+
+        queue.dispatchFailed(recovered, requeue: true)
+
+        #expect(queue.isPaused)
+        #expect(queue.prompts.map(\.text) == ["Recovered", "Follow-up"])
+    }
+
+    @Test("A direct async prompt reconciles even without queued follow-ups")
+    func awaitingActivityAlwaysNeedsReconciliation() {
+        var queue = OpenCodePromptQueue()
+        _ = queue.accept(text: "Only prompt", model: nil, serverIsActive: false)
+        #expect(queue.dispatchSucceeded() == nil)
+
+        #expect(queue.isAwaitingActivity)
+        #expect(queue.prompts.isEmpty)
+        #expect(queue.needsServerReconciliation)
+    }
 }
 
 private extension OpenCodePromptSubmission {

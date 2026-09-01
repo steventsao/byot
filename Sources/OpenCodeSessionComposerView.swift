@@ -130,23 +130,39 @@ struct OpenCodeSessionComposerView: View {
                         .submitLabel(.send)
                         .onSubmit(send)
 
-                    Button(action: send) {
-                        Image(systemName: "arrow.up")
-                            .font(.cleanControlIcon)
-                        .foregroundStyle(BYOTBrand.primaryActionInk)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            BYOTBrand.primaryAction,
-                            in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius)
+                    if showsStopControl {
+                        Button(action: stopTurn) {
+                            Image(systemName: "stop.fill")
+                                .font(.cleanControlIcon)
+                                .foregroundStyle(BYOTBrand.primaryActionInk)
+                                .frame(width: 44, height: 44)
+                                .background(
+                                    BYOTBrand.primaryAction,
+                                    in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius)
+                                )
+                        }
+                        .accessibilityLabel("Stop the current turn")
+                        .accessibilityInputLabels(["Stop", "Stop turn"])
+                        .accessibilityIdentifier("opencode-composer-stop")
+                    } else {
+                        Button(action: send) {
+                            Image(systemName: "arrow.up")
+                                .font(.cleanControlIcon)
+                            .foregroundStyle(BYOTBrand.primaryActionInk)
+                            .frame(width: 44, height: 44)
+                            .background(
+                                BYOTBrand.primaryAction,
+                                in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius)
+                            )
+                        }
+                        .accessibilityLabel(
+                            store.willQueueNextPrompt ? "Queue message" : "Send message"
+                        )
+                        .disabled(
+                            !hasSendableContent
+                                || store.canSubmitPrompt == false
                         )
                     }
-                    .accessibilityLabel(
-                        store.willQueueNextPrompt ? "Queue message" : "Send message"
-                    )
-                    .disabled(
-                        !hasSendableContent
-                            || store.canSubmitPrompt == false
-                    )
                 }
             }
             .padding(.horizontal, 14)
@@ -222,8 +238,23 @@ struct OpenCodeSessionComposerView: View {
         .accessibilityElement(children: .contain)
     }
 
+    private var showsStopControl: Bool {
+        Self.showsStopControl(canStop: store.canStopTurn, text: text)
+    }
+
+    // The stop control takes the send slot only while the composer is empty;
+    // typed text switches back to send/queue so a steering message is never
+    // blocked by the stop affordance.
+    static func showsStopControl(canStop: Bool, text: String) -> Bool {
+        canStop && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private func showModelPicker() {
         isShowingModelPicker = true
+    }
+
+    private func stopTurn() {
+        Task { await store.stopTurn() }
     }
 
     private func send() {

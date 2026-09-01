@@ -30,23 +30,45 @@ struct OpenCodeSessionView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     if let errorMessage = store.errorMessage, hasConversationContent {
-                        ErrorBanner(message: errorMessage)
+                        ErrorBanner(
+                            message: errorMessage,
+                            actionTitle: "Refresh",
+                            action: refreshSession
+                        )
                     }
 
                     if let eventErrorMessage = store.eventErrorMessage,
                        eventErrorMessage != store.errorMessage {
-                        ErrorBanner(message: eventErrorMessage)
+                        ErrorBanner(
+                            message: eventErrorMessage,
+                            actionTitle: "Refresh",
+                            action: refreshSession
+                        )
                     }
 
                     if let actionErrorMessage = store.actionErrorMessage,
                        actionErrorMessage != store.errorMessage,
                        actionErrorMessage != store.eventErrorMessage {
-                        ErrorBanner(message: actionErrorMessage)
+                        ErrorBanner(
+                            message: actionErrorMessage,
+                            actionTitle: "Refresh",
+                            action: refreshSession
+                        )
                     }
 
                     ForEach(store.messages) { message in
                         OpenCodeMessageView(message: message)
                             .id(message.id)
+                    }
+
+                    if store.canRetryUnansweredPrompt {
+                        ErrorBanner(
+                            message: "OpenCode returned to idle without a reply. Choose another model if needed, then retry the last message.",
+                            actionTitle: "Retry last message"
+                        ) {
+                            Task { await store.retryUnansweredPrompt() }
+                        }
+                        .id("opencode-unanswered-prompt-recovery")
                     }
 
                     if showsSessionActivity {
@@ -177,6 +199,10 @@ struct OpenCodeSessionView: View {
             || store.pendingActionCount > 0
     }
 
+    private func refreshSession() {
+        Task { await store.refresh(showLoading: true) }
+    }
+
     private var showsSessionActivity: Bool {
         store.status.isActive || store.pendingActionCount > 0
     }
@@ -209,7 +235,7 @@ struct OpenCodeSessionView: View {
 
     private var sessionActivityDetail: String? {
         guard store.pendingActionCount == 0 else { return nil }
-        switch store.status {
+        return switch store.status {
         case .retry(_, let message, _):
             message.trimmedNonEmpty
         default:

@@ -11,6 +11,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
 
     private(set) var prompts: [OpenCodeQueuedPrompt] = []
     private var phase: TurnPhase = .idle
+    private var pauseAfterCurrentTurn = false
 
     var isTurnActive: Bool {
         switch phase {
@@ -36,9 +37,9 @@ struct OpenCodePromptQueue: Equatable, Sendable {
     }
 
     var needsServerReconciliation: Bool {
-        guard !prompts.isEmpty else { return false }
         return switch phase {
-        case .awaitingActivity, .active: true
+        case .awaitingActivity: true
+        case .active: prompts.isEmpty == false
         case .idle, .submitting, .paused: false
         }
     }
@@ -69,6 +70,24 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         }
         phase = .submitting(observedActive: false, observedCompletion: false)
         return .dispatch(prompt)
+    }
+
+    mutating func beginExplicitDispatch(
+        text: String,
+        model: OpenCodeModelOption?,
+        attachments: [OpenCodePromptAttachment] = [],
+        id: UUID = UUID()
+    ) -> OpenCodeQueuedPrompt? {
+        guard phase == .idle || phase == .paused else { return nil }
+        let prompt = OpenCodeQueuedPrompt(
+            id: id,
+            text: text,
+            model: model,
+            attachments: attachments
+        )
+        pauseAfterCurrentTurn = phase == .paused && prompts.isEmpty == false
+        phase = .submitting(observedActive: false, observedCompletion: false)
+        return prompt
     }
 
     mutating func serverBecameActive() {
@@ -128,6 +147,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         _ prompt: OpenCodeQueuedPrompt,
         requeue: Bool
     ) {
+        pauseAfterCurrentTurn = false
         if requeue, !prompts.contains(where: { $0.id == prompt.id }) {
             prompts.insert(prompt, at: 0)
         }
@@ -136,6 +156,7 @@ struct OpenCodePromptQueue: Equatable, Sendable {
 
     mutating func retry(_ id: UUID) -> OpenCodeQueuedPrompt? {
         guard phase == .paused, prompts.first?.id == id else { return nil }
+        pauseAfterCurrentTurn = false
         phase = .submitting(observedActive: false, observedCompletion: false)
         return prompts.removeFirst()
     }
@@ -149,14 +170,21 @@ struct OpenCodePromptQueue: Equatable, Sendable {
 
     mutating func pauseAwaitingActivity() {
         guard phase == .awaitingActivity else { return }
+        pauseAfterCurrentTurn = false
         phase = prompts.isEmpty ? .idle : .paused
     }
 
     mutating func pausePendingPrompts() {
+        pauseAfterCurrentTurn = false
         phase = prompts.isEmpty ? .idle : .paused
     }
 
     private mutating func takeNextOrBecomeIdle() -> OpenCodeQueuedPrompt? {
+        if pauseAfterCurrentTurn {
+            pauseAfterCurrentTurn = false
+            phase = prompts.isEmpty ? .idle : .paused
+            return nil
+        }
         guard !prompts.isEmpty else {
             phase = .idle
             return nil
