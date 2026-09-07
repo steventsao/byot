@@ -742,7 +742,8 @@ final class OpenCodeSessionStore: ObservableObject {
         case "permission.asked", "permission.replied",
              "permission.v2.asked", "permission.v2.replied",
              "question.asked", "question.replied", "question.rejected",
-             "question.v2.asked", "question.v2.replied", "question.v2.rejected":
+             "question.v2.asked", "question.v2.replied", "question.v2.rejected",
+             "form.created", "form.replied", "form.cancelled":
             true
         default:
             false
@@ -751,6 +752,10 @@ final class OpenCodeSessionStore: ObservableObject {
 
     func handle(_ event: OpenCodeEvent) {
         if let eventSessionID = event.sessionID, eventSessionID != session.id {
+            return
+        }
+        if event.isV2 && event.type.hasPrefix("session.") {
+            handleV2(event)
             return
         }
         switch event.type {
@@ -792,6 +797,36 @@ final class OpenCodeSessionStore: ObservableObject {
             scheduleActionRefresh()
         default:
             break
+        }
+    }
+
+    private func handleV2(_ event: OpenCodeEvent) {
+        switch event.type {
+        case "session.execution.started":
+            statusMutationGeneration &+= 1
+            applyEventStatus(.busy)
+        case "session.execution.succeeded":
+            statusMutationGeneration &+= 1
+            applyEventStatus(.idle)
+            scheduleMessageRefresh()
+        case "session.execution.failed", "session.execution.interrupted":
+            if event.type == "session.execution.failed" {
+                errorMessage = event.properties["error"]?.objectValue?["message"]?.stringValue ?? "The turn failed."
+            }
+            settleTurnLocally(dismissingUnansweredPrompt: false)
+            scheduleMessageRefresh()
+        case "session.retry.scheduled":
+            statusMutationGeneration &+= 1
+            applyEventStatus(.retry(attempt: Int(event.properties["attempt"]?.numberValue ?? 1),
+                message: event.properties["error"]?.objectValue?["message"]?.stringValue ?? "Retrying", next: event.properties["at"]?.numberValue ?? 0))
+        default:
+            if transcript.apply(event) {
+                transcriptMutationGeneration &+= 1
+                publishTranscript()
+            } else {
+                // Unrecognized or out-of-order beta events reconcile from projection.
+                scheduleMessageRefresh()
+            }
         }
     }
 

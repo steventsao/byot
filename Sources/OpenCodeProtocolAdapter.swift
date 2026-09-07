@@ -434,8 +434,12 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         profile: OpenCodeServerProfile
     ) async throws -> [OpenCodeProject] {
         if contract.projectList, profile.normalizedDirectory == nil {
-            let projects: [OpenCodeProject] = try await transport.get(["api", "project"], query: [])
-            if !projects.isEmpty { return projects }
+            struct Project: Decodable {
+                let id: String; let canonical: String; let vcs: String?; let name: String?
+                let time: OpenCodeProjectTime; let sandboxes: [String]
+            }
+            let projects: [Project] = try await transport.get(["api", "project"], query: [])
+            if !projects.isEmpty { return projects.map { OpenCodeProject(id: $0.id, worktree: $0.canonical, vcs: $0.vcs, name: $0.name, time: $0.time, sandboxes: $0.sandboxes) } }
         }
         if let directory = profile.normalizedDirectory {
             let location: OpenCodeV2Location = try await transport.get(
@@ -485,10 +489,11 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
     ) async throws -> OpenCodeSession {
         struct Body: Encodable {
             let location: OpenCodeV2LocationReference
+            let title: String?
         }
         let response: OpenCodeV2DataResponse<OpenCodeV2Session> = try await transport.post(
             ["api", "session"],
-            body: Body(location: OpenCodeV2LocationReference(directory: directory))
+            body: Body(location: OpenCodeV2LocationReference(directory: directory), title: contract.sessionTitle ? title : nil)
         )
         return response.data.normalized
     }

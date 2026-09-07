@@ -392,6 +392,11 @@ struct OpenCodeClient: Sendable {
     }
 
     func v2Questions(sessionID: String) async throws -> [OpenCodeQuestionRequest] {
+        if protocolCache.read() == .v2,
+           let adapter = try await protocolAdapter() as? OpenCodeV2Adapter, adapter.contract.forms {
+            let response: OpenCodeDataResponse<[OpenCodeForm]> = try await get(["api", "session", sessionID, "form"], query: [])
+            return response.data.map(\.normalized)
+        }
         do {
             let response: OpenCodeDataResponse<[OpenCodeQuestionRequest]> = try await get(
                 ["api", "session", sessionID, "question"],
@@ -414,6 +419,11 @@ struct OpenCodeClient: Sendable {
         workspace: String? = nil,
         answers: [[String]]
     ) async throws {
+        if let form = question.form {
+            struct FormBody: Encodable { let answer: [String: OpenCodeJSONValue] }
+            try await postExpectingEmptyResponse(["api", "session", question.sessionID, "form", question.id, "reply"], body: FormBody(answer: try form.answer(answers)))
+            return
+        }
         struct Body: Encodable { let answers: [[String]] }
         switch question.resolvedAPIVersion {
         case .legacy:
@@ -435,6 +445,11 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws {
+        if question.form != nil {
+            let request = try makeRequest(path: ["api", "session", question.sessionID, "form", question.id, "cancel"], query: [], method: "POST", body: nil)
+            try await performExpectingEmptyResponse(request)
+            return
+        }
         switch question.resolvedAPIVersion {
         case .legacy:
             let _: Bool = try await postWithoutBody(

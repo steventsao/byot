@@ -16,6 +16,7 @@ struct OpenCodeQuestionCard: View {
 
             // Direct EnumeratedSequence collection conformance requires iOS 26.
             ForEach(Array(request.questions.enumerated()), id: \.offset) { index, question in
+                if request.form?.isVisible(index, answers: responseState.resolvedAnswers(for: request.questions)) != false {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(question.header)
                         .font(.cleanCaptionBold)
@@ -28,6 +29,10 @@ struct OpenCodeQuestionCard: View {
                         optionButton(option, question: question, index: index)
                     }
 
+                    if let raw = request.form?.fields[index]["url"]?.stringValue,
+                       let url = URL(string: raw), ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
+                        Link("Continue in browser", destination: url)
+                    }
                     if question.allowsCustomAnswer {
                         TextField(
                             "Custom answer",
@@ -37,6 +42,7 @@ struct OpenCodeQuestionCard: View {
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(1...4)
                     }
+                }
                 }
             }
 
@@ -60,6 +66,21 @@ struct OpenCodeQuestionCard: View {
                 .stroke(BYOTBrand.accent.opacity(0.55), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
+        .onAppear {
+            guard let form = request.form else { return }
+            for (index, field) in form.fields.enumerated() {
+                guard let value = field["default"] else { continue }
+                let values = value.arrayValue?.compactMap(\.stringValue) ?? [value.compactDescription]
+                let question = request.questions[index]
+                for value in values {
+                    if question.options.contains(where: { $0.id == value }) {
+                        responseState.toggle(value, at: index, question: question)
+                    } else {
+                        responseState.setCustomAnswer(value, at: index, question: question)
+                    }
+                }
+            }
+        }
     }
 
     private var rejectButton: some View {
@@ -77,7 +98,7 @@ struct OpenCodeQuestionCard: View {
         }
         .buttonStyle(.borderedProminent)
         .frame(minHeight: 44)
-        .disabled(!responseState.canSubmit(questions: request.questions))
+        .disabled(request.form.map { (try? $0.answer(responseState.resolvedAnswers(for: request.questions))) == nil } ?? !responseState.canSubmit(questions: request.questions))
     }
 
     private func optionButton(
@@ -85,9 +106,9 @@ struct OpenCodeQuestionCard: View {
         question: OpenCodeQuestion,
         index: Int
     ) -> some View {
-        let selected = responseState.isSelected(option.label, at: index)
+        let selected = responseState.isSelected(option.id, at: index)
         return Button {
-            responseState.toggle(option.label, at: index, question: question)
+            responseState.toggle(option.id, at: index, question: question)
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
