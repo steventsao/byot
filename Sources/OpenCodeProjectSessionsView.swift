@@ -4,17 +4,15 @@ struct OpenCodeProjectSessionsView: View {
     @StateObject private var store: OpenCodeProjectStore
     @State private var isCreatingSession = false
     @State private var newSessionTitle = ""
+    @State private var createdSession: OpenCodeSession?
     let name: String
-    let openAppNavigation: () -> Void
 
     init(
         client: OpenCodeClient,
         name: String,
-        directory: String,
-        openAppNavigation: @escaping () -> Void
+        directory: String
     ) {
         self.name = name
-        self.openAppNavigation = openAppNavigation
         _store = StateObject(
             wrappedValue: OpenCodeProjectStore(client: client, directory: directory)
         )
@@ -31,8 +29,7 @@ struct OpenCodeProjectSessionsView: View {
                     OpenCodeSessionView(
                         client: store.client,
                         session: session,
-                        directory: session.directory,
-                        openAppNavigation: openAppNavigation
+                        directory: session.directory
                     )
                 } label: {
                     OpenCodeSessionRow(
@@ -78,9 +75,6 @@ struct OpenCodeProjectSessionsView: View {
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                AppNavigationButton(isToolbarItem: true, action: openAppNavigation)
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("New session", systemImage: "plus") {
                     isCreatingSession = true
@@ -90,6 +84,18 @@ struct OpenCodeProjectSessionsView: View {
         }
         .refreshable { await store.load() }
         .task { await store.load() }
+        .navigationDestination(isPresented: Binding(
+            get: { createdSession != nil },
+            set: { if !$0 { createdSession = nil } }
+        )) {
+            if let createdSession {
+                OpenCodeSessionView(
+                    client: store.client,
+                    session: createdSession,
+                    directory: createdSession.directory
+                )
+            }
+        }
         .alert("New session", isPresented: $isCreatingSession) {
             TextField("Optional title", text: $newSessionTitle)
             Button("Cancel", role: .cancel) {
@@ -99,11 +105,11 @@ struct OpenCodeProjectSessionsView: View {
                 let title = newSessionTitle.trimmingCharacters(in: .whitespacesAndNewlines)
                 newSessionTitle = ""
                 Task {
-                    _ = await store.createSession(title: title.isEmpty ? nil : title)
+                    createdSession = await store.createSession(title: title.isEmpty ? nil : title)
                 }
             }
         } message: {
-            Text("The session runs in \(store.directory).")
+            Text("\(store.client.profile.name) · \(store.directory)")
         }
     }
 }
@@ -188,6 +194,7 @@ struct OpenCodeStatusLabel: View {
             statusIndicator
             Text(displayLabel)
                 .font(.cleanCaptionBold)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .foregroundStyle(.secondary)
         .accessibilityElement(children: .combine)

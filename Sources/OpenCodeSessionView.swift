@@ -5,17 +5,16 @@ struct OpenCodeSessionView: View {
     @StateObject private var store: OpenCodeSessionStore
     @State private var isShowingDiff = false
     @State private var isAtBottom = true
-    let openAppNavigation: () -> Void
+    private let serverName: String
 
     private let bottomAnchorID = "opencode-session-bottom"
 
     init(
         client: OpenCodeClient,
         session: OpenCodeSession,
-        directory: String,
-        openAppNavigation: @escaping () -> Void
+        directory: String
     ) {
-        self.openAppNavigation = openAppNavigation
+        serverName = client.profile.name
         _store = StateObject(
             wrappedValue: OpenCodeSessionStore(
                 client: client,
@@ -167,18 +166,28 @@ struct OpenCodeSessionView: View {
         .background(BYOTBrand.canvas)
         .navigationTitle(store.session.title)
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    sessionContext
+                    Spacer(minLength: 8)
+                    sessionStatus
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    sessionContext
+                    sessionStatus
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(BYOTBrand.canvas)
+        }
         .safeAreaInset(edge: .bottom) {
             OpenCodeSessionComposerView(store: store)
         }
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                AppNavigationButton(isToolbarItem: true, action: openAppNavigation)
-            }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                OpenCodeStatusLabel(
-                    status: store.status,
-                    eventConnected: store.isEventConnected
-                )
+            ToolbarItem(placement: .topBarTrailing) {
                 Button("Changes", systemImage: "doc.text.magnifyingglass") {
                     isShowingDiff = true
                 }
@@ -191,6 +200,20 @@ struct OpenCodeSessionView: View {
         }
         .task { await store.start() }
         .onDisappear { store.stop() }
+    }
+
+    private var sessionContext: some View {
+        Text("\(serverName) · \(URL(fileURLWithPath: store.directory).lastPathComponent)")
+            .font(.cleanCaption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel("Server \(serverName), project \(store.directory)")
+    }
+
+    private var sessionStatus: some View {
+        OpenCodeStatusLabel(status: store.status, eventConnected: store.isEventConnected)
+            .fixedSize()
     }
 
     private var hasConversationContent: Bool {
@@ -332,7 +355,7 @@ private struct OpenCodeMessageView: View {
             .background {
                 if message.info.role == "user" {
                     RoundedRectangle(cornerRadius: BYOTBrand.panelRadius)
-                        .fill(BYOTBrand.elevatedSurface)
+                        .fill(BYOTBrand.surface)
                 }
             }
         }

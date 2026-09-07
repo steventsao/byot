@@ -1,7 +1,7 @@
-BYOT 1.0.8 adds automatic OpenCode 2 beta support while preserving OpenCode 1 connections.
+Fixed the unreadable colors reported in TestFlight. Chat text, message cards, the composer, and controls now follow your iPhone’s light or dark appearance.
 
-Please test connecting to your existing server, browsing projects and sessions, selecting a model, sending messages and attachments, live replies and tool output, approving permissions, answering forms, stopping a turn, and reconnecting after switching apps.
+Simplified navigation: one Back button in projects and chats, a clear About BYOT button on the home screen, and room for the session title. Server, project, and connection status appear together below the title.
 
-OpenCode 2 is validated against 0.0.0-beta-19242. The app detects the protocol and prompt/form contract automatically. This beta does not provide changes for individual sessions or provider connection status; BYOT explains those limitations in the app.
+Creating a session now opens the chat immediately. The model picker has a dropdown indicator, and server compatibility details can be expanded when needed.
 
-Queued prompt retries retain the same admission ID to avoid duplicates after an uncertain connection. Existing stalled-session recovery remains available.
+Please check light and dark mode, creating a session, returning to projects, choosing a model, and sending messages with your existing OpenCode or OpenCode 2 server.

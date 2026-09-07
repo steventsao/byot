@@ -29,19 +29,16 @@ struct OpenCodeSessionComposerView: View {
             Divider()
             VStack(alignment: .leading, spacing: 4) {
                 Button(action: showModelPicker) {
-                    Label(
-                        store.selectedModel?.modelName ?? "Automatic",
-                        systemImage: "cpu"
-                    )
+                    HStack(spacing: 6) {
+                        Text(store.selectedModel?.modelName ?? "Automatic")
+                        Image(systemName: "chevron.down")
+                            .imageScale(.small)
+                    }
                     .font(.cleanCaptionBold)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 11)
                     .frame(minHeight: 44)
-                    .background(
-                        BYOTBrand.controlSurface,
-                        in: Capsule()
-                    )
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Choose model")
@@ -167,7 +164,7 @@ struct OpenCodeSessionComposerView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(.regularMaterial)
+            .background(BYOTBrand.canvas)
         }
         .sheet(isPresented: $isShowingModelPicker) {
             OpenCodeModelPickerView(store: store)

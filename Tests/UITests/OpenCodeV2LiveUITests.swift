@@ -5,6 +5,12 @@ final class OpenCodeV2LiveUITests: XCTestCase {
     func testConnectCreateSendAndViewBetaChanges() throws {
         guard ProcessInfo.processInfo.environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Requires isolated beta fixture") }
         continueAfterFailure = false
+        addUIInterruptionMonitor(withDescription: "Password AutoFill") { interruption in
+            let notNow = interruption.buttons["Not Now"]
+            guard notNow.exists else { return false }
+            notNow.tap()
+            return true
+        }
         let app = XCUIApplication()
         app.launch()
         if app.buttons["OpenCode servers"].waitForExistence(timeout: 3) { app.buttons["OpenCode servers"].tap() }
@@ -35,6 +41,10 @@ final class OpenCodeV2LiveUITests: XCTestCase {
         XCTAssertTrue(reply.waitForExistence(timeout: 30))
         app.swipeDown()
         attach("beta-live-transcript")
+        app.buttons["Choose model"].tap()
+        XCTAssertTrue(app.navigationBars["Choose model"].waitForExistence(timeout: 5))
+        attach("model-picker-appearance")
+        app.buttons["Done"].tap()
         app.buttons["Changes"].tap()
         XCTAssertTrue(app.staticTexts["Session changes unavailable"].waitForExistence(timeout: 5))
         attach("beta-changes-availability")

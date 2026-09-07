@@ -15,13 +15,12 @@ struct OpenCodeRootView: View {
                 if let profile = profileStore.activeProfile {
                     OpenCodeConnectedView(
                         profile: profile,
-                        password: profileStore.password(for: profile),
-                        openAppNavigation: openAppNavigation
+                        password: profileStore.password(for: profile)
                     )
                     .id("\(profileFingerprint(profile))|\(profileStore.connectionGeneration)")
                 } else {
                     ContentUnavailableView {
-                        Label("Connect OpenCode", systemImage: "network")
+                        Label("Connect your server", systemImage: "network")
                     } description: {
                         Text("Add the HTTPS address of your OpenCode server.")
                     } actions: {
@@ -33,10 +32,12 @@ struct OpenCodeRootView: View {
                 }
             }
             .background(BYOTBrand.canvas)
-            .navigationTitle("OpenCode")
+            .navigationTitle("BYOT")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    AppNavigationButton(isToolbarItem: true, action: openAppNavigation)
+                    Button("About BYOT", systemImage: "info.circle", action: openAppNavigation)
+                        .labelStyle(.iconOnly)
                 }
                 if profileStore.activeProfile != nil {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -384,17 +385,14 @@ private struct OpenCodeProjectRoute: Hashable {
 private struct OpenCodeConnectedView: View {
     @StateObject private var store: OpenCodeWorkspaceStore
     private let configuredDirectory: String?
-    private let openAppNavigation: () -> Void
 
     init(
         profile: OpenCodeServerProfile,
-        password: String,
-        openAppNavigation: @escaping () -> Void
+        password: String
     ) {
         let client = OpenCodeClient(profile: profile, password: password)
         _store = StateObject(wrappedValue: OpenCodeWorkspaceStore(client: client))
         configuredDirectory = profile.normalizedDirectory
-        self.openAppNavigation = openAppNavigation
     }
 
     var body: some View {
@@ -403,22 +401,6 @@ private struct OpenCodeConnectedView: View {
                 Section {
                     ErrorBanner(message: errorMessage)
                         .listRowInsets(EdgeInsets())
-                }
-            }
-
-            if let compatibility = store.compatibility {
-                Section {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(compatibility.stateTitle)
-                            .font(.cleanBodySemibold)
-                        Text(compatibility.redactedSummary)
-                            .font(.cleanCaption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 2)
-                    .accessibilityElement(children: .combine)
-                } header: {
-                    Text("Compatibility")
                 }
             }
 
@@ -440,7 +422,7 @@ private struct OpenCodeConnectedView: View {
                 }
             }
 
-            Section("Projects") {
+            Section("Projects on \(store.client.profile.name)") {
                 ForEach(store.projects) { project in
                     NavigationLink(
                         value: OpenCodeProjectRoute(
@@ -453,6 +435,22 @@ private struct OpenCodeConnectedView: View {
                             directory: project.worktree,
                             isGit: project.vcs == "git"
                         )
+                    }
+                }
+            }
+
+            if let compatibility = store.compatibility {
+                Section {
+                    DisclosureGroup("Server details") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(compatibility.stateTitle)
+                                .font(.cleanBodySemibold)
+                            Text(compatibility.redactedSummary)
+                                .font(.cleanCaption)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }
@@ -493,8 +491,7 @@ private struct OpenCodeConnectedView: View {
             OpenCodeProjectSessionsView(
                 client: store.client,
                 name: route.name,
-                directory: route.directory,
-                openAppNavigation: openAppNavigation
+                directory: route.directory
             )
         }
     }

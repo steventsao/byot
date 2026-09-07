@@ -26,24 +26,29 @@ enum BYOTBrand {
     }
 
     static var background: Color { canvas }
-    static var canvas: Color { Color(red: 0.025, green: 0.026, blue: 0.030) }
-    static var surface: Color { Color(red: 0.086, green: 0.088, blue: 0.098) }
-    static var elevatedSurface: Color { Color(red: 0.118, green: 0.120, blue: 0.132) }
-    static var controlSurface: Color { Color(red: 0.150, green: 0.152, blue: 0.166) }
-    static var selectedSurface: Color { Color.white.opacity(0.08) }
-    static var accent: Color { Color(red: 0.54, green: 0.88, blue: 0.70) }
-    static var accentSoft: Color { Color(red: 0.090, green: 0.180, blue: 0.145) }
-    static var accentInk: Color { Color(red: 0.025, green: 0.055, blue: 0.040) }
-    /// Quiet off-white fill for primary CTAs. The saturated mint accent is
-    /// reserved for selection and state; large buttons stay calm ink on the
-    /// dark canvas, matching modern agent apps.
-    static var primaryAction: Color { Color(red: 0.93, green: 0.94, blue: 0.95) }
-    static var primaryActionInk: Color { Color(red: 0.070, green: 0.072, blue: 0.086) }
+    // Match semantic text and system sheets in both appearances. Fixed dark
+    // fills leave light-mode labels black on black (TestFlight ADZMRhL…).
+    static var canvas: Color { Color(uiColor: .systemBackground) }
+    static var surface: Color { Color(uiColor: .secondarySystemBackground) }
+    static var elevatedSurface: Color { Color(uiColor: .tertiarySystemBackground) }
+    static var controlSurface: Color { Color(uiColor: .secondarySystemBackground) }
+    static var selectedSurface: Color { Color.primary.opacity(0.08) }
+    static var accent: Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.54, green: 0.88, blue: 0.70, alpha: 1)
+                : UIColor(red: 0.12, green: 0.38, blue: 0.26, alpha: 1)
+        })
+    }
+    static var accentSoft: Color { accent.opacity(0.12) }
+    static var accentInk: Color { .primary }
+    static var primaryAction: Color { Color(uiColor: .label) }
+    static var primaryActionInk: Color { Color(uiColor: .systemBackground) }
     static var ink: Color { .primary }
     static var mutedInk: Color { .secondary }
     static var inverseInk: Color { Color(.systemBackground) }
     static var hairline: Color { Color.primary.opacity(0.12) }
     static var strongHairline: Color { Color.primary.opacity(0.18) }
-    static var brightHairline: Color { Color.white.opacity(0.18) }
+    static var brightHairline: Color { Color.primary.opacity(0.18) }
     static var shadow: Color { Color.black.opacity(0.28) }
 }
