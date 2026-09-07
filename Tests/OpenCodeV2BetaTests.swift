@@ -43,6 +43,52 @@ final class OpenCodeV2BetaTests: XCTestCase {
         XCTAssertEqual(Set(messages[1].parts.map(\.id)).count, 3)
     }
 
+    func testBetaProjectsUseCanonicalDirectoryEvenWithoutSessions() async throws {
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+        let projects = try await client.listProjects()
+        XCTAssertEqual(projects.first?.worktree, "/repo")
+    }
+
+    func testBetaFormsKeepOptionValuesAndReplyByFieldKey() async throws {
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+        _ = try await client.probeCompatibility()
+        let questions = try await client.v2Questions(sessionID: "ses_beta")
+        let request = try XCTUnwrap(questions.first)
+        XCTAssertEqual(request.questions[0].options[0].id, "fast")
+        try await client.answer(request, directory: "/repo", answers: [["fast"], ["unit", "ui"]])
+        let reply = try XCTUnwrap(BetaURLProtocol.requests().last)
+        XCTAssertEqual(reply.url?.path, "/api/session/ses_beta/form/frm_test/reply")
+        let answer = try XCTUnwrap(try bodyObject(reply)["answer"] as? [String: Any])
+        XCTAssertEqual(answer["speed"] as? String, "fast")
+        XCTAssertEqual(answer["checks"] as? [String], ["unit", "ui"])
+        try await client.reject(request, directory: "/repo")
+        XCTAssertEqual(BetaURLProtocol.requests().last?.url?.path, "/api/session/ses_beta/form/frm_test/cancel")
+    }
+
+    func testBetaLiveTextReusesSnapshotIDsAndIgnoresDuplicateDeltas() throws {
+        var reducer = OpenCodeTranscriptReducer()
+        let events = [
+            #"{"id":"evt_1","type":"session.step.started","created":1,"data":{"sessionID":"ses_beta","assistantMessageID":"msg_a","agent":"build","model":{"id":"test","providerID":"fixture"}}}"#,
+            #"{"id":"evt_2","type":"session.text.started","created":2,"data":{"sessionID":"ses_beta","assistantMessageID":"msg_a"}}"#,
+            #"{"id":"evt_3","type":"session.text.delta","created":3,"data":{"sessionID":"ses_beta","assistantMessageID":"msg_a","delta":"Hello"}}"#,
+            #"{"id":"evt_3","type":"session.text.delta","created":3,"data":{"sessionID":"ses_beta","assistantMessageID":"msg_a","delta":"Hello"}}"#,
+            #"{"id":"evt_4","type":"session.reasoning.started","created":4,"data":{"sessionID":"ses_beta","assistantMessageID":"msg_a"}}"#,
+            #"{"id":"evt_5","type":"session.reasoning.ended","created":5,"data":{"sessionID":"ses_beta","assistantMessageID":"msg_a","text":"Thinking"}}"#,
+            #"{"id":"evt_6","type":"session.text.started","created":6,"data":{"sessionID":"ses_beta","assistantMessageID":"msg_a"}}"#,
+            #"{"id":"evt_7","type":"session.text.ended","created":7,"data":{"sessionID":"ses_beta","assistantMessageID":"msg_a","text":"Second"}}"#
+        ]
+        for raw in events {
+            let event = try JSONDecoder().decode(OpenCodeEvent.self, from: Data(raw.utf8))
+            XCTAssertEqual(event.sessionID, "ses_beta")
+            XCTAssertTrue(reducer.apply(event))
+        }
+        let parts = try XCTUnwrap(reducer.messages.first).parts
+        XCTAssertEqual(parts.map(\.text), ["Hello", "Thinking", "Second"])
+        XCTAssertEqual(parts.map(\.id), ["msg_a:text:0", "msg_a:reasoning:0", "msg_a:text:1"])
+    }
+
     private func makeClient() -> (OpenCodeClient, URLSession) {
         BetaURLProtocol.reset()
         let configuration = URLSessionConfiguration.ephemeral
@@ -85,6 +131,9 @@ private final class BetaURLProtocol: URLProtocol, @unchecked Sendable {
         case "/openapi.json":
             let url = Bundle(for: OpenCodeV2BetaTests.self).url(forResource: "opencode2-beta-19242-openapi", withExtension: "json")!
             body = try! String(contentsOf: url, encoding: .utf8)
+        case "/api/project": body = #"[{"id":"proj_1","canonical":"/repo","time":{"created":1,"updated":1},"sandboxes":[]}]"#
+        case "/api/session/ses_beta/form": body = #"{"data":[{"id":"frm_test","sessionID":"ses_beta","title":"Choose","fields":[{"key":"speed","type":"string","title":"Speed","options":[{"label":"Quick","value":"fast"}],"custom":false},{"key":"checks","type":"multiselect","options":[{"label":"Unit","value":"unit"},{"label":"UI","value":"ui"}]}]}]}"#
+        case "/api/session/ses_beta/form/frm_test/reply", "/api/session/ses_beta/form/frm_test/cancel": body = ""
         case "/api/session":
             body = #"{"data":{"id":"ses_beta","projectID":"proj_1","time":{"created":1,"updated":1},"location":{"directory":"/repo"}}}"#
         case "/api/session/ses_beta/prompt":
