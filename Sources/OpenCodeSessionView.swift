@@ -183,11 +183,11 @@ struct OpenCodeSessionView: View {
                     isShowingDiff = true
                 }
                 .labelStyle(.iconOnly)
-                .disabled(store.diffs.isEmpty)
+                .disabled(!store.diffPresentation.canPresent)
             }
         }
         .sheet(isPresented: $isShowingDiff) {
-            OpenCodeDiffView(diffs: store.diffs)
+            OpenCodeDiffView(diffs: store.diffs, unavailableReason: store.diffPresentation.unavailableReason)
         }
         .task { await store.start() }
         .onDisappear { store.stop() }
@@ -403,6 +403,7 @@ private struct OpenCodePartView: View {
 private struct OpenCodeDiffView: View {
     @Environment(\.dismiss) private var dismiss
     let diffs: [OpenCodeDiff]
+    let unavailableReason: String?
 
     var body: some View {
         NavigationStack {
@@ -424,6 +425,11 @@ private struct OpenCodeDiffView: View {
                             .font(.cleanCaptionBold)
                             .foregroundStyle(BYOTBrand.accent)
                     }
+                }
+            }
+            .overlay {
+                if let unavailableReason {
+                    ContentUnavailableView("Session changes unavailable", systemImage: "doc.text.magnifyingglass", description: Text(unavailableReason))
                 }
             }
             .navigationTitle("Session changes")

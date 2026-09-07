@@ -45,7 +45,8 @@ protocol OpenCodeProtocolAdapting: Sendable {
         workspace: String?,
         model: OpenCodeModelOption?,
         text: String,
-        attachments: [OpenCodePromptAttachment]
+        attachments: [OpenCodePromptAttachment],
+        promptID: UUID
     ) async throws
 
     func diffs(
@@ -60,43 +61,6 @@ protocol OpenCodeProtocolAdapting: Sendable {
         directory: String,
         workspace: String?
     ) async throws -> [String: OpenCodeSessionStatus]
-
-    func permissions(
-        using transport: OpenCodeTransport,
-        sessionID: String,
-        directory: String,
-        workspace: String?
-    ) async throws -> [OpenCodePermissionRequest]
-
-    func reply(
-        using transport: OpenCodeTransport,
-        to permission: OpenCodePermissionRequest,
-        directory: String,
-        workspace: String?,
-        reply: OpenCodePermissionReply
-    ) async throws
-
-    func questions(
-        using transport: OpenCodeTransport,
-        sessionID: String,
-        directory: String,
-        workspace: String?
-    ) async throws -> [OpenCodeQuestionRequest]
-
-    func answer(
-        using transport: OpenCodeTransport,
-        question: OpenCodeQuestionRequest,
-        directory: String,
-        workspace: String?,
-        answers: [[String]]
-    ) async throws
-
-    func reject(
-        using transport: OpenCodeTransport,
-        question: OpenCodeQuestionRequest,
-        directory: String,
-        workspace: String?
-    ) async throws
 
     func abortSession(
         using transport: OpenCodeTransport,
@@ -125,6 +89,7 @@ final class OpenCodeProtocolCache: @unchecked Sendable {
 
     func store(_ value: OpenCodeServerProtocol) {
         lock.lock()
+        if self.value != value { contract = nil }
         self.value = value
         lock.unlock()
     }
@@ -215,7 +180,8 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         workspace: String?,
         model: OpenCodeModelOption?,
         text: String,
-        attachments: [OpenCodePromptAttachment]
+        attachments: [OpenCodePromptAttachment],
+        promptID: UUID
     ) async throws {
         let request = try makeSendMessageRequest(
             using: transport,
@@ -290,82 +256,6 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
     ) async throws -> [String: OpenCodeSessionStatus] {
         try await transport.get(
             ["session", "status"],
-            query: instanceQuery(directory: directory, workspace: workspace)
-        )
-    }
-
-    func permissions(
-        using transport: OpenCodeTransport,
-        sessionID: String,
-        directory: String,
-        workspace: String?
-    ) async throws -> [OpenCodePermissionRequest] {
-        let requests: [OpenCodePermissionRequest] = try await transport.get(
-            ["permission"],
-            query: instanceQuery(directory: directory, workspace: workspace)
-        )
-        return requests.filter { $0.sessionID == sessionID }.map { request in
-            var request = request
-            request.apiVersion = .legacy
-            return request
-        }
-    }
-
-    func reply(
-        using transport: OpenCodeTransport,
-        to permission: OpenCodePermissionRequest,
-        directory: String,
-        workspace: String?,
-        reply: OpenCodePermissionReply
-    ) async throws {
-        struct Body: Encodable { let reply: OpenCodePermissionReply }
-        let _: Bool = try await transport.post(
-            ["permission", permission.id, "reply"],
-            query: instanceQuery(directory: directory, workspace: workspace),
-            body: Body(reply: reply)
-        )
-    }
-
-    func questions(
-        using transport: OpenCodeTransport,
-        sessionID: String,
-        directory: String,
-        workspace: String?
-    ) async throws -> [OpenCodeQuestionRequest] {
-        let requests: [OpenCodeQuestionRequest] = try await transport.get(
-            ["question"],
-            query: instanceQuery(directory: directory, workspace: workspace)
-        )
-        return requests.filter { $0.sessionID == sessionID }.map { request in
-            var request = request
-            request.apiVersion = .legacy
-            return request
-        }
-    }
-
-    func answer(
-        using transport: OpenCodeTransport,
-        question: OpenCodeQuestionRequest,
-        directory: String,
-        workspace: String?,
-        answers: [[String]]
-    ) async throws {
-        struct Body: Encodable { let answers: [[String]] }
-        let _: Bool = try await transport.post(
-            ["question", question.id, "reply"],
-            query: instanceQuery(directory: directory, workspace: workspace),
-            body: Body(answers: answers)
-        )
-    }
-
-    func reject(
-        using transport: OpenCodeTransport,
-        question: OpenCodeQuestionRequest,
-        directory: String,
-        workspace: String?
-    ) async throws {
-        let _: Bool = try await transport.postWithoutBody(
-            ["question", question.id, "reject"],
             query: instanceQuery(directory: directory, workspace: workspace)
         )
     }
@@ -575,7 +465,8 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         workspace: String?,
         model: OpenCodeModelOption?,
         text: String,
-        attachments: [OpenCodePromptAttachment]
+        attachments: [OpenCodePromptAttachment],
+        promptID: UUID
     ) async throws {
         try OpenCodePromptAttachment.validate(attachments)
         if let model {
@@ -602,7 +493,7 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
             File(uri: $0.dataURL, name: $0.filename)
         }
         let prompt = Prompt(text: text, files: files)
-        let messageID = "msg_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let messageID = "msg_" + promptID.uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         let response: OpenCodeV2DataResponse<OpenCodeV2Admission>
         if contract.flatPrompts {
             struct Body: Encodable { let id: String; let text: String; let files: [File]?; let delivery = "queue" }
@@ -636,90 +527,6 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         let response: OpenCodeV2DataResponse<[String: OpenCodeV2ActiveSession]> =
             try await transport.get(["api", "session", "active"], query: [])
         return response.data.mapValues { _ in .busy }
-    }
-
-    func permissions(
-        using transport: OpenCodeTransport,
-        sessionID: String,
-        directory: String,
-        workspace: String?
-    ) async throws -> [OpenCodePermissionRequest] {
-        let response: OpenCodeV2LocationDataResponse<[OpenCodePermissionV2Request]> =
-            try await transport.get(
-                ["api", "permission", "request"],
-                query: locationQuery(directory: directory, workspace: workspace)
-            )
-        return response.data
-            .filter { $0.sessionID == sessionID }
-            .map(\.normalized)
-    }
-
-    func reply(
-        using transport: OpenCodeTransport,
-        to permission: OpenCodePermissionRequest,
-        directory: String,
-        workspace: String?,
-        reply: OpenCodePermissionReply
-    ) async throws {
-        struct Body: Encodable { let reply: OpenCodePermissionReply }
-        try await transport.postExpectingEmptyResponse(
-            [
-                "api", "session", permission.sessionID,
-                "permission", permission.id, "reply",
-            ],
-            body: Body(reply: reply)
-        )
-    }
-
-    func questions(
-        using transport: OpenCodeTransport,
-        sessionID: String,
-        directory: String,
-        workspace: String?
-    ) async throws -> [OpenCodeQuestionRequest] {
-        let response: OpenCodeV2LocationDataResponse<[OpenCodeQuestionRequest]> =
-            try await transport.get(
-                ["api", "question", "request"],
-                query: locationQuery(directory: directory, workspace: workspace)
-            )
-        return response.data
-            .filter { $0.sessionID == sessionID }
-            .map { request in
-                var request = request
-                request.apiVersion = .v2
-                return request
-            }
-    }
-
-    func answer(
-        using transport: OpenCodeTransport,
-        question: OpenCodeQuestionRequest,
-        directory: String,
-        workspace: String?,
-        answers: [[String]]
-    ) async throws {
-        struct Body: Encodable { let answers: [[String]] }
-        try await transport.postExpectingEmptyResponse(
-            [
-                "api", "session", question.sessionID,
-                "question", question.id, "reply",
-            ],
-            body: Body(answers: answers)
-        )
-    }
-
-    func reject(
-        using transport: OpenCodeTransport,
-        question: OpenCodeQuestionRequest,
-        directory: String,
-        workspace: String?
-    ) async throws {
-        try await transport.postWithoutBodyExpectingEmptyResponse(
-            [
-                "api", "session", question.sessionID,
-                "question", question.id, "reject",
-            ]
-        )
     }
 
     func abortSession(
@@ -926,245 +733,3 @@ private struct OpenCodeV2Admission: Decodable {
     let sessionID: String
 }
 
-private struct OpenCodeV2Message: Decodable {
-    struct Time: Decodable {
-        let created: Double
-        let completed: Double?
-    }
-
-    struct File: Decodable {
-        let uri: String
-        let mime: String?
-        let name: String?
-    }
-
-    struct Content: Decodable {
-        struct ToolTime: Decodable {
-            let created: Double
-            let completed: Double?
-        }
-
-        struct ToolState: Decodable {
-            let status: String
-            let input: OpenCodeJSONValue?
-            let result: OpenCodeJSONValue?
-            let content: [OpenCodeJSONValue]?
-            let error: OpenCodeJSONValue?
-        }
-
-        let type: String
-        let id: String
-        let text: String?
-        let name: String?
-        let state: ToolState?
-        let time: ToolTime?
-    }
-
-    struct Error: Decodable {
-        let type: String
-        let message: String
-    }
-
-    let id: String
-    let type: String
-    let time: Time
-    let text: String?
-    let files: [File]?
-    let agent: String?
-    let model: OpenCodeV2ModelReference?
-    let content: [Content]?
-    let callID: String?
-    let command: String?
-    let output: String?
-    let summary: String?
-    let error: Error?
-
-    func normalized(sessionID: String) -> OpenCodeMessageEnvelope {
-        OpenCodeMessageEnvelope(
-            info: OpenCodeMessageInfo(
-                id: id,
-                sessionID: sessionID,
-                role: type == "user" ? "user" : "assistant",
-                time: OpenCodeMessageTime(
-                    created: time.created,
-                    completed: time.completed
-                ),
-                agent: agent,
-                modelID: model?.id,
-                providerID: model?.providerID,
-                finish: nil,
-                error: error.map {
-                    OpenCodeMessageError(
-                        name: $0.type,
-                        data: ["message": .string($0.message)]
-                    )
-                }
-            ),
-            parts: normalizedParts(sessionID: sessionID)
-        )
-    }
-
-    private func normalizedParts(sessionID: String) -> [OpenCodePart] {
-        if type == "user" {
-            var parts: [OpenCodePart] = []
-            if let text, !text.isEmpty {
-                parts.append(textPart(id: "\(id)-text", text: text, sessionID: sessionID))
-            }
-            parts.append(contentsOf: (files ?? []).enumerated().map { index, file in
-                OpenCodePart(
-                    id: "\(id)-file-\(index)",
-                    sessionID: sessionID,
-                    messageID: id,
-                    type: "file",
-                    text: nil,
-                    mime: file.mime,
-                    filename: file.name,
-                    url: file.uri,
-                    callID: nil,
-                    tool: nil,
-                    state: nil,
-                    files: nil,
-                    description: nil,
-                    agent: nil
-                )
-            })
-            return parts
-        }
-        if type == "assistant" {
-            return (content ?? []).map { content in
-                switch content.type {
-                case "tool":
-                    return toolPart(content, sessionID: sessionID)
-                default:
-                    return textPart(
-                        id: content.id,
-                        text: content.text ?? "",
-                        sessionID: sessionID,
-                        type: content.type
-                    )
-                }
-            }
-        }
-        if type == "shell" {
-            let state = OpenCodeToolState(
-                status: "completed",
-                input: command.map { ["command": .string($0)] },
-                raw: nil,
-                title: nil,
-                output: output,
-                error: nil,
-                time: OpenCodeToolTime(start: time.created, end: time.completed)
-            )
-            return [
-                OpenCodePart(
-                    id: callID ?? id,
-                    sessionID: sessionID,
-                    messageID: id,
-                    type: "tool",
-                    text: nil,
-                    mime: nil,
-                    filename: nil,
-                    url: nil,
-                    callID: callID,
-                    tool: "shell",
-                    state: state,
-                    files: nil,
-                    description: nil,
-                    agent: nil
-                ),
-            ]
-        }
-        let fallbackText: String
-        switch type {
-        case "agent-switched":
-            fallbackText = agent.map { "Switched agent to \($0)" } ?? "Agent switched"
-        case "model-switched":
-            fallbackText = model.map { "Switched model to \($0.providerID)/\($0.id)" }
-                ?? "Model switched"
-        default:
-            fallbackText = ""
-        }
-        return [
-            textPart(
-                id: "\(id)-text",
-                text: text ?? summary ?? fallbackText,
-                sessionID: sessionID
-            ),
-        ]
-    }
-
-    private func textPart(
-        id partID: String,
-        text: String,
-        sessionID: String,
-        type: String = "text"
-    ) -> OpenCodePart {
-        OpenCodePart(
-            id: partID,
-            sessionID: sessionID,
-            messageID: id,
-            type: type,
-            text: text,
-            mime: nil,
-            filename: nil,
-            url: nil,
-            callID: nil,
-            tool: nil,
-            state: nil,
-            files: nil,
-            description: nil,
-            agent: nil
-        )
-    }
-
-    private func toolPart(_ content: Content, sessionID: String) -> OpenCodePart {
-        let state = content.state
-        let input: [String: OpenCodeJSONValue]?
-        let raw: String?
-        switch state?.input {
-        case .object(let value):
-            input = value
-            raw = nil
-        case .string(let value):
-            input = nil
-            raw = value
-        default:
-            input = nil
-            raw = nil
-        }
-        let output = state?.result?.compactDescription
-            ?? state?.content?.map(\.compactDescription).joined(separator: "\n")
-        let error: String?
-        if case .object(let value) = state?.error {
-            error = value["message"]?.stringValue ?? state?.error?.compactDescription
-        } else {
-            error = state?.error?.compactDescription
-        }
-        return OpenCodePart(
-            id: content.id,
-            sessionID: sessionID,
-            messageID: id,
-            type: "tool",
-            text: nil,
-            mime: nil,
-            filename: nil,
-            url: nil,
-            callID: content.id,
-            tool: content.name,
-            state: OpenCodeToolState(
-                status: state?.status ?? "pending",
-                input: input,
-                raw: raw,
-                title: nil,
-                output: output,
-                error: error,
-                time: content.time.map {
-                    OpenCodeToolTime(start: $0.created, end: $0.completed)
-                }
-            ),
-            files: nil,
-            description: nil,
-            agent: nil
-        )
-    }
-}

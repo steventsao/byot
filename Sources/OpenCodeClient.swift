@@ -251,6 +251,8 @@ struct OpenCodeClient: Sendable {
         return mime
     }
 
+    func capabilities() async throws -> OpenCodeProtocolCapabilities { try await protocolAdapter().capabilities }
+
     func listProjects() async throws -> [OpenCodeProject] {
         try await protocolAdapter().listProjects(using: transport, profile: profile)
     }
@@ -284,9 +286,10 @@ struct OpenCodeClient: Sendable {
         workspace: String? = nil,
         model: OpenCodeModelOption? = nil,
         text: String,
-        attachments: [OpenCodePromptAttachment] = []
+        attachments: [OpenCodePromptAttachment] = [],
+        promptID: UUID = UUID()
     ) async throws {
-        try await protocolAdapter().sendMessage(using: transport, sessionID: sessionID, directory: directory, workspace: workspace, model: model, text: text, attachments: attachments)
+        try await protocolAdapter().sendMessage(using: transport, sessionID: sessionID, directory: directory, workspace: workspace, model: model, text: text, attachments: attachments, promptID: promptID)
     }
 
     func makeSendMessageRequest(
@@ -328,7 +331,7 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodePermissionRequest] {
-        if protocolCache.read() == .v2 { return [] }
+        if try await protocolAdapter().serverProtocol == .v2 { return [] }
         let requests: [OpenCodePermissionRequest] = try await get(
             ["permission"],
             query: instanceQuery(directory: directory, workspace: workspace)
@@ -366,7 +369,7 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodeQuestionRequest] {
-        if protocolCache.read() == .v2 { return [] }
+        if try await protocolAdapter().serverProtocol == .v2 { return [] }
         let requests: [OpenCodeQuestionRequest] = try await get(
             ["question"],
             query: instanceQuery(directory: directory, workspace: workspace)
@@ -392,8 +395,7 @@ struct OpenCodeClient: Sendable {
     }
 
     func v2Questions(sessionID: String) async throws -> [OpenCodeQuestionRequest] {
-        if protocolCache.read() == .v2,
-           let adapter = try await protocolAdapter() as? OpenCodeV2Adapter, adapter.contract.forms {
+        if let adapter = try await protocolAdapter() as? OpenCodeV2Adapter, adapter.contract.forms {
             let response: OpenCodeDataResponse<[OpenCodeForm]> = try await get(["api", "session", sessionID, "form"], query: [])
             return response.data.map(\.normalized)
         }

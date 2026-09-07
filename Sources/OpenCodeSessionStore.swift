@@ -13,6 +13,10 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var permissions: [OpenCodePermissionRequest] = []
     @Published private(set) var questions: [OpenCodeQuestionRequest] = []
     @Published private(set) var diffs: [OpenCodeDiff] = []
+    @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
+    var diffPresentation: OpenCodeSessionDiffPresentation {
+        OpenCodeSessionDiffPresentation(diffs: diffs, support: protocolCapabilities?.sessionDiff)
+    }
     @Published private(set) var status: OpenCodeSessionStatus = .idle
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false
@@ -208,6 +212,7 @@ final class OpenCodeSessionStore: ObservableObject {
             if generation == refreshGeneration { isLoading = false }
         }
         do {
+            protocolCapabilities = try await client.capabilities()
             let actionClient = client
             let actionDirectory = directory
             let actionWorkspace = workspace
@@ -280,7 +285,7 @@ final class OpenCodeSessionStore: ObservableObject {
             }
             switch results.5 {
             case .success(let diffs):
-                if diffBaseline == diffMutationGeneration { self.diffs = diffs }
+                if OpenCodeSessionDiffReconciliation.shouldApplyFetchedSnapshot(support: protocolCapabilities?.sessionDiff, mutationBaseline: diffBaseline, currentMutation: diffMutationGeneration) { self.diffs = diffs }
             case .failure(let error):
                 coreErrors.append(error)
             }
@@ -473,7 +478,8 @@ final class OpenCodeSessionStore: ObservableObject {
                 workspace: workspace,
                 model: prompt.model,
                 text: prompt.text,
-                attachments: prompt.attachments
+                attachments: prompt.attachments,
+                promptID: prompt.id
             )
             try Task.checkCancellation()
             guard isCurrentPromptDispatch(dispatchID) else { return }

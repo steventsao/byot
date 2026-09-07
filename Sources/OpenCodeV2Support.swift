@@ -17,11 +17,8 @@ extension OpenCodeJSONValue {
     }
 }
 
-// Normalizes OpenCode 2 (v2) wire shapes into the v1-shaped models the rest
-// of the app already consumes. Shapes follow the pinned v2 contract the
-// desktop client codes against (packages/app/vendor/opencode-ai-client-
-// 1.17.13-v2.tgz in the opencode monorepo); parsing is deliberately lenient
-// so contract drift degrades instead of failing.
+// Snapshot normalization paired with the upstream v2 event reducer. Contract:
+// opencode2 0.0.0-beta-19242, upstream v2 e15fb426ec593f02f8c6017d78b1c0ec58c8de8a.
 enum OpenCodeV2Normalization {
     // Text and reasoning parts carry no server-side ID in v2; they are
     // addressed by (assistantMessageID, kind, ordinal). The same scheme is
@@ -178,7 +175,17 @@ enum OpenCodeV2Normalization {
                 parts: parts
             )
         default:
-            return nil
+            let errorObject = object["error"]?.objectValue
+            let text = [object["description"]?.stringValue, object["command"]?.stringValue,
+                        object["output"]?.stringValue, object["summary"]?.stringValue,
+                        errorObject?["message"]?.stringValue].compactMap { $0?.trimmedNonEmpty }.joined(separator: "\n\n")
+            let label = type.replacingOccurrences(of: "-", with: " ").capitalized
+            let status = object["status"]?.stringValue.map { " (\($0))" } ?? ""
+            return OpenCodeMessageEnvelope(info: OpenCodeMessageInfo(id: id, sessionID: sessionID, role: "system",
+                time: OpenCodeMessageTime(created: created, completed: time?["completed"]?.numberValue),
+                agent: nil, modelID: nil, providerID: nil, finish: nil, error: nil),
+                parts: [textPart(messageID: id, sessionID: sessionID, kind: "text", ordinal: 0,
+                    text: label + status + (text.isEmpty ? "" : "\n\n" + text))])
         }
     }
 
@@ -242,68 +249,6 @@ enum OpenCodeV2Normalization {
             }
         }
         return texts.isEmpty ? nil : texts.joined(separator: "\n")
-    }
-
-    static func providerModels(
-        providers: [[String: OpenCodeJSONValue]],
-        models: [[String: OpenCodeJSONValue]]
-    ) -> [OpenCodeProviderModels] {
-        let providerNames = providers.reduce(into: [String: String]()) { result, provider in
-            guard let id = provider["id"]?.stringValue,
-                  provider["activation"]?.stringValue != "disabled",
-                  provider["disabled"] != .bool(true) else { return }
-            result[id] = provider["name"]?.stringValue ?? id
-        }
-        var grouped: [String: [OpenCodeModelOption]] = [:]
-        for model in models {
-            guard let providerID = model["providerID"]?.stringValue,
-                  // The catalog id is canonical (ModelV2.ID) and is what the
-                  // session model route expects; modelID is the provider wire
-                  // id. Mirrors the desktop catalog build.
-                  let modelID = model["id"]?.stringValue ?? model["modelID"]?.stringValue,
-                  !modelID.isEmpty,
-                  // Only list models of providers the server reports, and skip
-                  // deprecated/disabled entries (desktop utils.ts behavior).
-                  providerNames[providerID] != nil,
-                  model["status"]?.stringValue != "deprecated",
-                  model["enabled"] != .bool(false)
-            else { continue }
-            grouped[providerID, default: []].append(
-                OpenCodeModelOption(
-                    providerID: providerID,
-                    providerName: providerNames[providerID] ?? providerID,
-                    modelID: modelID,
-                    modelName: model["name"]?.stringValue ?? modelID,
-                    status: model["status"]?.stringValue
-                )
-            )
-        }
-        return grouped
-            .map { providerID, models in
-                OpenCodeProviderModels(
-                    providerID: providerID,
-                    providerName: providerNames[providerID] ?? providerID,
-                    models: models.sorted {
-                        $0.modelName.localizedStandardCompare($1.modelName) == .orderedAscending
-                    },
-                    connectionState: .unreported
-                )
-            }
-            .sorted {
-                $0.providerName.localizedStandardCompare($1.providerName) == .orderedAscending
-            }
-    }
-
-    // GET /api/session/active answers {data: {sessionID: {type: "running"}}}.
-    static func activeStatuses(
-        _ object: [String: OpenCodeJSONValue]
-    ) -> [String: OpenCodeSessionStatus] {
-        (object["data"]?.objectValue ?? [:]).compactMapValues { value in
-            guard let entry = value.objectValue,
-                  entry["type"]?.stringValue == "running"
-            else { return nil }
-            return .busy
-        }
     }
 
     private static func textPart(

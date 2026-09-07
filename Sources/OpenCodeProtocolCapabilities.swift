@@ -31,7 +31,7 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
 
     static let v2 = Self(
         sessionDiff: .unavailable(
-            reason: "OpenCode v2 does not expose a per-session diff route yet."
+            reason: "This server does not provide changes for an individual session."
         ),
         symbolSearch: .unavailable(
             reason: "OpenCode v2 file search does not expose workspace symbols yet."
