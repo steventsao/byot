@@ -20,6 +20,7 @@ Test commit: `f011f6b`.
 2. Before the navigation fix, the live beta UI test failed at “Creating a session must open its chat immediately.” The session was created but the composer never appeared without another tap in the list.
 3. After the fix, the full suite passed: 156 tests passed, zero failures, three opt-in live-server unit tests skipped. The separate live beta UI workflow was enabled and passed, covering connection, creation, send/reply, Changes, native Back navigation, and About.
 4. The live workflow also passed in dark appearance on iPhone 17 Pro and on iPhone SE (3rd generation), using iOS 26.5 simulators.
+5. On the SE, the workflow and model-picker sheet passed with Accessibility Large text and Increase Contrast enabled. The initial attempts were blocked by the system Password AutoFill sheet; the test now explicitly dismisses that fixture-login prompt. The final result is `/tmp/byot-nav-green-accessibility-3.xcresult`.
 
 Local result bundles are `/tmp/byot-nav-red-colors.xcresult`, `/tmp/byot-nav-red-navigation-2.xcresult`, `/tmp/byot-nav-green-light.xcresult`, `/tmp/byot-nav-green-dark.xcresult`, and `/tmp/byot-nav-green-compact.xcresult`. The live tests use an isolated OpenCode 2 beta and a local deterministic model response; no paid model calls or tester credentials are involved.
 
@@ -30,5 +31,7 @@ All images below contain simulator fixture content, not private TestFlight submi
 | Light appearance | Dark appearance | Compact iPhone |
 | --- | --- | --- |
 | ![Light chat](screenshots/10-testflight-chat-light.png) | ![Dark chat](screenshots/11-testflight-chat-dark.png) | ![Compact chat](screenshots/12-testflight-chat-compact.png) |
+
+[Large accessibility text with Increase Contrast](screenshots/13-testflight-chat-accessibility.png) was also inspected; the server/project context stacks above the unwrapped status and the composer remains usable.
 
 The submitted feedback was captured on iOS 27.0. The available simulator runtime is 26.5 and the paired physical iPhone was unavailable, so this release does not claim a physical-device or iOS 27 verification.

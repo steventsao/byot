@@ -25,6 +25,10 @@ final class OpenCodeV2LiveUITests: XCTestCase {
         let directory = app.textFields["/Users/me/project"]
         directory.tap(); directory.typeText("/tmp/byot-v2-runtime-19242/project")
         app.buttons["Save"].tap()
+        // Password AutoFill uses a remote sheet, rather than an alert, on
+        // recent iOS versions. Dismiss it explicitly for this fixture login.
+        let passwordNotNow = app.buttons["Not Now"]
+        if passwordNotNow.waitForExistence(timeout: 5) { passwordNotNow.tap() }
         let project = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "/tmp/byot-v2-runtime-19242/project")).firstMatch
         XCTAssertTrue(project.waitForExistence(timeout: 15), app.debugDescription); project.tap()
         let newSession = app.buttons["New session"].firstMatch
