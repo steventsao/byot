@@ -214,7 +214,9 @@ struct OpenCodeClient: Sendable {
                 capabilityProbe: .unavailable
             )
         }
-        let capabilityProbe = try await experimentalCapabilities()
+        let capabilityProbe = probe.protocol == .v1
+            ? try await experimentalCapabilities()
+            : .unavailable
         return OpenCodeCompatibilitySummary(
             verdict: verdict,
             health: probe.health,

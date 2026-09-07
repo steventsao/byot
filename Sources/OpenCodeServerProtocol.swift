@@ -58,7 +58,10 @@ struct OpenCodeProtocolDetector: Sendable {
                     health: OpenCodeHealth(healthy: healthy, version: version)
                 )
             }
-            if healthy {
+            // Some v1 servers expose an /api health alias. An explicit v1
+            // version retains that compatibility; versionless v2 health must
+            // not select the legacy project/session routes.
+            if healthy, OpenCodeServerVersion(parsing: version)?.major == 1 {
                 return OpenCodeServerProbe(
                     protocol: .v1,
                     health: OpenCodeHealth(healthy: true, version: version)
