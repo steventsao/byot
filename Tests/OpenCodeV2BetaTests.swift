@@ -108,6 +108,37 @@ final class OpenCodeV2BetaTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(OpenCodePermissionV2Request.self, from: Data(old.utf8)).source?.callID, "call_a")
     }
 
+    func testBetaToolCompletionPreservesInputAndVisibleOutput() throws {
+        var reducer = OpenCodeTranscriptReducer()
+        let payloads: [(String, [String: Any])] = [
+            ("session.step.started", ["agent": "build", "model": ["id": "test", "providerID": "fixture"]]),
+            ("session.tool.input.started", ["id": "call_shell", "name": "shell"]),
+            ("session.tool.input.delta", ["id": "call_shell", "delta": "{\"command\":"]),
+            ("session.tool.called", ["id": "call_shell", "input": ["command": "printf ok"]]),
+            ("session.tool.success", ["id": "call_shell", "content": [["type": "text", "text": "ok"]], "metadata": [:]])
+        ]
+        for (index, entry) in payloads.enumerated() {
+            var data = entry.1
+            data["sessionID"] = "ses_beta"; data["assistantMessageID"] = "msg_tool"
+            let raw = try JSONSerialization.data(withJSONObject: ["id": "evt_\(index)", "type": entry.0, "created": index, "data": data])
+            XCTAssertTrue(reducer.apply(try JSONDecoder().decode(OpenCodeEvent.self, from: raw)))
+        }
+        let tool = try XCTUnwrap(reducer.messages.first?.parts.first)
+        XCTAssertEqual(tool.tool, "shell")
+        XCTAssertEqual(tool.state?.status, "completed")
+        XCTAssertEqual(tool.state?.input?["command"], .string("printf ok"))
+        XCTAssertEqual(tool.state?.output, "ok")
+        XCTAssertNil(tool.state?.raw)
+    }
+
+    func testConditionalFormOmitsHiddenInvalidNumberAndKeepsBooleanType() throws {
+        let raw = #"{"id":"frm_types","sessionID":"ses_beta","title":"Options","fields":[{"key":"enabled","type":"boolean","required":true},{"key":"amount","type":"number","required":true,"when":[{"key":"enabled","op":"eq","value":true}]}]}"#
+        let form = try JSONDecoder().decode(OpenCodeForm.self, from: Data(raw.utf8))
+        XCTAssertEqual(try form.answer([["false"], ["not a number"]]), ["enabled": .bool(false)])
+        XCTAssertThrowsError(try form.answer([["true"], ["not a number"]]))
+        XCTAssertEqual(try form.answer([["true"], ["42"]]), ["enabled": .bool(true), "amount": .number(42)])
+    }
+
     private func makeClient() -> (OpenCodeClient, URLSession) {
         BetaURLProtocol.reset()
         let configuration = URLSessionConfiguration.ephemeral

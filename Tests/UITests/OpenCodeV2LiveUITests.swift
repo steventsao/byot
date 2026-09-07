@@ -26,10 +26,12 @@ final class OpenCodeV2LiveUITests: XCTestCase {
         let title = app.textFields["Optional title"]
         XCTAssertTrue(title.waitForExistence(timeout: 3)); title.typeText("Beta UI acceptance")
         app.buttons["Create"].tap()
+        let sessionRow = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Beta UI acceptance")).firstMatch
+        XCTAssertTrue(sessionRow.waitForExistence(timeout: 10)); sessionRow.tap()
         let composer = app.textFields["Message"]
         XCTAssertTrue(composer.waitForExistence(timeout: 10)); composer.tap(); composer.typeText("Say BYOT live beta verified.")
-        app.buttons["Send"].tap()
-        let reply = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "BYOT live beta verified.")).firstMatch
+        app.buttons["Send message"].tap()
+        let reply = app.staticTexts["BYOT live beta verified."].firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout: 30))
         attach("beta-live-transcript")
         app.buttons["Changes"].tap()
