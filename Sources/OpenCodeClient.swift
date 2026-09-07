@@ -170,7 +170,7 @@ struct OpenCodeClient: Sendable {
     static let eventBufferLimit = 16
 
     let profile: OpenCodeServerProfile
-    private let password: String
+    private let authentication: OpenCodeServerAuthentication
     private let session: URLSession
     private let redirectDelegate: OpenCodeRedirectDelegate
 
@@ -180,7 +180,7 @@ struct OpenCodeClient: Sendable {
         session: URLSession = .shared
     ) {
         self.profile = profile
-        self.password = password
+        authentication = .basic(username: profile.username, password: password)
         self.session = session
         redirectDelegate = OpenCodeRedirectDelegate(baseURL: profile.normalizedURL)
     }
@@ -610,9 +610,8 @@ struct OpenCodeClient: Sendable {
         if body != nil {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
-        let credentials = "\(profile.username):\(password)"
         request.setValue(
-            "Basic \(Data(credentials.utf8).base64EncodedString())",
+            authentication.authorizationHeaderValue,
             forHTTPHeaderField: "Authorization"
         )
         return request
