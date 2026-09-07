@@ -4,6 +4,21 @@ import Testing
 
 @Suite("OpenCode v1/v2 protocol detection (#12, #19)")
 struct OpenCodeProtocolDetectionTests {
+    @Test("Current minimal v2 health is automatically detected and is usable")
+    func currentMinimalV2Health() async throws {
+        let (client, stub) = makeStubbedClient(responses: [
+            "/global/health": .html("<!doctype html><html></html>"),
+            "/api/health": .json(#"{"healthy":true}"#),
+        ])
+        let probe = try await OpenCodeProtocolDetector(client: client).probe()
+        #expect(probe.protocol == .v2)
+        let verdict = OpenCodeCompatibilityEvaluator.evaluate(
+            health: probe.health, serverProtocol: probe.protocol
+        )
+        if case .unsupported = verdict { Issue.record("Healthy v2 must be usable") }
+        #expect(stub.recordedPaths() == ["/global/health", "/api/health"])
+    }
+
     @Test("v1 server: JSON /global/health detects v1 and never probes /api/health")
     func detectsV1FromGlobalHealth() async throws {
         let (client, stub) = makeStubbedClient(responses: [
@@ -189,7 +204,7 @@ struct OpenCodeProtocolDetectionTests {
         }
     }
 
-    @Test("compatibility probe against a v2 server reports unsupported with an OpenCode 2 message")
+    @Test("compatibility probe automatically accepts v2 without probing v1 capabilities")
     func compatibilityProbeAgainstV2Server() async throws {
         let (client, _) = makeStubbedClient(responses: [
             "/global/health": .html("<!doctype html><html></html>"),
@@ -198,7 +213,7 @@ struct OpenCodeProtocolDetectionTests {
 
         let summary = try await client.probeCompatibility()
 
-        #expect(summary.state == .unsupported)
+        #expect(summary.state == .degraded)
         #expect(summary.serverVersion == "0.0.0-beta-17595")
         let detail = try #require(summary.detail)
         #expect(detail.contains("OpenCode 2"))
