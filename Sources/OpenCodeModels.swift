@@ -273,6 +273,23 @@ struct OpenCodePermissionSource: Codable, Equatable, Sendable {
     let type: String
     let messageID: String
     let callID: String
+
+    init(type: String, messageID: String, callID: String) {
+        self.type = type; self.messageID = messageID; self.callID = callID
+    }
+    private enum CodingKeys: String, CodingKey { case type, messageID, callID, id }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        type = try values.decode(String.self, forKey: .type)
+        messageID = try values.decode(String.self, forKey: .messageID)
+        callID = try values.decodeIfPresent(String.self, forKey: .callID) ?? values.decode(String.self, forKey: .id)
+    }
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(type, forKey: .type)
+        try values.encode(messageID, forKey: .messageID)
+        try values.encode(callID, forKey: .callID)
+    }
 }
 
 enum OpenCodePermissionReply: String, Codable, Sendable {

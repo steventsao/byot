@@ -11,7 +11,7 @@ final class OpenCodeV2LiveUITests: XCTestCase {
         let add = app.buttons["Add server"].firstMatch
         XCTAssertTrue(add.waitForExistence(timeout: 5)); add.tap()
         let name = app.textFields["Name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("BYOT Beta Acceptance")
+        XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "BYOT Beta Acceptance")
         let url = app.textFields["https://your-mac.example.ts.net"]
         url.tap(); url.typeText("https://127.0.0.1:4199")
         let password = app.secureTextFields["Server password"]
@@ -20,7 +20,7 @@ final class OpenCodeV2LiveUITests: XCTestCase {
         directory.tap(); directory.typeText("/tmp/byot-v2-runtime-19242/project")
         app.buttons["Save"].tap()
         let project = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "/tmp/byot-v2-runtime-19242/project")).firstMatch
-        XCTAssertTrue(project.waitForExistence(timeout: 15)); project.tap()
+        XCTAssertTrue(project.waitForExistence(timeout: 15), app.debugDescription); project.tap()
         let newSession = app.buttons["New session"].firstMatch
         XCTAssertTrue(newSession.waitForExistence(timeout: 10)); newSession.tap()
         let title = app.textFields["Optional title"]

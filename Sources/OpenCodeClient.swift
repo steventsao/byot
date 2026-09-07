@@ -202,6 +202,7 @@ struct OpenCodeClient: Sendable {
 
     func probeCompatibility() async throws -> OpenCodeCompatibilitySummary {
         let probe = try await OpenCodeProtocolDetector(client: self).probe()
+        protocolCache.invalidateContract()
         protocolCache.store(probe.protocol)
         let verdict = OpenCodeCompatibilityEvaluator.evaluate(
             health: probe.health,

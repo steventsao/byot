@@ -64,10 +64,42 @@ final class OpenCodeLiveServerTests: XCTestCase {
         try await client.reject(try XCTUnwrap(cancelQuestions.first { $0.id == cancelID }), directory: directory)
         let cancelled = try await request("/api/session/\(session.id)/form/\(cancelID)/state")
         XCTAssertEqual((cancelled["data"] as? [String: Any])?["status"] as? String, "cancelled")
+        let permissionCreated = try await request("/api/session/\(session.id)/permission", body: [
+            "action": "byot_acceptance", "resources": ["fixture.txt"],
+            "source": ["type": "tool", "messageID": "msg_fixture", "id": "call_fixture"]])
+        let permissionID = try XCTUnwrap((permissionCreated["data"] as? [String: Any])?["id"] as? String)
+        let pending = try await client.v2Permissions(sessionID: session.id)
+        let permission = try XCTUnwrap(pending.first { $0.id == permissionID })
+        XCTAssertEqual(permission.source?.callID, "call_fixture")
+        try await client.reply(to: permission, directory: directory, reply: .once)
+        let remaining = try await client.v2Permissions(sessionID: session.id)
+        XCTAssertFalse(remaining.contains { $0.id == permissionID })
         let interrupted = try await client.abort(sessionID: session.id, directory: directory)
         XCTAssertTrue(interrupted)
         let statuses = try await client.sessionStatuses(directory: directory)
         XCTAssertNil(statuses[session.id])
+    }
+
+    func testLiveV1ExistingProtocolStillSendsAndReloads() async throws {
+        guard ProcessInfo.processInfo.environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Requires isolated v1 fixture") }
+        let directory = "/tmp/byot-v1-runtime-11821/project"
+        let client = OpenCodeClient(profile: OpenCodeServerProfile(name: "Live v1", baseURL: "https://127.0.0.1:4195", directory: directory), password: "byot-local-fixture-only")
+        _ = try await client.probeCompatibility()
+        let providers = try await client.connectedProviderModels(directory: directory)
+        let model = try XCTUnwrap(providers.first { $0.providerID == "fixture" }?.models.first)
+        let session = try await client.createSession(directory: directory, title: "BYOT v1 acceptance")
+        try await client.sendMessage(sessionID: session.id, directory: directory, model: model, text: "Verify v1 compatibility")
+        var snapshot: [OpenCodeMessageEnvelope] = []
+        for _ in 0..<100 {
+            snapshot = try await client.messages(sessionID: session.id, directory: directory)
+            if snapshot.flatMap(\.parts).contains(where: { $0.text == "BYOT live beta verified." }) { break }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        XCTAssertTrue(snapshot.flatMap(\.parts).contains { $0.text == "BYOT live beta verified." })
+        XCTAssertEqual(snapshot.filter { $0.info.role == "user" }.count, 1)
+        let questions = try await client.questions(directory: directory)
+        let permissions = try await client.permissions(directory: directory)
+        XCTAssertTrue(questions.isEmpty && permissions.isEmpty)
     }
 
     private func request(_ path: String, body: [String: Any]? = nil) async throws -> [String: Any] {

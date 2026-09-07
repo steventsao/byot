@@ -93,6 +93,10 @@ final class OpenCodeProtocolCache: @unchecked Sendable {
         self.value = value
         lock.unlock()
     }
+    func invalidateContract() {
+        lock.lock(); defer { lock.unlock() }
+        contract = nil
+    }
     func readContract() -> OpenCodeV2Contract? {
         lock.lock()
         defer { lock.unlock() }
