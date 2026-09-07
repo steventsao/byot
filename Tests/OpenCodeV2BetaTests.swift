@@ -100,6 +100,14 @@ final class OpenCodeV2BetaTests: XCTestCase {
         XCTAssertFalse(query?.contains { $0.name == "order" } ?? true)
     }
 
+    func testBetaPermissionToolSourceAcceptsIDWithoutBreakingCallID() throws {
+        let current = #"{"id":"per_a","sessionID":"ses_beta","action":"edit","resources":["README.md"],"source":{"type":"tool","messageID":"msg_a","id":"call_a"}}"#
+        let request = try JSONDecoder().decode(OpenCodePermissionV2Request.self, from: Data(current.utf8))
+        XCTAssertEqual(request.normalized.source?.callID, "call_a")
+        let old = current.replacingOccurrences(of: "\"id\":\"call_a\"", with: "\"callID\":\"call_a\"")
+        XCTAssertEqual(try JSONDecoder().decode(OpenCodePermissionV2Request.self, from: Data(old.utf8)).source?.callID, "call_a")
+    }
+
     private func makeClient() -> (OpenCodeClient, URLSession) {
         BetaURLProtocol.reset()
         let configuration = URLSessionConfiguration.ephemeral
