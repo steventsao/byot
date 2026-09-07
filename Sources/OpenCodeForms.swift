@@ -28,7 +28,7 @@ struct OpenCodeForm: Codable, Equatable, Sendable {
         }, apiVersion: .v2, form: self)
     }
 
-    func values(_ answers: [[String]]) throws -> [String: OpenCodeJSONValue] {
+    func values(_ answers: [[String]], validating: Bool = true) throws -> [String: OpenCodeJSONValue] {
         var values: [String: OpenCodeJSONValue] = [:]
         for (index, field) in fields.enumerated() {
             guard let key = field["key"]?.stringValue else { continue }
@@ -38,12 +38,14 @@ struct OpenCodeForm: Codable, Equatable, Sendable {
             case "string": values[key] = .string(strings[0])
             case "multiselect": values[key] = .array(strings.map(OpenCodeJSONValue.string))
             case "boolean":
-                guard let bool = Bool(strings[0]) else { throw invalid(field, "Choose Yes or No.") }
+                guard let bool = Bool(strings[0]) else {
+                    if validating { throw invalid(field, "Choose Yes or No.") }; continue
+                }
                 values[key] = .bool(bool)
             case "number", "integer":
                 guard let number = Double(strings[0]), number.isFinite,
                       field["type"] != .string("integer") || number.rounded() == number else {
-                    throw invalid(field, "Enter a valid number.")
+                    if validating { throw invalid(field, "Enter a valid number.") }; continue
                 }
                 values[key] = .number(number)
             case "external": continue
@@ -55,7 +57,7 @@ struct OpenCodeForm: Codable, Equatable, Sendable {
 
     func isVisible(_ index: Int, answers: [[String]]) -> Bool {
         guard fields.indices.contains(index) else { return false }
-        let values = (try? values(answers)) ?? [:]
+        let values = (try? values(answers, validating: false)) ?? [:]
         return (fields[index]["when"]?.arrayValue ?? []).allSatisfy { condition in
             guard let condition = condition.objectValue, let key = condition["key"]?.stringValue else { return false }
             let equal = values[key] == condition["value"]

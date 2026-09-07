@@ -557,10 +557,10 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         repeat {
             var query = [
                 URLQueryItem(name: "limit", value: "100"),
-                URLQueryItem(name: "order", value: "desc"),
             ]
             if let directory { query.append(URLQueryItem(name: "directory", value: directory)) }
             if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+            else { query.append(URLQueryItem(name: "order", value: "desc")) }
             let response: OpenCodeV2CursorResponse<OpenCodeV2Session> = try await transport.get(
                 ["api", "session"],
                 query: query

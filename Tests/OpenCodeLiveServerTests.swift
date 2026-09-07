@@ -8,7 +8,7 @@ final class OpenCodeLiveServerTests: XCTestCase {
     func testLiveBetaPromptStreamSnapshotRetryFormsAndInterrupt() async throws {
         guard ProcessInfo.processInfo.environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Requires the isolated live server fixture") }
         let directory = "/tmp/byot-v2-runtime-19242/project"
-        let client = OpenCodeClient(profile: OpenCodeServerProfile(name: "Live beta", baseURL: "https://localhost:4199", directory: directory), password: "byot-local-fixture-only")
+        let client = OpenCodeClient(profile: OpenCodeServerProfile(name: "Live beta", baseURL: "https://127.0.0.1:4199", directory: directory), password: "byot-local-fixture-only")
         _ = try await client.probeCompatibility()
         let projects = try await client.listProjects()
         XCTAssertFalse(projects.isEmpty)
@@ -16,6 +16,8 @@ final class OpenCodeLiveServerTests: XCTestCase {
         let model = try XCTUnwrap(providers.first { $0.providerID == "fixture" }?.models.first)
         let session = try await client.createSession(directory: directory, title: "BYOT iOS live acceptance")
         XCTAssertEqual(session.title, "BYOT iOS live acceptance")
+        let sessions = try await client.listSessions(directory: directory)
+        XCTAssertTrue(sessions.contains { $0.id == session.id })
         let collector = LiveEvents()
         let stream = Task {
             for try await event in client.events(directory: directory) {
@@ -69,7 +71,7 @@ final class OpenCodeLiveServerTests: XCTestCase {
     }
 
     private func request(_ path: String, body: [String: Any]? = nil) async throws -> [String: Any] {
-        var request = URLRequest(url: URL(string: "https://localhost:4199" + path)!)
+        var request = URLRequest(url: URL(string: "https://127.0.0.1:4199" + path)!)
         request.setValue("Basic " + Data("opencode:byot-local-fixture-only".utf8).base64EncodedString(), forHTTPHeaderField: "Authorization")
         if let body {
             request.httpMethod = "POST"
