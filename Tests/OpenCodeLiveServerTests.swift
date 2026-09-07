@@ -102,6 +102,26 @@ final class OpenCodeLiveServerTests: XCTestCase {
         XCTAssertTrue(questions.isEmpty && permissions.isEmpty)
     }
 
+    func testLiveBetaAttachmentOnlyPromptRoundTripsFile() async throws {
+        guard ProcessInfo.processInfo.environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Requires isolated beta fixture") }
+        let directory = "/tmp/byot-v2-runtime-19242/project"
+        let client = OpenCodeClient(profile: OpenCodeServerProfile(name: "Live beta", baseURL: "https://127.0.0.1:4199", directory: directory), password: "byot-local-fixture-only")
+        let session = try await client.createSession(directory: directory, title: "BYOT attachment acceptance")
+        let attachment = OpenCodePromptAttachment(filename: "acceptance.txt", mimeType: "text/plain", data: Data("BYOT attachment fixture".utf8))
+        try await client.sendMessage(sessionID: session.id, directory: directory, text: "", attachments: [attachment])
+        var messages: [OpenCodeMessageEnvelope] = []
+        for _ in 0..<100 {
+            messages = try await client.messages(sessionID: session.id, directory: directory)
+            if messages.contains(where: { $0.info.role == "assistant" && $0.info.time.completed != nil }) { break }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        let file = try XCTUnwrap(messages.first { $0.info.role == "user" }?.parts.first { $0.type == "file" })
+        XCTAssertEqual(file.filename, "acceptance.txt")
+        XCTAssertEqual(file.mime, "text/plain")
+        XCTAssertEqual(file.url, attachment.dataURL)
+        XCTAssertTrue(messages.flatMap(\.parts).contains { $0.text == "BYOT live beta verified." })
+    }
+
     private func request(_ path: String, body: [String: Any]? = nil) async throws -> [String: Any] {
         var request = URLRequest(url: URL(string: "https://127.0.0.1:4199" + path)!)
         request.setValue("Basic " + Data("opencode:byot-local-fixture-only".utf8).base64EncodedString(), forHTTPHeaderField: "Authorization")

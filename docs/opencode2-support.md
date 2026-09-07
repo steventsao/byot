@@ -46,3 +46,9 @@ Each failing test was committed before its implementation. Local red/green logs 
 `OpenCodeLiveServerTests` and `OpenCodeV2LiveUITests` opt in with `BYOT_LIVE_ACCEPTANCE=1` in the test-run environment. They target isolated local v1/v2 servers through HTTPS, with a deterministic local OpenAI-compatible model fixture. No paid model service or production session is used. Simulator UI tests must use a signed simulator build so saving passwords can use Keychain.
 
 The fixture certificate is trusted only in the test simulator. Production URL validation, redirect protection, HTTPS, and credential storage are unchanged. Physical-device validation requires an available connected device.
+
+## Server setup and rollback
+
+Install the chosen beta CLI with `npm install -g @opencode-ai/cli@0.0.0-beta-19242`. Configure `OPENCODE_SERVER_PASSWORD` in the server environment, then start `opencode2 serve --hostname 127.0.0.1 --port 4097` in the intended project. The tested beta accepts HTTP Basic authentication with username `opencode` and that server password.
+
+Expose that local listener through the existing authenticated HTTPS/Tailscale deployment. Add its HTTPS address in BYOT, optionally set the working directory, and use Test connection. The app discovers the protocol automatically. Keep the current v1 server/profile available during rollout; select it again to roll back. Provider/model configuration remains on the server.
