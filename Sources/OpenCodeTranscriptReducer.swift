@@ -2,6 +2,7 @@ import Foundation
 
 struct OpenCodeTranscriptReducer: Sendable {
     private(set) var messages: [OpenCodeMessageEnvelope] = []
+    private var v2 = OpenCodeV2EventReducer()
     private var orphanParts: [String: [OpenCodePart]] = [:]
     private var pendingText: [PartKey: String] = [:]
 
@@ -12,6 +13,7 @@ struct OpenCodeTranscriptReducer: Sendable {
     }
 
     mutating func apply(_ event: OpenCodeEvent) -> Bool {
+        if event.isV2 { return v2.apply(event, to: &messages) }
         switch event.type {
         case "message.updated":
             return applyMessageUpdated(event)

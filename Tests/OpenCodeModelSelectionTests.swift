@@ -201,7 +201,8 @@ struct OpenCodeModelSelectionTests {
         return OpenCodeClient(
             profile: profile,
             password: "probe-secret",
-            session: URLSession(configuration: configuration)
+            session: URLSession(configuration: configuration),
+            serverProtocol: .v1
         )
     }
 

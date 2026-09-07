@@ -512,6 +512,8 @@ private final class OpenCodeRecoveryStub: URLProtocol, @unchecked Sendable {
 
         let response: (Int, Data, String)
         switch true {
+        case path == "/global/health":
+            response = (200, Data(#"{"healthy":true,"version":"1.18.10"}"#.utf8), "application/json")
         case path == "/session/status":
             response = (scenario.statusCode, scenario.statusBody, "application/json")
         case path.hasSuffix("/message"):

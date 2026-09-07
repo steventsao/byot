@@ -273,6 +273,23 @@ struct OpenCodePermissionSource: Codable, Equatable, Sendable {
     let type: String
     let messageID: String
     let callID: String
+
+    init(type: String, messageID: String, callID: String) {
+        self.type = type; self.messageID = messageID; self.callID = callID
+    }
+    private enum CodingKeys: String, CodingKey { case type, messageID, callID, id }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        type = try values.decode(String.self, forKey: .type)
+        messageID = try values.decode(String.self, forKey: .messageID)
+        callID = try values.decodeIfPresent(String.self, forKey: .callID) ?? values.decode(String.self, forKey: .id)
+    }
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(type, forKey: .type)
+        try values.encode(messageID, forKey: .messageID)
+        try values.encode(callID, forKey: .callID)
+    }
 }
 
 enum OpenCodePermissionReply: String, Codable, Sendable {
@@ -287,6 +304,7 @@ struct OpenCodeQuestionRequest: Codable, Identifiable, Equatable, Sendable {
     let questions: [OpenCodeQuestion]
     var tool: OpenCodeQuestionTool? = nil
     var apiVersion: OpenCodeActionAPIVersion? = nil
+    var form: OpenCodeForm? = nil
 
     var resolvedAPIVersion: OpenCodeActionAPIVersion {
         apiVersion ?? .legacy
@@ -316,7 +334,9 @@ struct OpenCodeQuestionOption: Codable, Identifiable, Equatable, Sendable {
     let label: String
     let description: String
 
-    var id: String { label }
+    var wireValue: String? = nil
+
+    var id: String { wireValue ?? label }
 }
 
 enum OpenCodeSessionStatus: Equatable, Sendable {
@@ -382,5 +402,30 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
     let type: String
     let properties: [String: OpenCodeJSONValue]
 
-    var sessionID: String? { properties["sessionID"]?.stringValue }
+    var created: Double? = nil
+    var isV2: Bool = false
+
+    var sessionID: String? {
+        properties["sessionID"]?.stringValue ?? properties["form"]?.objectValue?["sessionID"]?.stringValue
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, type, properties, data, created }
+    init(id: String, type: String, properties: [String: OpenCodeJSONValue], created: Double? = nil, isV2: Bool = false) {
+        self.id = id; self.type = type; self.properties = properties; self.created = created; self.isV2 = isV2
+    }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(String.self, forKey: .type)
+        created = try container.decodeIfPresent(Double.self, forKey: .created)
+        isV2 = container.contains(.data)
+        properties = try container.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: isV2 ? .data : .properties) ?? [:]
+    }
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(created, forKey: .created)
+        try container.encode(properties, forKey: isV2 ? .data : .properties)
+    }
 }

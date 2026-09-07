@@ -23,8 +23,8 @@ enum OpenCodeCompatibilityEvaluator {
         health: OpenCodeHealth,
         serverProtocol: OpenCodeServerProtocol
     ) -> OpenCodeCompatibility {
-        if serverProtocol == .v2 {
-            return .unsupported(reason: openCode2Reason(version: health.version))
+        if serverProtocol == .v2, health.healthy {
+            return .degraded(reason: "OpenCode 2 beta. Some server features may be unavailable.")
         }
         return evaluate(health: health)
     }

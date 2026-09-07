@@ -29,6 +29,12 @@ struct OpenCodeModelPickerView: View {
                     }
                 }
 
+                if store.providerModels.contains(where: { $0.connectionState == .unreported }) {
+                    Text("This server does not report provider connection status.")
+                        .font(.cleanCaption)
+                        .foregroundStyle(.secondary)
+                }
+
                 ForEach(filteredProviders) { provider in
                     Section(provider.providerName) {
                         ForEach(provider.models) { model in

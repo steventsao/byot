@@ -13,6 +13,10 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var permissions: [OpenCodePermissionRequest] = []
     @Published private(set) var questions: [OpenCodeQuestionRequest] = []
     @Published private(set) var diffs: [OpenCodeDiff] = []
+    @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
+    var diffPresentation: OpenCodeSessionDiffPresentation {
+        OpenCodeSessionDiffPresentation(diffs: diffs, support: protocolCapabilities?.sessionDiff)
+    }
     @Published private(set) var status: OpenCodeSessionStatus = .idle
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false
@@ -208,6 +212,7 @@ final class OpenCodeSessionStore: ObservableObject {
             if generation == refreshGeneration { isLoading = false }
         }
         do {
+            protocolCapabilities = try await client.capabilities()
             let actionClient = client
             let actionDirectory = directory
             let actionWorkspace = workspace
@@ -280,7 +285,7 @@ final class OpenCodeSessionStore: ObservableObject {
             }
             switch results.5 {
             case .success(let diffs):
-                if diffBaseline == diffMutationGeneration { self.diffs = diffs }
+                if OpenCodeSessionDiffReconciliation.shouldApplyFetchedSnapshot(support: protocolCapabilities?.sessionDiff, mutationBaseline: diffBaseline, currentMutation: diffMutationGeneration) { self.diffs = diffs }
             case .failure(let error):
                 coreErrors.append(error)
             }
@@ -473,7 +478,8 @@ final class OpenCodeSessionStore: ObservableObject {
                 workspace: workspace,
                 model: prompt.model,
                 text: prompt.text,
-                attachments: prompt.attachments
+                attachments: prompt.attachments,
+                promptID: prompt.id
             )
             try Task.checkCancellation()
             guard isCurrentPromptDispatch(dispatchID) else { return }
@@ -742,7 +748,8 @@ final class OpenCodeSessionStore: ObservableObject {
         case "permission.asked", "permission.replied",
              "permission.v2.asked", "permission.v2.replied",
              "question.asked", "question.replied", "question.rejected",
-             "question.v2.asked", "question.v2.replied", "question.v2.rejected":
+             "question.v2.asked", "question.v2.replied", "question.v2.rejected",
+             "form.created", "form.replied", "form.cancelled":
             true
         default:
             false
@@ -751,6 +758,10 @@ final class OpenCodeSessionStore: ObservableObject {
 
     func handle(_ event: OpenCodeEvent) {
         if let eventSessionID = event.sessionID, eventSessionID != session.id {
+            return
+        }
+        if event.isV2 && event.type.hasPrefix("session.") {
+            handleV2(event)
             return
         }
         switch event.type {
@@ -792,6 +803,36 @@ final class OpenCodeSessionStore: ObservableObject {
             scheduleActionRefresh()
         default:
             break
+        }
+    }
+
+    private func handleV2(_ event: OpenCodeEvent) {
+        switch event.type {
+        case "session.execution.started":
+            statusMutationGeneration &+= 1
+            applyEventStatus(.busy)
+        case "session.execution.succeeded":
+            statusMutationGeneration &+= 1
+            applyEventStatus(.idle)
+            scheduleMessageRefresh()
+        case "session.execution.failed", "session.execution.interrupted":
+            if event.type == "session.execution.failed" {
+                errorMessage = event.properties["error"]?.objectValue?["message"]?.stringValue ?? "The turn failed."
+            }
+            settleTurnLocally(dismissingUnansweredPrompt: false)
+            scheduleMessageRefresh()
+        case "session.retry.scheduled":
+            statusMutationGeneration &+= 1
+            applyEventStatus(.retry(attempt: Int(event.properties["attempt"]?.numberValue ?? 1),
+                message: event.properties["error"]?.objectValue?["message"]?.stringValue ?? "Retrying", next: event.properties["at"]?.numberValue ?? 0))
+        default:
+            if transcript.apply(event) {
+                transcriptMutationGeneration &+= 1
+                publishTranscript()
+            } else {
+                // Unrecognized or out-of-order beta events reconcile from projection.
+                scheduleMessageRefresh()
+            }
         }
     }
 
