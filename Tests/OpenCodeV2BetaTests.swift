@@ -89,6 +89,17 @@ final class OpenCodeV2BetaTests: XCTestCase {
         XCTAssertEqual(parts.map(\.id), ["msg_a:text:0", "msg_a:reasoning:0", "msg_a:text:1"])
     }
 
+    func testBetaSessionPaginationDoesNotResendOrderWithCursor() async throws {
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+        let sessions = try await client.listSessions(directory: "/repo")
+        XCTAssertEqual(sessions.map(\.id), ["ses_beta"])
+        let pages = BetaURLProtocol.requests().filter { $0.url?.path == "/api/session" }
+        XCTAssertEqual(pages.count, 2)
+        let query = URLComponents(url: try XCTUnwrap(pages.last?.url), resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertFalse(query?.contains { $0.name == "order" } ?? true)
+    }
+
     private func makeClient() -> (OpenCodeClient, URLSession) {
         BetaURLProtocol.reset()
         let configuration = URLSessionConfiguration.ephemeral
@@ -126,6 +137,7 @@ private final class BetaURLProtocol: URLProtocol, @unchecked Sendable {
         let path = request.url!.path
         var body: String
         var contentType = "application/json"
+        var statusCode = 200
         switch path {
         case "/api/health": body = #"{"healthy":true,"version":"0.0.0-beta-19242","pid":123}"#
         case "/openapi.json":
@@ -134,6 +146,13 @@ private final class BetaURLProtocol: URLProtocol, @unchecked Sendable {
         case "/api/project": body = #"[{"id":"proj_1","canonical":"/repo","time":{"created":1,"updated":1},"sandboxes":[]}]"#
         case "/api/session/ses_beta/form": body = #"{"data":[{"id":"frm_test","sessionID":"ses_beta","title":"Choose","fields":[{"key":"speed","type":"string","title":"Speed","options":[{"label":"Quick","value":"fast"}],"custom":false},{"key":"checks","type":"multiselect","options":[{"label":"Unit","value":"unit"},{"label":"UI","value":"ui"}]}]}]}"#
         case "/api/session/ses_beta/form/frm_test/reply", "/api/session/ses_beta/form/frm_test/cancel": body = ""
+        case "/api/session" where request.httpMethod == "GET":
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            if query.contains(where: { $0.name == "cursor" }) {
+                if query.contains(where: { $0.name == "order" }) {
+                    statusCode = 400; body = #"{"message":"order cannot be combined with cursor"}"#
+                } else { body = #"{"data":[],"cursor":{}}"# }
+            } else { body = #"{"data":[{"id":"ses_beta","projectID":"proj_1","time":{"created":1,"updated":1},"location":{"directory":"/repo"}}],"cursor":{"next":"next-page"}}"# }
         case "/api/session":
             body = #"{"data":{"id":"ses_beta","projectID":"proj_1","time":{"created":1,"updated":1},"location":{"directory":"/repo"}}}"#
         case "/api/session/ses_beta/prompt":
@@ -142,7 +161,7 @@ private final class BetaURLProtocol: URLProtocol, @unchecked Sendable {
             body = #"{"data":[{"id":"msg_u","type":"user","time":{"created":1},"text":"Hello","files":[{"data":"aGk=","mime":"text/plain","name":"note.txt","source":{"type":"data"}}]},{"id":"msg_a","type":"assistant","time":{"created":2,"completed":3},"agent":"build","model":{"id":"test","providerID":"fixture"},"content":[{"type":"text","text":"First"},{"type":"reasoning","text":"Thinking"},{"type":"text","text":"Second"}]}],"cursor":{}}"#
         default: body = "<!doctype html><html></html>"; contentType = "text/html"
         }
-        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": contentType])!
+        let response = HTTPURLResponse(url: request.url!, statusCode: statusCode, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": contentType])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
