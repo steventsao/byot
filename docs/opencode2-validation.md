@@ -38,6 +38,11 @@ No connected physical device was available during this run. Live model output co
 - IPA: `/tmp/byot-release-1.0.8/BYOT.ipa`.
 - Archive and export succeeded; bundle ID, version and build were verified in both archive and IPA.
 - Apple IPA validation passed with no errors (`/tmp/byot-release-1.0.8/build-retry.log`).
-- Upload committed in App Store Connect; processing/group assignment is pending verification.
+- Build ID: `cf8a442c-51ea-4c48-9dd2-143030652d5e`.
+- Processing: **VALID**. Internal state: **IN_BETA_TESTING**.
+- Explicit membership verified in **Internal Testers** (`a2c29c92-ddfd-4c22-9368-8563d9b756ea`).
+- English What to Test notes verified after upload. External beta review was not submitted.
+- Exported IPA has `449BD89VDV.com.steventsao.byot`, `get-task-allow=false`, and contains no test bundles or beta schema fixture.
+- Publish log: `/tmp/byot-release-1.0.8/publish.log`.
 
 Additional live attachment acceptance passed in `/tmp/byot-attachment-live.xcresult`: an attachment-only beta prompt with a text file received an assistant reply, and the fetched user attachment retained its filename, MIME type, and data URI. This adds one test to the full 156-test run (**157 passing tests across the final runs**).
