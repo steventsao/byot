@@ -19,3 +19,13 @@ During UI verification, resetting SwiftUI's `preferredColorScheme` to `nil` left
 The signed archive and exported IPA both report `com.steventsao.byot`, version `1.0.10`, build `20260908143317`. Apple validation passed with no errors (`build-final.log`).
 
 Device installation through TestFlight is not part of the simulator verification.
+
+## Internal TestFlight release
+
+- Published September 8, 2026: **1.0.10 (20260908143317)**.
+- Build ID: `1ca2ddb7-20ef-4f89-a76d-876e71989c4b`.
+- Processing state: `VALID`; internal state: `IN_BETA_TESTING`.
+- Explicit membership confirmed in **Internal Testers** (`a2c29c92-ddfd-4c22-9368-8563d9b756ea`).
+- English What to Test notes match `asc/testflight-notes.md`.
+- Release source: `a16d992`; draft PR: <https://github.com/steventsao/byot/pull/55>.
+- Upload and confirmation logs: `/tmp/byot-release-1.0.10/publish.log`, `build-info.json`, and `test-notes.json`.
