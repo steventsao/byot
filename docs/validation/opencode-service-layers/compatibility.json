@@ -1,0 +1,30 @@
+{
+  "appSourceCommit": "d26520d4eea28219cd59b784fb0c9d586dcd029a",
+  "runner": "scripts/test-opencode-upstream.sh",
+  "upstream": {
+    "v1": "1.18.29",
+    "v2": "0.0.0-beta-19271"
+  },
+  "finishedAt": "2026-09-08T23:08:30.582000+00:00",
+  "result": "Passed",
+  "passedTests": 176,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "screenshots": [
+    {
+      "file": "v1-transcript.png",
+      "attachment": "41D11BFC-29BD-468A-8570-6178817FF186.png",
+      "sha256": "e8e8c69df80af982d8214fbaff26bfc76d13930bd2ef3af262ab2863bc4ae110"
+    },
+    {
+      "file": "v2-transcript.png",
+      "attachment": "9E1438C8-AE06-4BD3-8809-8A3B4C961458.png",
+      "sha256": "4f8d61a8955860eeb72c45cccd4b596571294597e7037e5fcf885f05982bebb9"
+    },
+    {
+      "file": "saved-server-switch.png",
+      "attachment": "36779287-602D-4C84-AD69-F986BDFC8D7E.png",
+      "sha256": "147c7a6ca543ac622c0df9067d1495e87757762cf5e058306f9a0e2759c94d9b"
+    }
+  ]
+}

@@ -95,3 +95,7 @@ Run `scripts/test-opencode-upstream.sh` for real v1/v2 client and UI acceptance.
 It also captures screenshots of server setup, model selection, sending/reloading
 transcripts, grouped sessions, changes availability, and switching saved servers.
 See [the runner instructions](../scripts/e2e/README.md).
+
+The [verified refactor run](validation/opencode-service-layers/README.md) records
+176 passing tests, the exact application source revision, upstream versions, and
+original screenshots.
