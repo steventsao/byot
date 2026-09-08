@@ -1,0 +1,51 @@
+{
+  "app": {
+    "version": "1.0.12",
+    "build": "20260908154542",
+    "bundleID": "com.steventsao.byot",
+    "sourceCommit": "cc7f4074cd15b09f9689cd9f5105f88a13bad5e4"
+  },
+  "upstream": {
+    "v1": {
+      "package": "opencode-ai",
+      "version": "1.18.29"
+    },
+    "v2": {
+      "package": "@opencode-ai/cli",
+      "version": "0.0.0-beta-19271",
+      "openapiSHA256": "54382521d4383aa59b5b1ddeddc87298a1ac713d96dc7ca2814698a11c9e8556"
+    }
+  },
+  "verification": {
+    "date": "2026-09-08",
+    "xcode": "26.5 (17F42)",
+    "device": "iPhone 17 Pro simulator",
+    "iOS": "26.5 (23F77)",
+    "model": "Deterministic local OpenAI-compatible fixture",
+    "transport": "Production HTTPS with Basic authentication and simulator-scoped test CA",
+    "physicalDeviceTested": false,
+    "paidProvidersTested": false
+  },
+  "tests": {
+    "passed": 168,
+    "failed": 0,
+    "skipped": 0,
+    "xctest": 71,
+    "swiftTesting": 96,
+    "uiWorkflows": 1
+  },
+  "screenshots": {
+    "upstream-v1-grouped-sessions.png": "c71c6620e638db47cfad0297a8e6cee9c37de79b3b6307615d33c3e26cb15dc2",
+    "upstream-v1-live-transcript.png": "c374d349d5de4870af6819bf42fe565edbbfb41d37c4d9094ac9950b514c4707",
+    "upstream-v1-model-picker.png": "2986b92ddeb019068fdadbfa7829c6fb5a7b87fcc17b59a4145095da7bc4b8a7",
+    "upstream-v1-reloaded-transcript.png": "e8e8c69df80af982d8214fbaff26bfc76d13930bd2ef3af262ab2863bc4ae110",
+    "upstream-v1-session-browser.png": "bab04bf23ff98fd52123911726160ee216371fe1d73728aad457042932704777",
+    "upstream-v2-changes-availability.png": "0193421b34e5e4c892195dede1192c633a90e7d8bf04fdf78a7f9a84337a0874",
+    "upstream-v2-grouped-sessions.png": "d468ec374d690fc700589321b7f5a5c8c833a9924009c1318320bbdfc0c2d8d2",
+    "upstream-v2-live-transcript.png": "6d028dfa6d34e35f952eb81f1efb6e461e07b7ef703ba60f04f8bb18c2aa9f6d",
+    "upstream-v2-model-picker.png": "a99c35c2255c8557044586205a67e0b801bb89ccb3c901ae6f9b7a18e430db2b",
+    "upstream-v2-reloaded-transcript.png": "4f8d61a8955860eeb72c45cccd4b596571294597e7037e5fcf885f05982bebb9",
+    "upstream-v2-restored-server-switch.png": "1c9f6e56cf6e3888c307a20baac16cbcdc9bc768edef1eb19a53d6d965afb27f",
+    "upstream-v2-session-browser.png": "d02ef6533ed29e83ea463bd267aaeeee8da603f4b9fd4aa6dc71d7e2ef7f972f"
+  }
+}

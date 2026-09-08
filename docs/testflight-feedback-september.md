@@ -39,3 +39,7 @@ Older reports about colors and stalled sessions are covered by the release base 
 - External beta review was not submitted.
 
 Screenshots: [dark browser](screenshots/14-session-browser-dark.png), [accessible search](screenshots/15-session-search-accessibility.png).
+
+## Follow-up: upstream acceptance and 1.0.12
+
+The repeatable upstream v1/v2 run and screenshot review exposed a duplicate grouping edge case for OpenCode 1's global non-Git project. It is fixed in 1.0.12, with 168 passing tests, zero failures, and zero skips against v1 1.18.29 and v2 beta 19271. See the [1.0.12 release evidence and screenshots](releases/1.0.12/README.md).
