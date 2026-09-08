@@ -15,6 +15,7 @@ Older reports about colors and stalled sessions are covered by the release base 
 
 ## Verification
 
+- Simulator: iPhone 17 Pro, iOS 26.5, Xcode 26.5. No physical-device installation was performed in this run.
 - 162 unit/regression tests passed (68 XCTest tests and 94 Swift Testing tests). Three opt-in live-server tests were skipped because their isolated servers are not running.
 - Four UI workflows passed across the final checks: appearance switching/persistence, attachments, session browsing/navigation, and Accessibility XXXL search. The full live-server UI workflow was updated for direct session creation but was not run without its server fixture.
 - The browser workflow verifies status/recency, sort ordering, grouping persistence, server isolation on switching, opening a chat directly, and creating a new session directly.
@@ -25,4 +26,16 @@ Older reports about colors and stalled sessions are covered by the release base 
 
 ## Release
 
-Signed archive and TestFlight distribution pending.
+- Release source: `762d8dc`; draft PR: https://github.com/steventsao/byot/pull/56 (stacked on #55).
+- Signed archive and IPA: **1.0.11 (20260908151559)**, `com.steventsao.byot`.
+- Artifact directory: `/tmp/byot-release-1.0.11/`.
+- Apple validation passed with no errors; archive and IPA metadata match.
+- No test bundles or debug browser fixture are included in the release executable.
+- Published September 8, 2026. App Store Connect build ID: `4cdcdd02-65e1-45b2-bf34-44182fb818ee`.
+- Processing state: `VALID`; internal state: `IN_BETA_TESTING`.
+- Explicit membership confirmed in **Internal Testers** (`a2c29c92-ddfd-4c22-9368-8563d9b756ea`).
+- English What to Test notes match `asc/testflight-notes.md`.
+- Upload and verification logs: `publish.log`, `build-info.json`, `beta-detail.json`, `groups.json`, and `test-notes.json` in the artifact directory.
+- External beta review was not submitted.
+
+Screenshots: [dark browser](screenshots/14-session-browser-dark.png), [accessible search](screenshots/15-session-search-accessibility.png).
