@@ -85,6 +85,7 @@ actor OpenCodeConnection {
             return probe
         } catch {
             if probeWork?.id == work.id { probeWork = nil }
+            try Task.checkCancellation()
             throw error
         }
     }

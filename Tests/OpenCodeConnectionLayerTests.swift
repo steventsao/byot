@@ -74,6 +74,20 @@ struct OpenCodeConnectionLayerTests {
         #expect(await source.buildCount == 1)
     }
 
+    @Test("A cancelled health waiter receives cancellation even when discovery fails")
+    func cancellationWinsOverProbeFailure() async throws {
+        let gate = LayerTestGate()
+        let source = ControlledConnectionSource(probeGate: gate, failFirstProbe: true)
+        let connection = OpenCodeConnection(source: source)
+        let cancelled = Task { try await connection.adapter() }
+        await source.probeStarted.wait()
+        cancelled.cancel()
+        await gate.open()
+        await #expect(throws: CancellationError.self) { try await cancelled.value }
+        #expect(try await connection.adapter().serverProtocol == .v2)
+        #expect(await source.probeCount == 2)
+    }
+
     @Test("Failed schema acquisition is retryable")
     func failedAcquisitionRetries() async throws {
         let source = ControlledConnectionSource(failFirstBuild: true)
