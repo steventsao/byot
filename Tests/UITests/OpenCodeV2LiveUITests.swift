@@ -29,13 +29,10 @@ final class OpenCodeV2LiveUITests: XCTestCase {
         // recent iOS versions. Dismiss it explicitly for this fixture login.
         let passwordNotNow = app.buttons["Not Now"]
         if passwordNotNow.waitForExistence(timeout: 5) { passwordNotNow.tap() }
-        let project = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "/tmp/byot-v2-runtime-19242/project")).firstMatch
-        XCTAssertTrue(project.waitForExistence(timeout: 15), app.debugDescription); project.tap()
         let newSession = app.buttons["New session"].firstMatch
         XCTAssertTrue(newSession.waitForExistence(timeout: 10)); newSession.tap()
-        let title = app.textFields["Optional title"]
-        XCTAssertTrue(title.waitForExistence(timeout: 3)); title.typeText("Beta UI acceptance")
-        app.buttons["Create"].tap()
+        let project = app.buttons["project"].firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 5), app.debugDescription); project.tap()
         let composer = app.textFields["Message"]
         XCTAssertTrue(composer.waitForExistence(timeout: 10), "Creating a session must open its chat immediately")
         XCTAssertFalse(app.buttons["Navigation"].exists, "A second menu must not crowd the native back button")
@@ -56,9 +53,8 @@ final class OpenCodeV2LiveUITests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["New session"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Navigation"].exists)
-        app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.navigationBars["BYOT"].waitForExistence(timeout: 5))
-        attach("byot-project-navigation")
+        attach("byot-session-browser")
         app.buttons["About BYOT"].tap()
         XCTAssertTrue(app.staticTexts["Version"].waitForExistence(timeout: 5))
         app.buttons["Done"].tap()

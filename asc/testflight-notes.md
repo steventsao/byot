@@ -1,5 +1,11 @@
-Appearance now defaults to your iPhone’s system setting. Tap the information button on the BYOT home screen, then choose Appearance → System, Light, or Dark. Your choice applies immediately and is remembered after reopening the app.
+New in 1.0.11:
 
-Please check switching between all three options, reopening BYOT, and changing iPhone Dark Mode while System is selected. Check that chat text, the composer, model picker, and server forms stay readable in both appearances.
+- Switch between saved servers using the horizontal server bar.
+- Open sessions directly from the home screen. Projects are now an optional grouping, with expandable session lists.
+- Sort sessions and project groups independently by recent activity, session status, or name. Your grouping and sort preferences are remembered.
+- See Working, retry details, and last activity in the list. Project groups show session counts, active work, retries, and loading errors.
+- Search session titles and project names or paths.
+- Create a session in an existing project or another directory, then go straight to its chat.
+- Sessions load progressively. A project or status error leaves other sessions usable, and unavailable status is labeled explicitly.
 
-Includes the latest OpenCode 2 support, session recovery, adaptive colors, and navigation fixes from 1.0.9.
+Please check server switching, grouping and sorting, direct chat navigation, and large text. Also verify System/Light/Dark appearance, Stop and retry for stalled turns, attachments, and model selection. Existing OpenCode 1 and OpenCode 2 support is retained.
