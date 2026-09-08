@@ -43,7 +43,9 @@ Each failing test was committed before its implementation. Local red/green logs 
 
 ## Live acceptance setup
 
-`OpenCodeLiveServerTests` and `OpenCodeV2LiveUITests` opt in with `BYOT_LIVE_ACCEPTANCE=1` in the test-run environment. They target isolated local v1/v2 servers through HTTPS, with a deterministic local OpenAI-compatible model fixture. No paid model service or production session is used. Simulator UI tests must use a signed simulator build so saving passwords can use Keychain.
+Run `scripts/test-opencode-upstream.sh` for the repeatable current acceptance setup. It pins upstream v1 1.18.29 and v2 beta 19271, creates isolated servers and a dedicated simulator, and exports the test results and screenshots. See [runner instructions](../scripts/e2e/README.md). The earlier beta 19242 contract and evidence above remain as historical regression fixtures.
+
+`OpenCodeLiveServerTests` and `OpenCodeUpstreamLiveUITests` opt in with `BYOT_LIVE_ACCEPTANCE=1` in the test-run environment. The runner also supplies the isolated project root and versions. They target local v1/v2 servers through HTTPS, with a deterministic local OpenAI-compatible model fixture. No paid model service or production session is used. Simulator UI tests must use a signed simulator build so saving passwords can use Keychain.
 
 The fixture certificate is trusted only in the test simulator. Production URL validation, redirect protection, HTTPS, and credential storage are unchanged. Physical-device validation requires an available connected device.
 

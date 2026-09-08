@@ -114,9 +114,10 @@ struct OpenCodeProjectSessionsView: View {
     }
 }
 
-private struct OpenCodeSessionRow: View {
+struct OpenCodeSessionRow: View {
     let session: OpenCodeSession
-    let status: OpenCodeSessionStatus
+    let status: OpenCodeSessionStatus?
+    var projectName: String? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -127,9 +128,10 @@ private struct OpenCodeSessionRow: View {
                     .font(.cleanBodySemibold)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
-                OpenCodeStatusLabel(status: status, eventConnected: nil)
+                statusView
 
                 VStack(alignment: .leading, spacing: 4) {
+                    if let projectName { Text(projectName) }
                     if let agent = session.agent {
                         Text(agent)
                     }
@@ -146,9 +148,10 @@ private struct OpenCodeSessionRow: View {
                         .font(.cleanBodySemibold)
                         .lineLimit(2)
                     Spacer(minLength: 12)
-                    OpenCodeStatusLabel(status: status, eventConnected: nil)
+                    statusView
                 }
                 HStack(spacing: 12) {
+                    if let projectName { Text(projectName).lineLimit(1) }
                     if let agent = session.agent {
                         Text(agent)
                     }
@@ -175,13 +178,24 @@ private struct OpenCodeSessionRow: View {
         .padding(.vertical, 5)
     }
 
+    @ViewBuilder
+    private var statusView: some View {
+        if let status {
+            OpenCodeStatusLabel(status: status, eventConnected: nil)
+        } else {
+            Label("Status unavailable", systemImage: "questionmark.circle")
+                .font(.cleanCaption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var statusErrorMessage: String? {
         guard case .retry(_, let message, _) = status else { return nil }
         return message.trimmedNonEmpty
     }
 
     private var updatedText: some View {
-        Text(Date(timeIntervalSince1970: session.time.updated / 1_000), style: .relative)
+        Text(Date(timeIntervalSince1970: session.time.updated / 1_000), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
     }
 }
 

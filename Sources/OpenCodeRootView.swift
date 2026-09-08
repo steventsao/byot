@@ -2,32 +2,55 @@ import SwiftUI
 
 struct OpenCodeRootView: View {
     let openAppNavigation: () -> Void
+    private let makeClient: (OpenCodeServerProfile, String) -> OpenCodeClient
 
-    @StateObject private var profileStore = OpenCodeProfileStore()
+    init(
+        openAppNavigation: @escaping () -> Void,
+        profileStore: OpenCodeProfileStore? = nil,
+        makeClient: @escaping (OpenCodeServerProfile, String) -> OpenCodeClient = {
+            OpenCodeClient(profile: $0, password: $1)
+        }
+    ) {
+        self.openAppNavigation = openAppNavigation
+        self.makeClient = makeClient
+        _profileStore = StateObject(wrappedValue: profileStore ?? OpenCodeProfileStore())
+    }
+
+    @StateObject private var profileStore: OpenCodeProfileStore
+    @State private var path = NavigationPath()
     @State private var isShowingProfileEditor = false
     @State private var profileBeingEdited: OpenCodeServerProfile?
     @State private var profilePendingRemoval: OpenCodeServerProfile?
     @State private var profileRemovalError: String?
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let profile = profileStore.activeProfile {
-                    OpenCodeConnectedView(
-                        profile: profile,
-                        password: profileStore.password(for: profile)
+        NavigationStack(path: $path) {
+            VStack(spacing: 0) {
+                if !profileStore.profiles.isEmpty {
+                    OpenCodeServerBar(
+                        profiles: profileStore.profiles,
+                        selectedID: profileStore.activeProfileID,
+                        select: profileStore.select,
+                        add: { edit(nil) }
                     )
-                    .id("\(profileFingerprint(profile))|\(profileStore.connectionGeneration)")
-                } else {
-                    ContentUnavailableView {
-                        Label("Connect your server", systemImage: "network")
-                    } description: {
-                        Text("Add the HTTPS address of your OpenCode server.")
-                    } actions: {
-                        Button("Add server", systemImage: "plus") {
-                            edit(nil)
+                }
+                Group {
+                    if let profile = profileStore.activeProfile {
+                        OpenCodeConnectedView(
+                            client: makeClient(profile, profileStore.password(for: profile))
+                        )
+                        .id("\(profileFingerprint(profile))|\(profileStore.connectionGeneration)")
+                    } else {
+                        ContentUnavailableView {
+                            Label("Connect your server", systemImage: "network")
+                        } description: {
+                            Text("Add the HTTPS address of your OpenCode server.")
+                        } actions: {
+                            Button("Add server", systemImage: "plus") {
+                                edit(nil)
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .buttonStyle(.borderedProminent)
                     }
                 }
             }
@@ -46,6 +69,7 @@ struct OpenCodeRootView: View {
                 }
             }
         }
+        .onChange(of: profileStore.activeProfileID) { _, _ in path = NavigationPath() }
         .sheet(isPresented: $isShowingProfileEditor) {
             OpenCodeProfileEditorView(
                 profile: profileBeingEdited,
@@ -374,157 +398,5 @@ private struct OpenCodeProfileEditorView: View {
             }
             isSaving = false
         }
-    }
-}
-
-private struct OpenCodeProjectRoute: Hashable {
-    let name: String
-    let directory: String
-}
-
-private struct OpenCodeConnectedView: View {
-    @StateObject private var store: OpenCodeWorkspaceStore
-    private let configuredDirectory: String?
-
-    init(
-        profile: OpenCodeServerProfile,
-        password: String
-    ) {
-        let client = OpenCodeClient(profile: profile, password: password)
-        _store = StateObject(wrappedValue: OpenCodeWorkspaceStore(client: client))
-        configuredDirectory = profile.normalizedDirectory
-    }
-
-    var body: some View {
-        List {
-            if let errorMessage = store.errorMessage, hasProjectContent {
-                Section {
-                    ErrorBanner(message: errorMessage)
-                        .listRowInsets(EdgeInsets())
-                }
-            }
-
-            if let configuredDirectory,
-               !store.projects.contains(where: { $0.worktree == configuredDirectory }) {
-                Section("Configured directory") {
-                    NavigationLink(
-                        value: OpenCodeProjectRoute(
-                            name: URL(fileURLWithPath: configuredDirectory).lastPathComponent,
-                            directory: configuredDirectory
-                        )
-                    ) {
-                        OpenCodeProjectRow(
-                            name: URL(fileURLWithPath: configuredDirectory).lastPathComponent,
-                            directory: configuredDirectory,
-                            isGit: false
-                        )
-                    }
-                }
-            }
-
-            Section("Projects on \(store.client.profile.name)") {
-                ForEach(store.projects) { project in
-                    NavigationLink(
-                        value: OpenCodeProjectRoute(
-                            name: project.displayName,
-                            directory: project.worktree
-                        )
-                    ) {
-                        OpenCodeProjectRow(
-                            name: project.displayName,
-                            directory: project.worktree,
-                            isGit: project.vcs == "git"
-                        )
-                    }
-                }
-            }
-
-            if let compatibility = store.compatibility {
-                Section {
-                    DisclosureGroup("Server details") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(compatibility.stateTitle)
-                                .font(.cleanBodySemibold)
-                            Text(compatibility.redactedSummary)
-                                .font(.cleanCaption)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                        .accessibilityElement(children: .combine)
-                    }
-                }
-            }
-        }
-        .overlay {
-            if store.isLoading && store.projects.isEmpty {
-                BYOTActivityView(
-                    .connecting,
-                    layout: .blocking
-                )
-            } else if !store.isLoading,
-                      !hasProjectContent,
-                      let errorMessage = store.errorMessage {
-                ContentUnavailableView {
-                    Label("Couldn’t connect", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(errorMessage.agentDisplayErrorText)
-                } actions: {
-                    Button("Try again", systemImage: "arrow.clockwise") {
-                        Task { await store.load() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-            } else if !store.isLoading,
-                      store.projects.isEmpty,
-                      configuredDirectory == nil,
-                      store.errorMessage == nil {
-                ContentUnavailableView(
-                    "No projects",
-                    systemImage: "folder",
-                    description: Text("Open a project, then refresh.")
-                )
-            }
-        }
-        .refreshable { await store.load() }
-        .task { await store.load() }
-        .navigationDestination(for: OpenCodeProjectRoute.self) { route in
-            OpenCodeProjectSessionsView(
-                client: store.client,
-                name: route.name,
-                directory: route.directory
-            )
-        }
-    }
-
-    private var hasProjectContent: Bool {
-        !store.projects.isEmpty || configuredDirectory != nil
-    }
-}
-
-private struct OpenCodeProjectRow: View {
-    let name: String
-    let directory: String
-    let isGit: Bool
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: isGit ? "arrow.triangle.branch" : "folder")
-                .foregroundStyle(BYOTBrand.accent)
-                .frame(width: 28)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(name)
-                    .font(.cleanBodySemibold)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
-                Text(directory)
-                    .font(.cleanCaption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.vertical, 4)
     }
 }
