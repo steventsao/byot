@@ -1,13 +1,6 @@
 import Combine
 import Foundation
 
-protocol OpenCodeSessionBrowsing: Sendable {
-    func listSessions(directory: String) async throws -> [OpenCodeSession]
-    func sessionStatuses(directory: String, workspace: String?) async throws -> [String: OpenCodeSessionStatus]
-}
-
-extension OpenCodeClient: OpenCodeSessionBrowsing { }
-
 struct OpenCodeSessionGroup: Identifiable, Sendable {
     let project: OpenCodeProject
     var sessions: [OpenCodeSession] = []

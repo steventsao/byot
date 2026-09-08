@@ -12,6 +12,7 @@ struct OpenCodeSessionRoute: Hashable {
 }
 
 struct OpenCodeConnectedView: View {
+    @State private var client: OpenCodeClient
     @StateObject private var workspace: OpenCodeWorkspaceStore
     @StateObject private var browser: OpenCodeSessionBrowserStore
     @AppStorage("byot.sessions.group-by-project") private var groupByProject = false
@@ -29,7 +30,8 @@ struct OpenCodeConnectedView: View {
     @State private var newDirectory = ""
 
     init(client: OpenCodeClient) {
-        _workspace = StateObject(wrappedValue: OpenCodeWorkspaceStore(client: client))
+        _client = State(initialValue: client)
+        _workspace = StateObject(wrappedValue: OpenCodeWorkspaceStore(service: client))
         _browser = StateObject(wrappedValue: OpenCodeSessionBrowserStore(service: client))
     }
 
@@ -123,7 +125,7 @@ struct OpenCodeConnectedView: View {
                 createSession(in: Self.project(directory: directory))
             }
         } message: {
-            Text(workspace.client.profile.name)
+            Text(client.profile.name)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -272,7 +274,7 @@ struct OpenCodeConnectedView: View {
     }
 
     private func sessionView(_ route: OpenCodeSessionRoute) -> some View {
-        OpenCodeSessionView(client: workspace.client, session: route.session, directory: route.session.directory)
+        OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory)
     }
 
     private func projectName(for session: OpenCodeSession) -> String {
@@ -291,7 +293,7 @@ struct OpenCodeConnectedView: View {
 
     private var projects: [OpenCodeProject] {
         var result = workspace.projects
-        if let directory = workspace.client.profile.normalizedDirectory,
+        if let directory = client.profile.normalizedDirectory,
            !result.contains(where: { $0.worktree == directory }) {
             result.append(Self.project(directory: directory))
         }
@@ -321,7 +323,7 @@ struct OpenCodeConnectedView: View {
         Task {
             defer { isCreating = false }
             do {
-                let session = try await workspace.client.createSession(directory: project.worktree, title: nil)
+                let session = try await client.createSession(directory: project.worktree, title: nil)
                 createdRoute = OpenCodeSessionRoute(session: session)
             } catch { creationError = error.localizedDescription }
         }
