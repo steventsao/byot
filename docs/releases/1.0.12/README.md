@@ -39,3 +39,7 @@ These are unedited XCTest captures from the final passing run.
 | <img src="upstream-v1-reloaded-transcript.png" width="300" alt="V1 prompt and reply reloaded from the server"> | <img src="upstream-v2-reloaded-transcript.png" width="300" alt="V2 prompt and reply reloaded from the server"> |
 
 [Model picker](upstream-v2-model-picker.png) · [V2 Changes availability](upstream-v2-changes-availability.png)
+
+## TestFlight distribution
+
+Published September 8, 2026 to **Internal Testers**. App Store Connect build `79e9a6be-1596-4a3b-8d11-1615821e8270` is `VALID` and `IN_BETA_TESTING`; explicit membership in the Internal Testers group was verified. English What to Test notes match `asc/testflight-notes.md`, including the release screenshot link. External beta review was not submitted.
