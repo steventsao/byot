@@ -23,7 +23,7 @@ run_asc() {
   fi
 }
 
-BYOT_VERSION="${BYOT_VERSION:-1.0.11}"
+BYOT_VERSION="${BYOT_VERSION:-1.0.12}"
 # 14-digit YYYYMMDDHHMMSS: monotonically increasing and always larger than the
 # 20260624152336 build that poisoned the sequence. A 12-digit %Y%m%d%H%M number is
 # numerically smaller than that one, so iOS/TestFlight treats such builds as

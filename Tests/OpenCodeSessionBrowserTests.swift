@@ -88,6 +88,35 @@ struct OpenCodeSessionBrowserTests {
         #expect(OpenCodeSessionSort.name.ordered([c,b,a], statuses: statuses).map(\.id) == ["b","c","a"])
     }
 
+    @Test("Global and configured projects show a session once in its own directory")
+    func overlappingProjectSessions() async {
+        let service = BrowserService()
+        let shared = session("shared")
+        await service.setSessions([shared], directory: "/")
+        await service.setSessions([shared], directory: "/one")
+        await service.setSessions([], directory: "/empty")
+        let global = OpenCodeProject(id: "global", worktree: "/", vcs: nil, name: nil,
+                                     time: OpenCodeProjectTime(created: 1, updated: 2), sandboxes: [])
+        let store = OpenCodeSessionBrowserStore(service: service)
+        await store.load(projects: [global, project("/one"), project("/empty")])
+        let groups = store.orderedGroups(by: .recent)
+        #expect(groups.flatMap(\.sessions).map(\.id) == ["shared"])
+        #expect(groups.first { !$0.sessions.isEmpty }?.id == "/one")
+        #expect(!groups.contains { $0.project.id == "global" })
+        #expect(groups.contains { $0.id == "/empty" }, "Real empty projects remain available")
+    }
+
+    @Test("An overlapping response remains usable if the configured directory fails")
+    func overlapFallbackPreservesSessions() async {
+        let service = BrowserService()
+        await service.setSessions([session("shared")], directory: "/")
+        await service.setFailedDirectory("/one")
+        let store = OpenCodeSessionBrowserStore(service: service)
+        await store.load(projects: [project("/"), project("/one")])
+        #expect(store.orderedGroups(by: .recent).flatMap(\.sessions).map(\.id) == ["shared"])
+        #expect(store.groups.first { $0.id == "/one" }?.error != nil)
+    }
+
     @Test("Child and archived sessions are excluded from the main browser")
     func excludesHiddenSessions() async {
         let service = BrowserService()
@@ -113,13 +142,16 @@ private actor BrowserService: OpenCodeSessionBrowsing {
     private var failedDirectory: String?
     private var statusFailure = false
     private var extraSessions: [OpenCodeSession] = []
+    private var sessionsByDirectory: [String: [OpenCodeSession]] = [:]
     func setFailedDirectory(_ value: String) { failedDirectory = value }
     func setStatusFailure(_ value: Bool) { statusFailure = value }
     func setExtraSessions(_ value: [OpenCodeSession]) { extraSessions = value }
+    func setSessions(_ value: [OpenCodeSession], directory: String) { sessionsByDirectory[directory] = value }
     func listSessions(directory: String) async throws -> [OpenCodeSession] {
         calls.append(directory)
         if directory == "/slow" { try await Task.sleep(for: .milliseconds(350)) }
         if directory == failedDirectory { throw OpenCodeConnectionError.httpStatus(500, nil) }
+        if let sessions = sessionsByDirectory[directory] { return sessions }
         return [OpenCodeSession(id: directory, slug: directory, projectID: directory, workspaceID: nil, directory: directory, parentID: nil, summary: nil, title: directory, agent: nil, version: "1.18.10", time: OpenCodeSessionTime(created: 1, updated: 2, compacting: nil, archived: nil))] + extraSessions
     }
     func sessionStatuses(directory: String, workspace: String?) async throws -> [String: OpenCodeSessionStatus] {

@@ -94,7 +94,7 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
     }
 
     func orderedGroups(by sort: OpenCodeSessionSort) -> [OpenCodeSessionGroup] {
-        groups.sorted { lhs, rhs in
+        uniqueGroups.sorted { lhs, rhs in
             if sort == .status, lhs.priority != rhs.priority { return lhs.priority < rhs.priority }
             if sort == .name {
                 let comparison = lhs.project.displayName.localizedStandardCompare(rhs.project.displayName)
@@ -102,6 +102,41 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
             }
             if lhs.updated != rhs.updated { return lhs.updated > rhs.updated }
             return lhs.id < rhs.id
+        }
+    }
+
+    private var uniqueGroups: [OpenCodeSessionGroup] {
+        // V1's global project and an explicitly configured directory can return
+        // the same sessions. Prefer the session's directory when both respond,
+        // while retaining an overlapping response if that directory fails.
+        var owners: [String: Int] = [:]
+        var newest: [String: OpenCodeSession] = [:]
+        for (index, group) in groups.enumerated() {
+            for session in group.sessions {
+                if let previous = owners[session.id] {
+                    if group.project.worktree == session.directory,
+                       groups[previous].project.worktree != session.directory {
+                        owners[session.id] = index
+                    }
+                } else {
+                    owners[session.id] = index
+                }
+                if (newest[session.id]?.time.updated ?? -.infinity) < session.time.updated {
+                    newest[session.id] = session
+                }
+            }
+        }
+        var result = groups.map { group in
+            var group = group
+            group.sessions = []
+            return group
+        }
+        for (id, session) in newest {
+            if let owner = owners[id] { result[owner].sessions.append(session) }
+        }
+        return result.filter {
+            !($0.project.id == "global" && $0.project.worktree == "/"
+              && $0.sessions.isEmpty && $0.isLoaded && $0.error == nil)
         }
     }
 

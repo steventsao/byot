@@ -1,4 +1,9 @@
-New in 1.0.11:
+New in 1.0.12:
+
+- Fix duplicate sessions in project grouping when OpenCode 1 returns both its global project and your configured directory. Sessions appear once, under their own directory, and remain available if one overlapping request fails.
+- Repeatable end-to-end compatibility coverage now runs against upstream OpenCode 1.18.29 and OpenCode 2 beta 19271.
+
+Retained from 1.0.11:
 
 - Switch between saved servers using the horizontal server bar.
 - Open sessions directly from the home screen. Projects are now an optional grouping, with expandable session lists.
@@ -9,3 +14,5 @@ New in 1.0.11:
 - Sessions load progressively. A project or status error leaves other sessions usable, and unavailable status is labeled explicitly.
 
 Please check server switching, grouping and sorting, direct chat navigation, and large text. Also verify System/Light/Dark appearance, Stop and retry for stalled turns, attachments, and model selection. Existing OpenCode 1 and OpenCode 2 support is retained.
+
+Compatibility results and simulator screenshots: https://github.com/steventsao/byot/releases/tag/v1.0.12

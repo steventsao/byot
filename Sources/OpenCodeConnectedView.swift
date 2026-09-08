@@ -276,7 +276,8 @@ struct OpenCodeConnectedView: View {
     }
 
     private func projectName(for session: OpenCodeSession) -> String {
-        projects.first { $0.id == session.projectID || $0.worktree == session.directory }?.displayName
+        projects.first { $0.worktree == session.directory }?.displayName
+            ?? projects.first { $0.id == session.projectID }?.displayName
             ?? URL(fileURLWithPath: session.directory).lastPathComponent
     }
 
