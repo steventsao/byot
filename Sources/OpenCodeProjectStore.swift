@@ -9,12 +9,12 @@ final class OpenCodeProjectStore: ObservableObject {
     @Published private(set) var isCreating = false
     @Published var errorMessage: String?
 
-    let client: OpenCodeClient
+    private let service: any OpenCodeProjectServicing
     let directory: String
     private var loadGeneration = 0
 
-    init(client: OpenCodeClient, directory: String) {
-        self.client = client
+    init(service: any OpenCodeProjectServicing, directory: String) {
+        self.service = service
         self.directory = directory
     }
 
@@ -26,8 +26,8 @@ final class OpenCodeProjectStore: ObservableObject {
             if generation == loadGeneration { isLoading = false }
         }
         do {
-            async let sessionsRequest = client.listSessions(directory: directory)
-            async let statusesRequest = client.sessionStatuses(directory: directory)
+            async let sessionsRequest = service.listSessions(directory: directory)
+            async let statusesRequest = service.sessionStatuses(directory: directory, workspace: nil)
             let (sessions, statuses) = try await (sessionsRequest, statusesRequest)
             guard generation == loadGeneration else { return }
             self.sessions = sessions.sorted { $0.time.updated > $1.time.updated }
@@ -48,7 +48,7 @@ final class OpenCodeProjectStore: ObservableObject {
         isCreating = true
         defer { isCreating = false }
         do {
-            let session = try await client.createSession(directory: directory, title: title)
+            let session = try await service.createSession(directory: directory, title: title)
             sessions.removeAll { $0.id == session.id }
             sessions.insert(session, at: 0)
             statuses[session.id] = .idle

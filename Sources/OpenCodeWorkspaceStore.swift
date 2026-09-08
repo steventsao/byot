@@ -8,17 +8,10 @@ final class OpenCodeWorkspaceStore: ObservableObject {
     @Published private(set) var compatibility: OpenCodeCompatibilitySummary?
     @Published var errorMessage: String?
 
-    let client: OpenCodeClient
     private let service: any OpenCodeWorkspaceServicing
     private var loadGeneration = 0
 
-    init(client: OpenCodeClient) {
-        self.client = client
-        service = client
-    }
-
-    init(client: OpenCodeClient, service: any OpenCodeWorkspaceServicing) {
-        self.client = client
+    init(service: any OpenCodeWorkspaceServicing) {
         self.service = service
     }
 

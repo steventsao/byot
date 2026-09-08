@@ -43,6 +43,9 @@ Run the tests with the BYOT scheme, or:
 xcodebuild test -project BYOT.xcodeproj -scheme BYOT -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
+The [OpenCode service layers](docs/opencode-service-layers.md) explain adapter
+composition, dependency injection, discovery lifetime, and test seams.
+
 ## Status
 
 Early, and the surface is intentionally small. Expect rough edges — [issues](https://github.com/steventsao/byot/issues) welcome.

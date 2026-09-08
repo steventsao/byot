@@ -1,6 +1,6 @@
 import Foundation
 
-struct OpenCodeTransport: Sendable {
+struct OpenCodeTransport: OpenCodeHTTPTransport {
     let profile: OpenCodeServerProfile
     private let password: String
     private let session: URLSession
@@ -47,101 +47,15 @@ struct OpenCodeTransport: Sendable {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         request.setValue(
-            OpenCodeServerAuthentication.basic(username: profile.username, password: password).authorizationHeaderValue,
+            OpenCodeServerAuthentication.basic(username: profile.username, password: password)
+                .authorizationHeaderValue,
             forHTTPHeaderField: "Authorization"
         )
         return request
     }
 
-    func probeJSON(_ path: [String]) async throws -> OpenCodeProbeOutcome {
-        let request = try makeRequest(path: path, query: [], method: "GET", body: nil)
-        let (data, response) = try await session.data(
-            for: request,
-            delegate: redirectDelegate
-        )
-        guard let http = response as? HTTPURLResponse else {
-            return .undecodable(path: request.url?.path ?? "", contentType: nil)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            return .httpError(status: http.statusCode)
-        }
-        if let mimeType = declaredNonJSONMIME(http) {
-            return .nonJSON(path: request.url?.path ?? "", contentType: mimeType)
-        }
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return .undecodable(path: request.url?.path ?? "", contentType: http.mimeType)
-        }
-        return .object(object)
-    }
-
-    func get<Response: Decodable>(
-        _ path: [String],
-        query: [URLQueryItem]
-    ) async throws -> Response {
-        let request = try makeRequest(path: path, query: query, method: "GET", body: nil)
-        return try await perform(request)
-    }
-
-    func post<Body: Encodable, Response: Decodable>(
-        _ path: [String],
-        query: [URLQueryItem] = [],
-        body: Body,
-        timeout: TimeInterval? = nil
-    ) async throws -> Response {
-        let data = try JSONEncoder().encode(body)
-        var request = try makeRequest(path: path, query: query, method: "POST", body: data)
-        if let timeout { request.timeoutInterval = timeout }
-        return try await perform(request)
-    }
-
-    func postWithoutBody<Response: Decodable>(
-        _ path: [String],
-        query: [URLQueryItem]
-    ) async throws -> Response {
-        let request = try makeRequest(path: path, query: query, method: "POST", body: nil)
-        return try await perform(request)
-    }
-
-    func postExpectingEmptyResponse<Body: Encodable>(
-        _ path: [String],
-        query: [URLQueryItem] = [],
-        body: Body
-    ) async throws {
-        let data = try JSONEncoder().encode(body)
-        let request = try makeRequest(path: path, query: query, method: "POST", body: data)
-        try await performExpectingEmptyResponse(request)
-    }
-
-    func postWithoutBodyExpectingEmptyResponse(
-        _ path: [String],
-        query: [URLQueryItem] = []
-    ) async throws {
-        let request = try makeRequest(path: path, query: query, method: "POST", body: nil)
-        try await performExpectingEmptyResponse(request)
-    }
-
-    func performExpectingEmptyResponse(_ request: URLRequest) async throws {
-        let (data, response) = try await session.data(
-            for: request,
-            delegate: redirectDelegate
-        )
-        try validateEmptyResponse(data: data, response: response)
-    }
-
-    func validateEmptyResponse(data: Data, response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse else {
-            throw OpenCodeConnectionError.invalidResponse
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw OpenCodeConnectionError.httpStatus(
-                http.statusCode,
-                serverMessage(from: data)
-            )
-        }
-        if http.statusCode != 204, let mime = declaredNonJSONMIME(http) {
-            throw OpenCodeConnectionError.unexpectedContentType(path: http.url?.path ?? "", contentType: mime)
-        }
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try await session.data(for: request, delegate: redirectDelegate)
     }
 
     func events(
@@ -149,7 +63,7 @@ struct OpenCodeTransport: Sendable {
         query: [URLQueryItem]
     ) -> AsyncThrowingStream<OpenCodeEvent, Error> {
         AsyncThrowingStream(
-            bufferingPolicy: .bufferingNewest(OpenCodeClient.eventBufferLimit)
+            bufferingPolicy: .bufferingNewest(OpenCodeEventStream.bufferLimit)
         ) { continuation in
             let task = Task {
                 do {
@@ -166,7 +80,7 @@ struct OpenCodeTransport: Sendable {
                         for: request,
                         delegate: redirectDelegate
                     )
-                    try OpenCodeClient.validateEventResponse(response)
+                    try OpenCodeEventStream.validateEventResponse(response)
 
                     var lineFramer = OpenCodeSSELineFramer()
                     var parser = OpenCodeSSEParser()
@@ -174,10 +88,12 @@ struct OpenCodeTransport: Sendable {
                         try Task.checkCancellation()
                         guard let line = try lineFramer.ingest(byte: byte) else { continue }
                         if let data = try parser.ingest(line: line) {
-                            guard try OpenCodeClient.yieldEvent(
-                                decoder.decode(OpenCodeEvent.self, from: data),
-                                to: continuation
-                            ) else { return }
+                            guard
+                                try OpenCodeEventStream.yieldEvent(
+                                    decoder.decode(OpenCodeEvent.self, from: data),
+                                    to: continuation
+                                )
+                            else { return }
                         }
                     }
                     lineFramer.discardIncompleteLine()
@@ -193,74 +109,4 @@ struct OpenCodeTransport: Sendable {
         }
     }
 
-    func perform<Response: Decodable>(_ request: URLRequest) async throws -> Response {
-        let (data, response) = try await session.data(
-            for: request,
-            delegate: redirectDelegate
-        )
-        guard let http = response as? HTTPURLResponse else {
-            throw OpenCodeConnectionError.invalidResponse
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw OpenCodeConnectionError.httpStatus(
-                http.statusCode,
-                serverMessage(from: data)
-            )
-        }
-        if let mimeType = declaredNonJSONMIME(http) {
-            throw OpenCodeConnectionError.unexpectedContentType(
-                path: request.url?.path ?? "",
-                contentType: mimeType
-            )
-        }
-        guard !data.isEmpty else { throw OpenCodeConnectionError.emptyResponse }
-        do {
-            return try JSONDecoder().decode(Response.self, from: data)
-        } catch {
-            if Self.looksLikeHTML(data) {
-                throw OpenCodeConnectionError.unexpectedContentType(
-                    path: request.url?.path ?? "",
-                    contentType: http.mimeType
-                )
-            }
-            throw OpenCodeConnectionError.server(
-                "OpenCode returned data this app could not read: \(error.localizedDescription)"
-            )
-        }
-    }
-
-    private func declaredNonJSONMIME(_ http: HTTPURLResponse) -> String? {
-        guard let raw = http.value(forHTTPHeaderField: "Content-Type")?.lowercased()
-        else { return nil }
-        let mime = raw.split(separator: ";").first?
-            .trimmingCharacters(in: .whitespaces) ?? ""
-        guard !mime.isEmpty, !OpenCodeClient.isJSONMIME(mime) else { return nil }
-        return mime
-    }
-
-    private static func looksLikeHTML(_ data: Data) -> Bool {
-        var index = data.startIndex
-        while index < data.endIndex,
-              data[index] == 0x20 || data[index] == 0x09
-                || data[index] == 0x0A || data[index] == 0x0D {
-            index += 1
-        }
-        return index < data.endIndex && data[index] == 0x3C
-    }
-
-    private func serverMessage(from data: Data) -> String? {
-        guard let value = try? JSONDecoder().decode(OpenCodeJSONValue.self, from: data)
-        else { return nil }
-        switch value {
-        case .object(let object):
-            if let direct = object["message"]?.stringValue { return direct }
-            if case .object(let nested) = object["data"],
-               let message = nested["message"]?.stringValue {
-                return message
-            }
-            return nil
-        default:
-            return nil
-        }
-    }
 }

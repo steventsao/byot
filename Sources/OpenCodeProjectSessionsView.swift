@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct OpenCodeProjectSessionsView: View {
+    @State private var client: OpenCodeClient
     @StateObject private var store: OpenCodeProjectStore
     @State private var isCreatingSession = false
     @State private var newSessionTitle = ""
@@ -13,8 +14,9 @@ struct OpenCodeProjectSessionsView: View {
         directory: String
     ) {
         self.name = name
+        _client = State(initialValue: client)
         _store = StateObject(
-            wrappedValue: OpenCodeProjectStore(client: client, directory: directory)
+            wrappedValue: OpenCodeProjectStore(service: client, directory: directory)
         )
     }
 
@@ -27,7 +29,7 @@ struct OpenCodeProjectSessionsView: View {
             ForEach(store.sessions) { session in
                 NavigationLink {
                     OpenCodeSessionView(
-                        client: store.client,
+                        client: client,
                         session: session,
                         directory: session.directory
                     )
@@ -90,7 +92,7 @@ struct OpenCodeProjectSessionsView: View {
         )) {
             if let createdSession {
                 OpenCodeSessionView(
-                    client: store.client,
+                    client: client,
                     session: createdSession,
                     directory: createdSession.directory
                 )
@@ -109,7 +111,7 @@ struct OpenCodeProjectSessionsView: View {
                 }
             }
         } message: {
-            Text("\(store.client.profile.name) · \(store.directory)")
+            Text("\(client.profile.name) · \(store.directory)")
         }
     }
 }

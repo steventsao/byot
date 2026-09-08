@@ -32,10 +32,10 @@ enum OpenCodeProbeOutcome {
 // 200 text/html fallback on every legacy v1 route, so a status code alone
 // proves nothing (#12, #19).
 struct OpenCodeProtocolDetector: Sendable {
-    let client: OpenCodeClient
+    let transport: any OpenCodeHTTPTransport
 
     func probe() async throws -> OpenCodeServerProbe {
-        let legacyOutcome = try await client.probeJSON(["global", "health"])
+        let legacyOutcome = try await transport.probeJSON(["global", "health"])
         if let legacy = legacyOutcome.object,
            let version = legacy["version"] as? String {
             return OpenCodeServerProbe(
@@ -46,7 +46,7 @@ struct OpenCodeProtocolDetector: Sendable {
                 )
             )
         }
-        let currentOutcome = try await client.probeJSON(["api", "health"])
+        let currentOutcome = try await transport.probeJSON(["api", "health"])
         if let current = currentOutcome.object.map(Self.unwrapDataEnvelope) {
             let healthy = current["healthy"] as? Bool ?? false
             let version = current["version"] as? String ?? "unknown"
