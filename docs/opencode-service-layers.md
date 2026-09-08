@@ -5,24 +5,24 @@ their live implementations. `OpenCodeClient` assembles one connection scope from
 a server profile and transport. Its value copies share that connection's protocol
 discovery and adapter, while separate clients have separate scopes.
 
-This follows the service/Layer separation in the vendored Effect source at
-[`0d083ba`](https://github.com/Effect-TS/effect/tree/0d083ba):
+Studying Effect's abstractions informed the design principles below. Each boundary
+addresses a concrete BYOT concern and uses ordinary Swift protocols, values, and
+actors.
 
-| Effect pattern | BYOT equivalent |
+| Design principle | Application in BYOT |
 | --- | --- |
-| Service contracts in `Context` | `OpenCodeWorkspaceServicing`, `OpenCodeSessionBrowsing`, `OpenCodeProjectServicing`, `OpenCodeSessionServicing`, `OpenCodeHTTPTransport` |
-| Layers declare and construct their dependencies | `OpenCodeClient` composes transport, actions, and connection; `OpenCodeLiveConnectionSource` constructs the selected adapter |
-| A shared layer's acquisition is memoized | `OpenCodeConnection` shares in-flight discovery/schema work and caches the resulting adapter |
-| Implementation selected from configuration | Health chooses v1/v2; the v2 server's OpenAPI schema chooses its wire contract |
-| Test layers replace individual services | Stores accept domain services; connection tests replace `OpenCodeConnectionSource`; wire tests replace HTTP transport or URLSession |
-| Scoped resource ownership | The connection owns discovery tasks; each event consumer owns and cancels its stream task |
+| Define contracts around what a consumer needs | Workspace, browser, project, and session stores each accept the operations they use |
+| Hide differences that change independently | Adapters own v1/v2 routes and wire formats; the transport owns HTTP behavior |
+| Make dependencies explicit when constructing an implementation | `OpenCodeClient` assembles the services; `OpenCodeLiveConnectionSource` constructs the selected adapter |
+| Give shared work a clear owner and lifetime | `OpenCodeConnection` shares discovery/schema work for one server; each event consumer owns its stream task |
+| Select an implementation at the boundary | Health selects v1/v2, and the v2 server's schema determines its wire contract |
+| Replace a dependency at the level being tested | Store tests supply domain services; discovery tests replace the connection source; wire tests replace HTTP transport or URLSession |
 
 Reference examples:
 [composition](https://github.com/Effect-TS/effect/blob/0d083ba/ai-docs/src/01_effect/03_services/20_layer-composition.ts),
 [implementation selection](https://github.com/Effect-TS/effect/blob/0d083ba/ai-docs/src/01_effect/03_services/20_layer-unwrap.ts),
 [test layers](https://github.com/Effect-TS/effect/blob/0d083ba/ai-docs/src/09_testing/20_layer-tests.ts),
-and [Layer implementation](https://github.com/Effect-TS/effect/blob/0d083ba/packages/effect/src/Layer.ts).
-The application remains native Swift with no additional runtime dependency.
+and [dependency construction and ownership](https://github.com/Effect-TS/effect/blob/0d083ba/packages/effect/src/Layer.ts).
 
 ```mermaid
 flowchart TD

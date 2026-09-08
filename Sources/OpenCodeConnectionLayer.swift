@@ -1,7 +1,7 @@
 import Foundation
 
-/// Construction is separate from use, like an Effect Layer's service inputs
-/// and outputs. Tests can replace acquisition without emulating an HTTP server.
+/// Separates protocol discovery and adapter construction from their consumers.
+/// Tests can replace acquisition without emulating an HTTP server.
 protocol OpenCodeConnectionSource: Sendable {
     func probe() async throws -> OpenCodeServerProbe
     func makeAdapter(for serverProtocol: OpenCodeServerProtocol) async throws -> any OpenCodeProtocolAdapting
