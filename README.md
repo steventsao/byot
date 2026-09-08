@@ -21,6 +21,7 @@ BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source
 - Answer questions with choices or your own text
 - Queue follow-up prompts while a turn runs, or steer the current one
 - Pick the model per prompt from your server's own catalog
+- Follow your device's appearance, or choose Light or Dark from the home screen's information button
 
 ## Requirements
 
