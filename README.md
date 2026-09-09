@@ -29,6 +29,8 @@ BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source
 
 ## Development
 
+For the public landing page, see [web/README.md](./web/README.md).
+
 Requires Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```bash
