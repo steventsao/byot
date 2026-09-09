@@ -1,18 +1,14 @@
-New in 1.0.12:
+New in 1.0.13:
 
-- Fix duplicate sessions in project grouping when OpenCode 1 returns both its global project and your configured directory. Sessions appear once, under their own directory, and remain available if one overlapping request fails.
-- Repeatable end-to-end compatibility coverage now runs against upstream OpenCode 1.18.29 and OpenCode 2 beta 19271.
+- On iPhone with iOS 26 or later, search now sits in the bottom toolbar beside the New session (Compose) button, leaving more room for the server bar and session list.
+- Search still filters session titles, project names, and paths in both flat and grouped lists. Tap the search field to type, then clear or dismiss it to return to browsing.
 
-Retained from 1.0.11:
+Please check:
 
-- Switch between saved servers using the horizontal server bar.
-- Open sessions directly from the home screen. Projects are now an optional grouping, with expandable session lists.
-- Sort sessions and project groups independently by recent activity, session status, or name. Your grouping and sort preferences are remembered.
-- See Working, retry details, and last activity in the list. Project groups show session counts, active work, retries, and loading errors.
-- Search session titles and project names or paths.
-- Create a session in an existing project or another directory, then go straight to its chat.
-- Sessions load progressively. A project or status error leaves other sessions usable, and unavailable status is labeled explicitly.
+- Search and Compose are on the same bottom row when browsing sessions.
+- Search works with the keyboard open, shows no-match results, and restores the list when cleared.
+- Compose still opens its project menu and creates a session directly.
+- Server switching, project grouping, sorting, and System/Light/Dark appearance still work.
+- Large text keeps search and Compose reachable.
 
-Please check server switching, grouping and sorting, direct chat navigation, and large text. Also verify System/Light/Dark appearance, Stop and retry for stalled turns, attachments, and model selection. Existing OpenCode 1 and OpenCode 2 support is retained.
-
-Compatibility results and simulator screenshots: https://github.com/steventsao/byot/releases/tag/v1.0.12
+OpenCode 1 and OpenCode 2 compatibility, attachment support, and stalled-session recovery are retained. Earlier iOS versions keep their existing search placement.

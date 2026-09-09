@@ -15,6 +15,28 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Provider rate limit"].exists)
         attach("sessions-recent")
 
+        let search = app.searchFields.firstMatch
+        let compose = app.buttons["New session"].firstMatch
+        XCTAssertTrue(search.isHittable)
+        XCTAssertTrue(compose.isHittable)
+        if #available(iOS 26.0, *) {
+            XCTAssertGreaterThan(search.frame.midY, app.frame.height * 0.75)
+            XCTAssertEqual(search.frame.midY, compose.frame.midY, accuracy: 12)
+        }
+        search.tap()
+        search.typeText("Review billing")
+        XCTAssertTrue(app.buttons["session-retry"].waitForExistence(timeout: 5))
+        XCTAssertFalse(active.exists)
+        attach("sessions-bottom-search-filtered")
+        app.buttons["Clear text"].tap()
+        XCTAssertTrue(active.waitForExistence(timeout: 5))
+        if #available(iOS 26.0, *) {
+            app.buttons["close"].tap()
+        } else {
+            app.buttons["Cancel"].tap()
+        }
+        XCTAssertTrue(compose.isHittable)
+
         app.buttons["Session list options"].tap()
         app.buttons["Session status"].tap()
         let retry = app.buttons["session-retry"]

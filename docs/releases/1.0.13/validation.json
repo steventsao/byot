@@ -1,0 +1,25 @@
+{
+  "uniqueTestsCovered": 172,
+  "fullRun": {
+    "total": 172,
+    "passed": 171,
+    "failed": 1,
+    "skipped": 0,
+    "xcresult": "/tmp/byot-upstream-e2e.LRTAB8/tests.xcresult",
+    "failure": "Test driver searched for Cancel; native iOS 26 accessibility label is close."
+  },
+  "focusedRerun": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "xcresult": "/tmp/byot-release-1.0.13/final-browser-tests.xcresult"
+  },
+  "productionSourceChangedAfterFullRun": false,
+  "releaseSimulatorBuild": "passed",
+  "openCodeVersions": [
+    "1.18.29",
+    "0.0.0-beta-19271"
+  ],
+  "simulator": "iPhone 17 Pro / iOS 26.5",
+  "physicalDeviceTested": false
+}

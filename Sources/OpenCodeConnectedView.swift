@@ -20,7 +20,7 @@ struct OpenCodeConnectedView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
     @State private var isVisible = false
-    @State private var search = ""
+    @Binding private var search: String
     @State private var collapsedProjects = Set<String>()
     @State private var createdRoute: OpenCodeSessionRoute?
     @State private var isCreating = false
@@ -28,7 +28,8 @@ struct OpenCodeConnectedView: View {
     @State private var isShowingDirectory = false
     @State private var newDirectory = ""
 
-    init(client: OpenCodeClient) {
+    init(client: OpenCodeClient, search: Binding<String>) {
+        _search = search
         _workspace = StateObject(wrappedValue: OpenCodeWorkspaceStore(client: client))
         _browser = StateObject(wrappedValue: OpenCodeSessionBrowserStore(service: client))
     }
@@ -110,7 +111,6 @@ struct OpenCodeConnectedView: View {
                 BYOTActivityView(.connecting, layout: .blocking)
             }
         }
-        .searchable(text: $search, prompt: "Search sessions or projects")
         .alert("New session", isPresented: $isShowingDirectory) {
             TextField("Working directory", text: $newDirectory)
                 .textInputAutocapitalization(.never)

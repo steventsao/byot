@@ -18,6 +18,7 @@ struct OpenCodeRootView: View {
 
     @StateObject private var profileStore: OpenCodeProfileStore
     @State private var path = NavigationPath()
+    @State private var search = ""
     @State private var isShowingProfileEditor = false
     @State private var profileBeingEdited: OpenCodeServerProfile?
     @State private var profilePendingRemoval: OpenCodeServerProfile?
@@ -37,7 +38,8 @@ struct OpenCodeRootView: View {
                 Group {
                     if let profile = profileStore.activeProfile {
                         OpenCodeConnectedView(
-                            client: makeClient(profile, profileStore.password(for: profile))
+                            client: makeClient(profile, profileStore.password(for: profile)),
+                            search: $search
                         )
                         .id("\(profileFingerprint(profile))|\(profileStore.connectionGeneration)")
                     } else {
@@ -57,19 +59,27 @@ struct OpenCodeRootView: View {
             .background(BYOTBrand.canvas)
             .navigationTitle("BYOT")
             .navigationBarTitleDisplayMode(.inline)
+            .modifier(OpenCodeSessionSearch(text: $search, isEnabled: profileStore.activeProfile != nil))
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("About BYOT", systemImage: "info.circle", action: openAppNavigation)
                         .labelStyle(.iconOnly)
                 }
                 if profileStore.activeProfile != nil {
+                    if #available(iOS 26.0, *) {
+                        DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                        ToolbarSpacer(.flexible, placement: .bottomBar)
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         profileMenu
                     }
                 }
             }
         }
-        .onChange(of: profileStore.activeProfileID) { _, _ in path = NavigationPath() }
+        .onChange(of: profileStore.activeProfileID) { _, _ in
+            path = NavigationPath()
+            search = ""
+        }
         .sheet(isPresented: $isShowingProfileEditor) {
             OpenCodeProfileEditorView(
                 profile: profileBeingEdited,
@@ -157,6 +167,21 @@ struct OpenCodeRootView: View {
     private func profileFingerprint(_ profile: OpenCodeServerProfile) -> String {
         [profile.id.uuidString, profile.baseURL, profile.username, profile.directory]
             .joined(separator: "|")
+    }
+}
+
+/// Keep the search controller on the navigation root that owns its toolbar.
+/// A controller attached to the nested session list cannot activate bottom search.
+private struct OpenCodeSessionSearch: ViewModifier {
+    @Binding var text: String
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.searchable(text: $text, prompt: "Search sessions or projects")
+        } else {
+            content
+        }
     }
 }
 
