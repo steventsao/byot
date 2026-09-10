@@ -1,0 +1,5 @@
+{"path": "/api/session/ses_f7655cbb4ffe3WyjXO4zmv3TCO/permission/per_089aa8719001hkhuLwu1WGiqAN/reply", "body": {"reply": "once"}, "status": 204}
+{"path": "/api/session/ses_f7655cbb4ffe3WyjXO4zmv3TCO/permission/per_089aa9180001uZf14EYk4PflLB/reply", "body": {"reply": "reject"}, "status": 204}
+{"path": "/api/session/ses_f7655cbb4ffe3WyjXO4zmv3TCO/permission/per_089aa9bf0001w64yMqIlZRvHTD/reply", "body": {"reply": "reject"}, "status": 204}
+{"path": "/api/session/ses_f7655cbb4ffe3WyjXO4zmv3TCO/permission/per_089aaa5f7001uY87cSlbexq7pr/reply", "body": {"reply": "always"}, "status": 204}
+{"path": "/api/session/ses_f7655cbb4ffe3WyjXO4zmv3TCO/permission/per_089aac73f001KRaGOIgAqvhksm/reply", "body": {"reply": "reject"}, "status": 204}

@@ -58,7 +58,7 @@ class Model(BaseHTTPRequestHandler):
         pass
 
 
-def proxy_handler(port):
+def proxy_handler(port, permission_audit):
     class Proxy(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -69,6 +69,11 @@ def proxy_handler(port):
             try:
                 connection.request(self.command, self.path, body=body, headers=headers)
                 response = connection.getresponse()
+                if self.command == "POST" and "/permission/" in self.path and self.path.endswith("/reply"):
+                    # Only isolated test replies; never log authorization headers.
+                    with permission_audit.open("a") as audit:
+                        audit.write(json.dumps({"path": self.path, "body": json.loads(body),
+                                                "status": response.status}) + "\n")
                 self.send_response(response.status)
                 for key, value in response.getheaders():
                     if key.lower() not in {"transfer-encoding", "connection", "content-length"}:
@@ -148,7 +153,9 @@ def main():
                 model_config["limit"]["input"] = 1000000
                 config = {"model": "fixture/test", "update": "disable", "share": "disabled", "providers": {"fixture": {
                     "name": "BYOT Fixture", "package": "aisdk:@ai-sdk/openai-compatible", "settings": options,
-                    "models": {"test": model_config}}}, "permissions": [{"action": "byot_acceptance", "resource": "*", "effect": "ask"}]}
+                    "models": {"test": model_config}}}, "permissions": [
+                        {"action": "byot_acceptance", "resource": "*", "effect": "ask"},
+                        {"action": "shell", "resource": "*", "effect": "ask"}]}
             config["command" if major == "v1" else "commands"] = {
                 "byot-acceptance": {"template": "Reply with BYOT upstream compatibility verified. Arguments: $ARGUMENTS",
                                     "description": "Verify custom command arguments"}}
@@ -177,7 +184,7 @@ def main():
                 child = subprocess.Popen([executable, "serve", "--hostname", "127.0.0.1", "--port", str(port)],
                                          cwd=project, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             children.append(child)
-            proxy = ThreadingHTTPServer(("127.0.0.1", tls_port), proxy_handler(port))
+            proxy = ThreadingHTTPServer(("127.0.0.1", tls_port), proxy_handler(port, root / "permission-replies.jsonl"))
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             context.load_cert_chain(cert, key)
             proxy.socket = context.wrap_socket(proxy.socket, server_side=True)
