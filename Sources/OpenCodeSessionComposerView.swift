@@ -202,6 +202,9 @@ struct OpenCodeSessionComposerView: View {
             guard !items.isEmpty else { return }
             importPhotos(items)
         }
+        .onChange(of: store.modelFailure) { _, failure in
+            if failure != nil { isFocused = false }
+        }
         .alert(
             "Couldn’t Add Attachment",
             isPresented: Binding(
@@ -267,6 +270,7 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private func showModelPicker() {
+        isFocused = false
         isShowingModelPicker = true
     }
 

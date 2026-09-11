@@ -27,6 +27,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             app.buttons["Send message"].tap()
             let choose = app.buttons["Choose another model"]
             XCTAssertTrue(choose.waitForExistence(timeout: 30), app.debugDescription)
+            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10), "Model recovery must be visible above the composer")
             app.swipeUp()
             attach("\(major)-retired-model-recovery")
             XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "no longer available")).firstMatch.exists)
@@ -37,6 +38,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             active.tap()
             let retry = app.buttons["retry-model-failure"]
             XCTAssertTrue(retry.waitForExistence(timeout: 10), app.debugDescription)
+            XCTAssertTrue(retry.isHittable, "The composer must not cover model recovery")
             retry.tap()
             let reply = app.staticTexts["BYOT upstream compatibility verified."].firstMatch
             XCTAssertTrue(reply.waitForExistence(timeout: 30), app.debugDescription)
