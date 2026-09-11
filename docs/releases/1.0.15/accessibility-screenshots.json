@@ -1,0 +1,67 @@
+[
+  {
+    "testIdentifier": "OpenCodeAttachmentUITests/testAttachmentPickerScreenshot()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeAttachmentUITests/testAttachmentPickerScreenshot",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "E333B654-C53F-418F-AAEA-8D0669D64CA6",
+    "deviceName": "BYOT Accessibility",
+    "exportedFileName": "64472AFA-D235-4C7F-84DB-039473E99A82.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "prompt-attachments_0_A56EA134-0AE4-489C-AD6C-835A1F06B393.png",
+    "timestamp": 1789161861.039,
+    "file": "prompt-attachments.png",
+    "sha256": "e95b4f5e5a7683116a57b282462fa8eacad148d9261b87ea9928dabaef12f31b"
+  },
+  {
+    "testIdentifier": "OpenCodeAttachmentUITests/testAttachmentRemovalAtLargestTextSize()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeAttachmentUITests/testAttachmentRemovalAtLargestTextSize",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "E333B654-C53F-418F-AAEA-8D0669D64CA6",
+    "deviceName": "BYOT Accessibility",
+    "exportedFileName": "EFA732C7-3F4F-406D-8230-50331EE2CCB0.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "attachment-largest-text_0_1966B2D6-0E88-484A-82C3-6AF02FC5939D.png",
+    "timestamp": 1789161881.698,
+    "file": "attachment-largest-text.png",
+    "sha256": "62f13c43c11bab759b29be4c193523c91dacf3cb62ab9229798c7ec542c7b93b"
+  },
+  {
+    "testIdentifier": "OpenCodeAttachmentUITests/testEmptyModelPickerDoesNotOverlapAutomaticAtLargestTextSize()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeAttachmentUITests/testEmptyModelPickerDoesNotOverlapAutomaticAtLargestTextSize",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "E333B654-C53F-418F-AAEA-8D0669D64CA6",
+    "deviceName": "BYOT Accessibility",
+    "exportedFileName": "2B133525-666A-45E4-AE14-1D6A793BED57.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "empty-model-picker-largest-text_0_AC69FA22-D8E7-483A-B2AD-16653DF16345.png",
+    "timestamp": 1789161895.175,
+    "file": "empty-model-picker-largest-text.png",
+    "sha256": "6b370da607660b8575fd7bace5cb1ede61bab140ad218564045faa7a26be7a17"
+  },
+  {
+    "testIdentifier": "OpenCodeAttachmentUITests/testImageAndDocumentPreviewsKeepTheDraft()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeAttachmentUITests/testImageAndDocumentPreviewsKeepTheDraft",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "E333B654-C53F-418F-AAEA-8D0669D64CA6",
+    "deviceName": "BYOT Accessibility",
+    "exportedFileName": "7F3F87B4-171C-4D4C-A44C-B310CEC1B5D4.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "preview-review-notes_0_038B2BE2-F88B-4072-8FC3-B020248DF820.txt",
+    "timestamp": 1789161935.133,
+    "file": "preview-review-notes.png",
+    "sha256": "89b94174b2174a1c54e7ce6bdef2d9779f9efb4792fdd87ba0c9356ff0bcedc7"
+  },
+  {
+    "testIdentifier": "OpenCodeAttachmentUITests/testImageAndDocumentPreviewsKeepTheDraft()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeAttachmentUITests/testImageAndDocumentPreviewsKeepTheDraft",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "E333B654-C53F-418F-AAEA-8D0669D64CA6",
+    "deviceName": "BYOT Accessibility",
+    "exportedFileName": "64A1055D-6E07-4E74-8239-91AB1DB94F5D.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "preview-byot-design_0_CE94AFCF-F079-49C8-BE1F-76F12D903B11.png",
+    "timestamp": 1789161919.055,
+    "file": "preview-byot-design.png",
+    "sha256": "539a1796ee5deeb58291cd42ab385f884b445fe45cdfcb0927eea501dedeac66"
+  }
+]

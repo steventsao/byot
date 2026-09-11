@@ -1,0 +1,41 @@
+[
+  {
+    "testIdentifier": "OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "2F75CE3A-788A-453D-8580-98DF2BB70830",
+    "deviceName": "BYOT Accessibility",
+    "exportedFileName": "BB371756-BB33-45F9-9D8B-FDF170F9843A.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "new-session-navigation_0_68EB1510-4383-4FF7-8BFC-1EBF5A804383.png",
+    "timestamp": 1789163000.581,
+    "file": "new-session-navigation.png",
+    "sha256": "5c60bcaf825ae3f329c113cfd3a2edc58d8012061947e03344c79d4644cf2733"
+  },
+  {
+    "testIdentifier": "OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "2F75CE3A-788A-453D-8580-98DF2BB70830",
+    "deviceName": "BYOT Accessibility",
+    "exportedFileName": "54AD436A-54E2-401C-B5F1-A22B3F700FE6.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "direct-session-navigation_0_6745FF0C-C8DA-4734-94D3-130A9FDC7873.png",
+    "timestamp": 1789162996.204,
+    "file": "direct-session-navigation.png",
+    "sha256": "c50e468ac0a35e9485545a8fb195421033c7a838b2ca50ffc17f86bc478c9e9c"
+  },
+  {
+    "testIdentifier": "OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "2F75CE3A-788A-453D-8580-98DF2BB70830",
+    "deviceName": "BYOT Accessibility",
+    "exportedFileName": "90191002-AFD4-4EF4-B84D-31F7C0880B4E.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "sessions-grouped_0_BC5D8CEE-552B-472F-BB07-8BBE3C256803.png",
+    "timestamp": 1789162985.724,
+    "file": "sessions-grouped.png",
+    "sha256": "ac76924143a74718d994e894df8a2cd3379cecf1428bffa1a502600c8a2d8a71"
+  }
+]

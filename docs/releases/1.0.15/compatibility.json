@@ -1,0 +1,49 @@
+{
+  "app": {
+    "version": "1.0.15",
+    "build": "20260911144503",
+    "bundleID": "com.steventsao.byot",
+    "applicationSourceCommit": "a936d5172cc556388312f0421ccd377175c5cc67",
+    "archiveSourceCommit": "a936d5172cc556388312f0421ccd377175c5cc67",
+    "ipaSHA256": "39dfd265ecfd41d33fb555811446eac3a546d775a6408ef99a8a559616a585d0"
+  },
+  "upstream": {
+    "v1": {
+      "package": "opencode-ai",
+      "version": "1.18.29"
+    },
+    "v2": {
+      "package": "@opencode-ai/cli",
+      "version": "0.0.0-beta-19271"
+    }
+  },
+  "validation": {
+    "distinctUpstreamAndRegressionChecksWithPassingRun": 190,
+    "distinctAppearanceAttachmentNavigationChecksWithPassingRun": 19,
+    "singleUninterruptedGreenRun": false,
+    "unitChecksOverlapBetweenRunners": true,
+    "xctest": 71,
+    "swiftTesting": 117,
+    "liveUIWorkflows": 2,
+    "appearanceAttachmentNavigationUIWorkflows": 10,
+    "resultFiles": [
+      "upstream-summary.json",
+      "recovery-summary.json",
+      "accessibility-summary.json",
+      "navigation-summary.json",
+      "server-tap-summary.json"
+    ],
+    "scope": "iPhone 17 Pro simulators, iOS 26.3.1 and 26.5; production HTTPS/authentication/Keychain with deterministic local provider",
+    "physicalDeviceTested": false,
+    "paidProviderTested": false,
+    "liveWindowsHostTested": false,
+    "knownLimitation": "The grouped/relaunch/server-tap test failed on the local iOS 26.3 simulator and passed unchanged on iOS 26.5. The local simulator also failed standalone app launch; the cause is unconfirmed."
+  },
+  "archive": {
+    "appleValidation": "passed",
+    "codeSignatureVerified": true,
+    "architecture": "arm64",
+    "testBundles": [],
+    "debugFixtureMarkersFound": []
+  }
+}
