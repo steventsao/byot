@@ -1,177 +1,12 @@
 import Foundation
 
-struct OpenCodeSSEParser: Sendable {
-    static let defaultMaxEventBytes = 8 * 1_024 * 1_024
-
-    private var data = Data()
-    private var hasDataField = false
-    private var eventBytes = 0
-    private let maxEventBytes: Int
-
-    init(maxEventBytes: Int = Self.defaultMaxEventBytes) {
-        precondition(maxEventBytes > 0)
-        self.maxEventBytes = maxEventBytes
-    }
-
-    mutating func ingest(line: String) throws -> Data? {
-        if line.isEmpty {
-            return dispatch()
-        }
-        let normalizedLineBytes = line.utf8.count + 1
-        guard normalizedLineBytes <= maxEventBytes - eventBytes else {
-            discard()
-            throw OpenCodeConnectionError.eventRecordTooLarge(maxBytes: maxEventBytes)
-        }
-        eventBytes += normalizedLineBytes
-
-        let field: Substring
-        var value: Substring
-        if let colon = line.firstIndex(of: ":") {
-            field = line[..<colon]
-            value = line[line.index(after: colon)...]
-            if value.first == " " { value = value.dropFirst() }
-        } else {
-            field = line[...]
-            value = ""
-        }
-        guard field == "data" else {
-            return nil
-        }
-        if hasDataField { data.append(0x0A) }
-        data.append(contentsOf: value.utf8)
-        hasDataField = true
-        return nil
-    }
-
-    mutating func discard() {
-        data.removeAll(keepingCapacity: true)
-        hasDataField = false
-        eventBytes = 0
-    }
-
-    private mutating func dispatch() -> Data? {
-        let result = hasDataField ? data : nil
-        defer { discard() }
-        return result
-    }
-}
-
-struct OpenCodeSSELineFramer: Sendable {
-    static let defaultMaxLineBytes = 2 * 1_024 * 1_024
-
-    private var lineBytes: [UInt8] = []
-    private var bomProbe: [UInt8] = []
-    private var checkingBOM = true
-    private var swallowLF = false
-    private let maxLineBytes: Int
-
-    init(maxLineBytes: Int = Self.defaultMaxLineBytes) {
-        precondition(maxLineBytes > 0)
-        self.maxLineBytes = maxLineBytes
-    }
-
-    mutating func ingest(byte: UInt8) throws -> String? {
-        if checkingBOM {
-            let bom: [UInt8] = [0xEF, 0xBB, 0xBF]
-            if byte == bom[bomProbe.count] {
-                bomProbe.append(byte)
-                if bomProbe.count == bom.count {
-                    bomProbe.removeAll(keepingCapacity: false)
-                    checkingBOM = false
-                }
-                return nil
-            }
-            checkingBOM = false
-            for prefixByte in bomProbe {
-                try appendLineByte(prefixByte)
-            }
-            bomProbe.removeAll(keepingCapacity: false)
-        }
-
-        if swallowLF {
-            swallowLF = false
-            if byte == 0x0A { return nil }
-        }
-
-        switch byte {
-        case 0x0D:
-            swallowLF = true
-            return takeLine()
-        case 0x0A:
-            return takeLine()
-        default:
-            try appendLineByte(byte)
-            return nil
-        }
-    }
-
-    mutating func discardIncompleteLine() {
-        lineBytes.removeAll(keepingCapacity: true)
-        bomProbe.removeAll(keepingCapacity: false)
-        checkingBOM = false
-        swallowLF = false
-    }
-
-    private mutating func appendLineByte(_ byte: UInt8) throws {
-        guard lineBytes.count < maxLineBytes else {
-            discardIncompleteLine()
-            throw OpenCodeConnectionError.eventLineTooLong(maxBytes: maxLineBytes)
-        }
-        lineBytes.append(byte)
-    }
-
-    private mutating func takeLine() -> String {
-        defer { lineBytes.removeAll(keepingCapacity: true) }
-        return String(decoding: lineBytes, as: UTF8.self)
-    }
-}
-
-private struct OpenCodeDataResponse<Value: Decodable>: Decodable {
-    let data: Value
-}
-
-private struct OpenCodePromptTextPart: Encodable {
-    let type = "text"
-    let text: String
-}
-
-private struct OpenCodePromptFilePart: Encodable {
-    let type = "file"
-    let mime: String
-    let filename: String
-    let url: String
-}
-
-private enum OpenCodePromptPart: Encodable {
-    case text(OpenCodePromptTextPart)
-    case file(OpenCodePromptFilePart)
-
-    func encode(to encoder: Encoder) throws {
-        switch self {
-        case .text(let part):
-            try part.encode(to: encoder)
-        case .file(let part):
-            try part.encode(to: encoder)
-        }
-    }
-}
-
-private struct OpenCodePromptModel: Encodable {
-    let providerID: String
-    let modelID: String
-}
-
-private struct OpenCodePromptBody: Encodable {
-    let model: OpenCodePromptModel?
-    let parts: [OpenCodePromptPart]
-}
-
+/// Composition root and normalized service facade. Each instance builds one
+/// connection scope; value copies share its negotiation and transport services.
 struct OpenCodeClient: Sendable {
-    static let eventBufferLimit = 16
-
     let profile: OpenCodeServerProfile
-    private let transport: OpenCodeTransport
-    private let protocolCache: OpenCodeProtocolCache
+    let transport: any OpenCodeHTTPTransport
+    private let connection: OpenCodeConnection
+    private let actions: OpenCodeActions
 
     init(
         profile: OpenCodeServerProfile,
@@ -179,18 +14,37 @@ struct OpenCodeClient: Sendable {
         session: URLSession = .shared,
         serverProtocol: OpenCodeServerProtocol? = nil
     ) {
+        self.init(
+            profile: profile,
+            transport: OpenCodeTransport(profile: profile, password: password, session: session),
+            serverProtocol: serverProtocol
+        )
+    }
+
+    init(
+        profile: OpenCodeServerProfile, transport: any OpenCodeHTTPTransport,
+        serverProtocol: OpenCodeServerProtocol? = nil
+    ) {
         self.profile = profile
-        transport = OpenCodeTransport(profile: profile, password: password, session: session)
-        protocolCache = OpenCodeProtocolCache(serverProtocol)
+        self.transport = transport
+        actions = OpenCodeActions(transport: transport)
+        connection = OpenCodeConnection(
+            source: OpenCodeLiveConnectionSource(transport: transport, profile: profile),
+            serverProtocol: serverProtocol
+        )
+    }
+
+    func probeServer() async throws -> OpenCodeServerProbe {
+        try await connection.probe()
     }
 
     func health() async throws -> OpenCodeHealth {
-        try await get(["global", "health"], query: [])
+        try await transport.get(["global", "health"], query: [])
     }
 
     func experimentalCapabilities() async throws -> OpenCodeCapabilityProbeResult {
         do {
-            let capabilities: OpenCodeCapabilities = try await get(
+            let capabilities: OpenCodeCapabilities = try await transport.get(
                 ["experimental", "capabilities"],
                 query: []
             )
@@ -201,9 +55,7 @@ struct OpenCodeClient: Sendable {
     }
 
     func probeCompatibility() async throws -> OpenCodeCompatibilitySummary {
-        let probe = try await OpenCodeProtocolDetector(client: self).probe()
-        protocolCache.invalidateContract()
-        protocolCache.store(probe.protocol)
+        let probe = try await connection.probe()
         let verdict = OpenCodeCompatibilityEvaluator.evaluate(
             health: probe.health,
             serverProtocol: probe.protocol
@@ -215,7 +67,8 @@ struct OpenCodeClient: Sendable {
                 capabilityProbe: .unavailable
             )
         }
-        let capabilityProbe = probe.protocol == .v1
+        let capabilityProbe =
+            probe.protocol == .v1
             ? try await experimentalCapabilities()
             : .unavailable
         return OpenCodeCompatibilitySummary(
@@ -225,52 +78,27 @@ struct OpenCodeClient: Sendable {
         )
     }
 
-    // Raw JSON probe for protocol detection. `.object` carries the decoded
-    // body only when the route answers 2xx with a JSON-parseable object; a
-    // declared non-JSON content type (e.g. the OpenCode 2 web UI's text/html
-    // fallback) and non-2xx statuses are reported as distinct outcomes so the
-    // detector can surface an actionable error instead of a generic one.
-    // Used by OpenCodeProtocolDetector only.
-    func probeJSON(_ path: [String]) async throws -> OpenCodeProbeOutcome {
-        try await transport.probeJSON(path)
+    func capabilities() async throws -> OpenCodeProtocolCapabilities {
+        try await connection.adapter().capabilities
     }
-
-    static func isJSONMIME(_ mimeType: String) -> Bool {
-        mimeType == "application/json" || mimeType.hasSuffix("+json")
-    }
-
-    // Returns the response's MIME type only when the server actually declared
-    // a non-JSON one. HTTPURLResponse.mimeType falls back to an inferred
-    // "text/plain" when no Content-Type header is present, so that value is
-    // treated as "undeclared" rather than as a real type.
-    private func declaredNonJSONMIME(_ http: HTTPURLResponse) -> String? {
-        guard let raw = http.value(forHTTPHeaderField: "Content-Type")?.lowercased()
-        else { return nil }
-        let mime = raw.split(separator: ";").first?
-            .trimmingCharacters(in: .whitespaces) ?? ""
-        guard !mime.isEmpty, !Self.isJSONMIME(mime) else { return nil }
-        return mime
-    }
-
-    func capabilities() async throws -> OpenCodeProtocolCapabilities { try await protocolAdapter().capabilities }
 
     func listProjects() async throws -> [OpenCodeProject] {
-        try await protocolAdapter().listProjects(using: transport, profile: profile)
+        try await connection.adapter().listProjects()
     }
 
     func listSessions(directory: String) async throws -> [OpenCodeSession] {
-        try await protocolAdapter().listSessions(using: transport, directory: directory)
+        try await connection.adapter().listSessions(directory: directory)
     }
 
     func createSession(directory: String, title: String?) async throws -> OpenCodeSession {
-        try await protocolAdapter().createSession(using: transport, directory: directory, title: title)
+        try await connection.adapter().createSession(directory: directory, title: title)
     }
 
     func connectedProviderModels(
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodeProviderModels] {
-        try await protocolAdapter().connectedProviderModels(using: transport, directory: directory, workspace: workspace)
+        try await connection.adapter().connectedProviderModels(directory: directory, workspace: workspace)
     }
 
     func messages(
@@ -278,7 +106,8 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodeMessageEnvelope] {
-        try await protocolAdapter().messages(using: transport, sessionID: sessionID, directory: directory, workspace: workspace)
+        try await connection.adapter().messages(
+            sessionID: sessionID, directory: directory, workspace: workspace)
     }
 
     func sendMessage(
@@ -290,18 +119,9 @@ struct OpenCodeClient: Sendable {
         attachments: [OpenCodePromptAttachment] = [],
         promptID: UUID = UUID()
     ) async throws {
-        try await protocolAdapter().sendMessage(using: transport, sessionID: sessionID, directory: directory, workspace: workspace, model: model, text: text, attachments: attachments, promptID: promptID)
-    }
-
-    func makeSendMessageRequest(
-        sessionID: String,
-        directory: String,
-        workspace: String? = nil,
-        model: OpenCodeModelOption? = nil,
-        text: String,
-        attachments: [OpenCodePromptAttachment] = []
-    ) throws -> URLRequest {
-        try OpenCodeV1Adapter().makeSendMessageRequest(using: transport, sessionID: sessionID, directory: directory, workspace: workspace, model: model, text: text, attachments: attachments)
+        try await connection.adapter().sendMessage(
+            sessionID: sessionID, directory: directory, workspace: workspace, model: model, text: text,
+            attachments: attachments, promptID: promptID)
     }
 
     @discardableResult
@@ -310,7 +130,8 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws -> Bool {
-        try await protocolAdapter().abortSession(using: transport, sessionID: sessionID, directory: directory, workspace: workspace)
+        try await connection.adapter().abortSession(
+            sessionID: sessionID, directory: directory, workspace: workspace)
     }
 
     func diffs(
@@ -318,169 +139,67 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodeDiff] {
-        try await protocolAdapter().diffs(using: transport, sessionID: sessionID, directory: directory, workspace: workspace)
+        try await connection.adapter().diffs(sessionID: sessionID, directory: directory, workspace: workspace)
     }
 
     func sessionStatuses(
         directory: String,
         workspace: String? = nil
     ) async throws -> [String: OpenCodeSessionStatus] {
-        try await protocolAdapter().sessionStatuses(using: transport, directory: directory, workspace: workspace)
+        try await connection.adapter().sessionStatuses(directory: directory, workspace: workspace)
     }
 
-    func permissions(
-        directory: String,
-        workspace: String? = nil
-    ) async throws -> [OpenCodePermissionRequest] {
-        if try await protocolAdapter().serverProtocol == .v2 { return [] }
-        let requests: [OpenCodePermissionRequest] = try await get(
-            ["permission"],
-            query: instanceQuery(directory: directory, workspace: workspace)
-        )
-        return requests.map { request in
-            var request = request
-            request.apiVersion = .legacy
-            return request
-        }
+    func permissions(directory: String, workspace: String? = nil) async throws -> [OpenCodePermissionRequest]
+    {
+        if try await connection.adapter().serverProtocol == .v2 { return [] }
+        return try await actions.permissions(directory: directory, workspace: workspace)
     }
 
-    func reply(
-        to permission: OpenCodePermissionRequest,
-        directory: String,
-        workspace: String? = nil,
-        reply: OpenCodePermissionReply
-    ) async throws {
-        struct Body: Encodable { let reply: OpenCodePermissionReply }
-        switch permission.resolvedAPIVersion {
-        case .legacy:
-            let _: Bool = try await post(
-                ["permission", permission.id, "reply"],
-                query: instanceQuery(directory: directory, workspace: workspace),
-                body: Body(reply: reply)
-            )
-        case .v2:
-            try await postExpectingEmptyResponse(
-                ["api", "session", permission.sessionID, "permission", permission.id, "reply"],
-                body: Body(reply: reply)
-            )
-        }
-    }
-
-    func questions(
-        directory: String,
-        workspace: String? = nil
-    ) async throws -> [OpenCodeQuestionRequest] {
-        if try await protocolAdapter().serverProtocol == .v2 { return [] }
-        let requests: [OpenCodeQuestionRequest] = try await get(
-            ["question"],
-            query: instanceQuery(directory: directory, workspace: workspace)
-        )
-        return requests.map { request in
-            var request = request
-            request.apiVersion = .legacy
-            return request
-        }
+    func questions(directory: String, workspace: String? = nil) async throws -> [OpenCodeQuestionRequest] {
+        if try await connection.adapter().serverProtocol == .v2 { return [] }
+        return try await actions.questions(directory: directory, workspace: workspace)
     }
 
     func v2Permissions(sessionID: String) async throws -> [OpenCodePermissionRequest] {
-        do {
-            let response: OpenCodeDataResponse<[OpenCodePermissionV2Request]> = try await get(
-                ["api", "session", sessionID, "permission"],
-                query: []
-            )
-            return response.data.map(\.normalized)
-        } catch let error as OpenCodeConnectionError {
-            if error.isUnsupportedV2ListRoute { return [] }
-            throw error
-        }
+        try await actions.v2Permissions(sessionID: sessionID)
     }
 
     func v2Questions(sessionID: String) async throws -> [OpenCodeQuestionRequest] {
-        if let adapter = try await protocolAdapter() as? OpenCodeV2Adapter, adapter.contract.forms {
-            let response: OpenCodeDataResponse<[OpenCodeForm]> = try await get(["api", "session", sessionID, "form"], query: [])
-            return response.data.map(\.normalized)
-        }
-        do {
-            let response: OpenCodeDataResponse<[OpenCodeQuestionRequest]> = try await get(
-                ["api", "session", sessionID, "question"],
-                query: []
-            )
-            return response.data.map { request in
-                var request = request
-                request.apiVersion = .v2
-                return request
-            }
-        } catch let error as OpenCodeConnectionError {
-            if error.isUnsupportedV2ListRoute { return [] }
-            throw error
-        }
+        let usesForms = try await connection.adapter().usesForms
+        return try await actions.v2Questions(sessionID: sessionID, usesForms: usesForms)
+    }
+
+    func reply(
+        to permission: OpenCodePermissionRequest, directory: String, workspace: String? = nil,
+        reply: OpenCodePermissionReply
+    ) async throws {
+        try await actions.reply(to: permission, directory: directory, workspace: workspace, reply: reply)
     }
 
     func answer(
-        _ question: OpenCodeQuestionRequest,
-        directory: String,
-        workspace: String? = nil,
-        answers: [[String]]
+        _ question: OpenCodeQuestionRequest, directory: String, workspace: String? = nil, answers: [[String]]
     ) async throws {
-        if let form = question.form {
-            struct FormBody: Encodable { let answer: [String: OpenCodeJSONValue] }
-            try await postExpectingEmptyResponse(["api", "session", question.sessionID, "form", question.id, "reply"], body: FormBody(answer: try form.answer(answers)))
-            return
-        }
-        struct Body: Encodable { let answers: [[String]] }
-        switch question.resolvedAPIVersion {
-        case .legacy:
-            let _: Bool = try await post(
-                ["question", question.id, "reply"],
-                query: instanceQuery(directory: directory, workspace: workspace),
-                body: Body(answers: answers)
-            )
-        case .v2:
-            try await postExpectingEmptyResponse(
-                ["api", "session", question.sessionID, "question", question.id, "reply"],
-                body: Body(answers: answers)
-            )
-        }
+        try await actions.answer(question, directory: directory, workspace: workspace, answers: answers)
     }
 
-    func reject(
-        _ question: OpenCodeQuestionRequest,
-        directory: String,
-        workspace: String? = nil
-    ) async throws {
-        if question.form != nil {
-            let request = try makeRequest(path: ["api", "session", question.sessionID, "form", question.id, "cancel"], query: [], method: "POST", body: nil)
-            try await performExpectingEmptyResponse(request)
-            return
-        }
-        switch question.resolvedAPIVersion {
-        case .legacy:
-            let _: Bool = try await postWithoutBody(
-                ["question", question.id, "reject"],
-                query: instanceQuery(directory: directory, workspace: workspace)
-            )
-        case .v2:
-            let request = try makeRequest(
-                path: ["api", "session", question.sessionID, "question", question.id, "reject"],
-                query: [],
-                method: "POST",
-                body: nil
-            )
-            try await performExpectingEmptyResponse(request)
-        }
+    func reject(_ question: OpenCodeQuestionRequest, directory: String, workspace: String? = nil) async throws
+    {
+        try await actions.reject(question, directory: directory, workspace: workspace)
     }
 
     func events(
         directory: String,
         workspace: String? = nil
     ) -> AsyncThrowingStream<OpenCodeEvent, Error> {
-        AsyncThrowingStream(bufferingPolicy: .bufferingNewest(Self.eventBufferLimit)) { continuation in
+        AsyncThrowingStream(bufferingPolicy: .bufferingNewest(OpenCodeEventStream.bufferLimit)) {
+            continuation in
             let task = Task {
                 do {
-                    let route = try await protocolAdapter().eventRoute(directory: directory, workspace: workspace)
+                    let route = try await connection.adapter().eventRoute(
+                        directory: directory, workspace: workspace)
                     for try await event in transport.events(path: route.path, query: route.query) {
                         try Task.checkCancellation()
-                        guard try Self.yieldEvent(event, to: continuation) else { return }
+                        guard try OpenCodeEventStream.yieldEvent(event, to: continuation) else { return }
                     }
                     continuation.finish()
                 } catch is CancellationError {
@@ -493,141 +212,4 @@ struct OpenCodeClient: Sendable {
         }
     }
 
-    func makeRequest(
-        path: [String],
-        query: [URLQueryItem],
-        method: String,
-        body: Data?
-    ) throws -> URLRequest {
-        try transport.makeRequest(path: path, query: query, method: method, body: body)
-    }
-
-    static func yieldEvent(
-        _ event: OpenCodeEvent,
-        to continuation: AsyncThrowingStream<OpenCodeEvent, Error>.Continuation
-    ) throws -> Bool {
-        switch continuation.yield(event) {
-        case .enqueued:
-            return true
-        case .dropped:
-            throw OpenCodeConnectionError.eventBufferOverflow
-        case .terminated:
-            return false
-        @unknown default:
-            throw OpenCodeConnectionError.eventBufferOverflow
-        }
-    }
-
-    static func validateEventResponse(_ response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse else {
-            throw OpenCodeConnectionError.invalidResponse
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw OpenCodeConnectionError.httpStatus(http.statusCode, nil)
-        }
-        guard http.mimeType?.lowercased() == "text/event-stream" else {
-            throw OpenCodeConnectionError.unexpectedEventContentType
-        }
-    }
-
-    private func get<Response: Decodable>(
-        _ path: [String],
-        query: [URLQueryItem]
-    ) async throws -> Response {
-        try await transport.get(path, query: query)
-    }
-
-    private func post<Body: Encodable, Response: Decodable>(
-        _ path: [String],
-        query: [URLQueryItem],
-        body: Body,
-        timeout: TimeInterval? = nil
-    ) async throws -> Response {
-        try await transport.post(path, query: query, body: body, timeout: timeout)
-    }
-
-    private func postWithoutBody<Response: Decodable>(
-        _ path: [String],
-        query: [URLQueryItem]
-    ) async throws -> Response {
-        try await transport.postWithoutBody(path, query: query)
-    }
-
-    private func postExpectingEmptyResponse<Body: Encodable>(
-        _ path: [String],
-        body: Body
-    ) async throws {
-        try await transport.postExpectingEmptyResponse(path, body: body)
-    }
-
-    private func performExpectingEmptyResponse(_ request: URLRequest) async throws {
-        try await transport.performExpectingEmptyResponse(request)
-    }
-
-    func validateEmptyResponse(data: Data, response: URLResponse) throws {
-        try transport.validateEmptyResponse(data: data, response: response)
-    }
-
-    private func perform<Response: Decodable>(_ request: URLRequest) async throws -> Response {
-        try await transport.perform(request)
-    }
-
-    private static func looksLikeHTML(_ data: Data) -> Bool {
-        var index = data.startIndex
-        while index < data.endIndex,
-              data[index] == 0x20 || data[index] == 0x09 || data[index] == 0x0A || data[index] == 0x0D {
-            index += 1
-        }
-        return index < data.endIndex && data[index] == 0x3C // "<"
-    }
-
-    private func instanceQuery(
-        directory: String?,
-        workspace: String? = nil
-    ) -> [URLQueryItem] {
-        var items: [URLQueryItem] = []
-        if let directory, !directory.isEmpty {
-            items.append(URLQueryItem(name: "directory", value: directory))
-        }
-        if let workspace, !workspace.isEmpty {
-            items.append(URLQueryItem(name: "workspace", value: workspace))
-        }
-        return items
-    }
-
-    private func serverMessage(from data: Data) -> String? {
-        guard let value = try? JSONDecoder().decode(OpenCodeJSONValue.self, from: data) else { return nil }
-        switch value {
-        case .object(let object):
-            if let direct = object["message"]?.stringValue { return direct }
-            if case .object(let nested) = object["data"],
-               let message = nested["message"]?.stringValue {
-                return message
-            }
-            return nil
-        default:
-            return nil
-        }
-    }
-
-    func protocolCapabilities() async throws -> OpenCodeProtocolCapabilities {
-        try await protocolAdapter().capabilities
-    }
-
-    private func protocolAdapter() async throws -> any OpenCodeProtocolAdapting {
-        let detected: OpenCodeServerProtocol
-        if let cached = protocolCache.read() {
-            detected = cached
-        } else {
-            let probe = try await OpenCodeProtocolDetector(client: self).probe()
-            protocolCache.store(probe.protocol)
-            detected = probe.protocol
-        }
-        guard detected == .v2 else { return OpenCodeV1Adapter() }
-        if let contract = protocolCache.readContract() { return OpenCodeV2Adapter(contract: contract) }
-        let schema: OpenCodeJSONValue = try await transport.get(["openapi.json"], query: [])
-        let contract = try OpenCodeV2Contract(schema: schema)
-        protocolCache.storeContract(contract)
-        return OpenCodeV2Adapter(contract: contract)
-    }
 }

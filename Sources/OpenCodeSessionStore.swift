@@ -40,7 +40,7 @@ final class OpenCodeSessionStore: ObservableObject {
     let session: OpenCodeSession
     let directory: String
     private let workspace: String?
-    private let client: OpenCodeClient
+    private let service: any OpenCodeSessionServicing
     private let defaults: UserDefaults
     private let modelSelectionKey: String
     private let serverDefaultModelKey: String
@@ -75,17 +75,18 @@ final class OpenCodeSessionStore: ObservableObject {
     private var lifecycleGeneration = 0
 
     init(
-        client: OpenCodeClient,
+        service: any OpenCodeSessionServicing,
+        serverID: UUID,
         session: OpenCodeSession,
         directory: String,
         defaults: UserDefaults = .standard
     ) {
-        self.client = client
+        self.service = service
         self.session = session
         self.directory = directory
         self.defaults = defaults
-        modelSelectionKey = "byot.opencode.model.\(client.profile.id.uuidString).\(session.id)"
-        serverDefaultModelKey = "byot.opencode.model.default.\(client.profile.id.uuidString)"
+        modelSelectionKey = "byot.opencode.model.\(serverID.uuidString).\(session.id)"
+        serverDefaultModelKey = "byot.opencode.model.default.\(serverID.uuidString)"
         persistedModelID = defaults.string(forKey: modelSelectionKey)
         workspace = session.workspaceID
     }
@@ -212,8 +213,8 @@ final class OpenCodeSessionStore: ObservableObject {
             if generation == refreshGeneration { isLoading = false }
         }
         do {
-            protocolCapabilities = try await client.capabilities()
-            let actionClient = client
+            protocolCapabilities = try await service.capabilities()
+            let actionClient = service
             let actionDirectory = directory
             let actionWorkspace = workspace
             let actionSessionID = session.id
@@ -386,7 +387,7 @@ final class OpenCodeSessionStore: ObservableObject {
         }
 
         do {
-            let didAbort = try await client.abort(
+            let didAbort = try await service.abort(
                 sessionID: session.id,
                 directory: directory,
                 workspace: workspace
@@ -443,7 +444,7 @@ final class OpenCodeSessionStore: ObservableObject {
         promptQueue.pausePendingPrompts()
         publishPromptQueue()
         do {
-            let didAbort = try await client.abort(
+            let didAbort = try await service.abort(
                 sessionID: session.id,
                 directory: directory,
                 workspace: workspace
@@ -472,7 +473,7 @@ final class OpenCodeSessionStore: ObservableObject {
     ) async {
         guard isCurrentPromptDispatch(dispatchID), !Task.isCancelled else { return }
         do {
-            try await client.sendMessage(
+            try await service.sendMessage(
                 sessionID: session.id,
                 directory: directory,
                 workspace: workspace,
@@ -521,7 +522,7 @@ final class OpenCodeSessionStore: ObservableObject {
         isLoadingModels = true
         defer { isLoadingModels = false }
         do {
-            let providers = try await client.connectedProviderModels(
+            let providers = try await service.connectedProviderModels(
                 directory: directory,
                 workspace: workspace
             )
@@ -576,7 +577,7 @@ final class OpenCodeSessionStore: ObservableObject {
             if actionInFlightID == permission.presentationID { actionInFlightID = nil }
         }
         do {
-            try await client.reply(
+            try await service.reply(
                 to: permission,
                 directory: directory,
                 workspace: workspace,
@@ -595,7 +596,7 @@ final class OpenCodeSessionStore: ObservableObject {
             if actionInFlightID == question.presentationID { actionInFlightID = nil }
         }
         do {
-            try await client.answer(
+            try await service.answer(
                 question,
                 directory: directory,
                 workspace: workspace,
@@ -614,7 +615,7 @@ final class OpenCodeSessionStore: ObservableObject {
             if actionInFlightID == question.presentationID { actionInFlightID = nil }
         }
         do {
-            try await client.reject(
+            try await service.reject(
                 question,
                 directory: directory,
                 workspace: workspace
@@ -627,14 +628,14 @@ final class OpenCodeSessionStore: ObservableObject {
 
     private func connectEvents() {
         guard eventTask == nil else { return }
-        let client = client
+        let service = service
         let directory = directory
         let workspace = workspace
         eventTask = Task { [weak self] in
             var retryDelay: UInt64 = 1_000_000_000
             while !Task.isCancelled {
                 do {
-                    for try await event in client.events(
+                    for try await event in service.events(
                         directory: directory,
                         workspace: workspace
                     ) {
@@ -1173,7 +1174,7 @@ final class OpenCodeSessionStore: ObservableObject {
                       promptQueue.needsServerReconciliation
                 else { return }
                 let baseline = statusMutationGeneration
-                let statuses = try await client.sessionStatuses(
+                let statuses = try await service.sessionStatuses(
                     directory: directory,
                     workspace: workspace
                 )
@@ -1249,7 +1250,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let requestGeneration = messageRequestGeneration
         let mutationBaseline = transcriptMutationGeneration
         do {
-            let messages = try await client.messages(
+            let messages = try await service.messages(
                 sessionID: session.id,
                 directory: directory,
                 workspace: workspace
@@ -1272,7 +1273,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let requestGeneration = actionRequestGeneration
         let mutationBaseline = actionMutationGeneration
         do {
-            let actionClient = client
+            let actionClient = service
             let actionDirectory = directory
             let actionWorkspace = workspace
             let actionSessionID = session.id

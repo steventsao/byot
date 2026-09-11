@@ -36,7 +36,7 @@ final class OpenCodeClientTests: XCTestCase {
         let client = OpenCodeClient(profile: profile, password: "must-not-leak")
 
         XCTAssertThrowsError(
-            try client.makeRequest(
+            try client.transport.makeRequest(
                 path: ["project"],
                 query: [],
                 method: "GET",
@@ -77,7 +77,7 @@ final class OpenCodeClientTests: XCTestCase {
             username: "opencode"
         )
         let client = OpenCodeClient(profile: profile, password: "correct horse")
-        let request = try client.makeRequest(
+        let request = try client.transport.makeRequest(
             path: ["session", "ses_123", "message"],
             query: [URLQueryItem(name: "directory", value: "/Users/me/My Project")],
             method: "GET",
@@ -130,7 +130,7 @@ final class OpenCodeClientTests: XCTestCase {
             )
         )
 
-        XCTAssertNoThrow(try OpenCodeClient.validateEventResponse(response))
+        XCTAssertNoThrow(try OpenCodeEventStream.validateEventResponse(response))
     }
 
     func testEventResponseValidatorRejectsWrongContentTypeWithoutPayloadDetails() throws {
@@ -147,7 +147,7 @@ final class OpenCodeClientTests: XCTestCase {
             )
         )
 
-        XCTAssertThrowsError(try OpenCodeClient.validateEventResponse(response)) { error in
+        XCTAssertThrowsError(try OpenCodeEventStream.validateEventResponse(response)) { error in
             guard case OpenCodeConnectionError.unexpectedEventContentType = error else {
                 return XCTFail("Unexpected error: \(error)")
             }
@@ -171,7 +171,7 @@ final class OpenCodeClientTests: XCTestCase {
             )
         )
 
-        XCTAssertThrowsError(try OpenCodeClient.validateEventResponse(response)) { error in
+        XCTAssertThrowsError(try OpenCodeEventStream.validateEventResponse(response)) { error in
             guard case OpenCodeConnectionError.httpStatus(503, nil) = error else {
                 return XCTFail("Unexpected error: \(error)")
             }
@@ -458,13 +458,13 @@ final class OpenCodeClientTests: XCTestCase {
         let continuation = try XCTUnwrap(capturedContinuation)
 
         XCTAssertTrue(
-            try OpenCodeClient.yieldEvent(
+            try OpenCodeEventStream.yieldEvent(
                 messageUpdatedEvent(messageID: "msg_first"),
                 to: continuation
             )
         )
         XCTAssertThrowsError(
-            try OpenCodeClient.yieldEvent(
+            try OpenCodeEventStream.yieldEvent(
                 messageUpdatedEvent(messageID: "msg_second"),
                 to: continuation
             )
@@ -545,7 +545,7 @@ final class OpenCodeClientTests: XCTestCase {
             )
         )
         XCTAssertNoThrow(
-            try client.validateEmptyResponse(data: Data(), response: noContent)
+            try client.transport.validateEmptyResponse(data: Data(), response: noContent)
         )
     }
 
