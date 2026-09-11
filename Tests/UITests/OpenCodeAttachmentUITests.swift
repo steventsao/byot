@@ -52,10 +52,13 @@ final class OpenCodeAttachmentUITests: XCTestCase {
             bitsPerComponent: 8, bytesPerRow: 160, space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
         context.draw(image, in: CGRect(x: 0, y: 0, width: 40, height: 80))
-        let count = stride(from: 0, to: pixels.count, by: 4).filter { i in
-            Double(pixels[i + 1]) > Double(pixels[i]) * 1.4 &&
-            Double(pixels[i + 1]) > Double(pixels[i + 2]) * 1.2 && pixels[i + 1] > 40
-        }.count
+        var count = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            let red = Double(pixels[i])
+            let green = Double(pixels[i + 1])
+            let blue = Double(pixels[i + 2])
+            if green > red * 1.4 && green > blue * 1.2 && green > 40 { count += 1 }
+        }
         return Double(count) / 3_200
     }
 

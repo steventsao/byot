@@ -72,7 +72,8 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         XCTAssertLessThan(abs(search.frame.midY - compose.frame.midY), 24)
         app.buttons["OpenCode servers"].tap()
         attach("server-picker-alignment")
-        try XCTUnwrap(app.buttons.matching(identifier: "Windows").allElementsBoundByIndex.last).tap()
+        try XCTUnwrap(app.buttons.matching(identifier: "Windows").allElementsBoundByIndex
+            .first(where: { $0.isHittable })).tap()
         XCTAssertTrue(app.staticTexts["Windows build"].waitForExistence(timeout: 10))
         app.buttons["OpenCode servers"].tap()
         app.buttons["Edit server"].tap()

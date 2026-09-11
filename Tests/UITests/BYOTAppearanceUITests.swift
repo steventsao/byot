@@ -17,7 +17,8 @@ final class BYOTAppearanceUITests: XCTestCase {
         for (name, isDark) in [("Dark", true), ("Light", false)] {
             picker.tap()
             app.buttons[name].tap()
-            XCTAssertTrue(picker.label.contains(name), picker.debugDescription)
+            expectation(for: NSPredicate(format: "label CONTAINS %@", name), evaluatedWith: picker)
+            waitForExpectations(timeout: 5)
             try assertAppearance(app, dark: isDark, name: "settings-\(name)")
             app.buttons["Done"].tap()
             try assertAppearance(app, dark: isDark, name: "home-\(name)")

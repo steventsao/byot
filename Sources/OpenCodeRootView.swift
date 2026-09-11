@@ -40,7 +40,8 @@ struct OpenCodeRootView: View {
                 Group {
                     if let profile = profileStore.activeProfile {
                         OpenCodeConnectedView(
-                            client: makeClient(profile, profileStore.password(for: profile))
+                            client: makeClient(profile, profileStore.password(for: profile)),
+                            openNewSession: { path.append(OpenCodeNewSessionRoute()) }
                         )
                         .id("\(profileFingerprint(profile))|\(profileStore.connectionGeneration)")
                     } else {

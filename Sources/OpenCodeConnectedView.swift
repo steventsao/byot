@@ -14,6 +14,7 @@ struct OpenCodeSessionRoute: Hashable {
 struct OpenCodeNewSessionRoute: Hashable {}
 
 struct OpenCodeConnectedView: View {
+    let openNewSession: () -> Void
     @State private var client: OpenCodeClient
     @StateObject private var workspace: OpenCodeWorkspaceStore
     @StateObject private var browser: OpenCodeSessionBrowserStore
@@ -31,7 +32,8 @@ struct OpenCodeConnectedView: View {
     @State private var creationError: String?
     @FocusState private var isSearching: Bool
 
-    init(client: OpenCodeClient) {
+    init(client: OpenCodeClient, openNewSession: @escaping () -> Void) {
+        self.openNewSession = openNewSession
         _client = State(initialValue: client)
         _workspace = StateObject(wrappedValue: OpenCodeWorkspaceStore(service: client))
         _browser = StateObject(wrappedValue: OpenCodeSessionBrowserStore(service: client))
@@ -205,8 +207,10 @@ struct OpenCodeConnectedView: View {
 
     @ViewBuilder
     private var newSessionMenu: some View {
-        NavigationLink(value: OpenCodeNewSessionRoute()) {
+        Button(action: openNewSession) {
             Label("New session", systemImage: "square.and.pencil")
+                .frame(minWidth: 48, minHeight: 48)
+                .contentShape(Rectangle())
         }
     }
 
