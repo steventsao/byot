@@ -63,4 +63,4 @@ These are unedited XCTest captures from the passing runs.
 
 The release runner now accepts `BYOT_CODE_SIGN_IDENTITY` and `BYOT_PROVISIONING_PROFILE_SPECIFIER` for a distribution-only keychain. This build uses a matching App Store profile and a manual export-options plist; automatic development signing cannot use a distribution-only keychain. No certificates were revoked or private keys exported.
 
-Upload to **Internal Testers** is in progress. The milestone stays open until App Store Connect reports the build valid and available to the group. External beta review has not been requested.
+Published September 11, 2026 to **Internal Testers**. App Store Connect build `cd676c09-1ca6-4152-b1d0-46111ae91590` is **VALID** and **IN_BETA_TESTING**. Explicit group membership and the English What to Test notes were verified against the repository. [Distribution receipt](testflight.json). External beta review was not submitted.

@@ -1,0 +1,20 @@
+{
+  "verifiedDate": "2026-09-11",
+  "appID": "6782403920",
+  "version": "1.0.14",
+  "buildNumber": "20260911130732",
+  "buildID": "cd676c09-1ca6-4152-b1d0-46111ae91590",
+  "uploadedDate": "2026-09-11T13:18:27-07:00",
+  "processingState": "VALID",
+  "internalBuildState": "IN_BETA_TESTING",
+  "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+  "group": {
+    "id": "a2c29c92-ddfd-4c22-9368-8563d9b756ea",
+    "name": "Internal Testers",
+    "isInternalGroup": true,
+    "explicitMembershipVerified": true
+  },
+  "testNotesLocale": "en-US",
+  "testNotesMatchRepository": true,
+  "externalReviewSubmitted": false
+}

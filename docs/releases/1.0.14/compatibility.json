@@ -53,7 +53,9 @@
     "codeSignatureVerified": true,
     "testBundles": [],
     "debugFixtureMarkersFound": [],
-    "internalDistribution": "in-progress",
-    "externalReviewSubmitted": false
+    "internalDistribution": "IN_BETA_TESTING",
+    "externalReviewSubmitted": false,
+    "buildID": "cd676c09-1ca6-4152-b1d0-46111ae91590",
+    "groupID": "a2c29c92-ddfd-4c22-9368-8563d9b756ea"
   }
 }
