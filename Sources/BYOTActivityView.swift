@@ -108,6 +108,7 @@ enum BYOTActivityTone: Equatable, Sendable {
 }
 
 enum BYOTActivityLayout: Sendable {
+    case indicator
     case compact
     case inline
     case blocking
@@ -149,6 +150,9 @@ struct BYOTActivityView: View {
     var body: some View {
         Group {
             switch layout {
+            case .indicator:
+                BYOTActivityGlyph(phase: phase, size: 28, tint: tint)
+                    .padding(.vertical, 4)
             case .compact:
                 compactContent
             case .inline:

@@ -1,0 +1,41 @@
+[
+  {
+    "testIdentifier": "OpenCodeUpstreamLiveUITests/testV1AndV2ConnectSendReloadAndSwitchServers()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testV1AndV2ConnectSendReloadAndSwitchServers",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "3ECBA471-F9A1-4280-BBF7-1703BB87C379",
+    "deviceName": "BYOT Upstream E2E",
+    "exportedFileName": "EE0A5FBD-C8A8-4B2B-89D2-047127320668.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "upstream-v2-restored-server-switch_0_5FCDD9F0-AE9C-45CD-B4B9-1365833CB1B5.png",
+    "timestamp": 1789161791.66,
+    "file": "upstream-v2-restored-server-switch.png",
+    "sha256": "92bfd904ced99da71764080370214f47513622a03513b3918ad7090e374d4f38"
+  },
+  {
+    "testIdentifier": "OpenCodeUpstreamLiveUITests/testV1AndV2ConnectSendReloadAndSwitchServers()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testV1AndV2ConnectSendReloadAndSwitchServers",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "3ECBA471-F9A1-4280-BBF7-1703BB87C379",
+    "deviceName": "BYOT Upstream E2E",
+    "exportedFileName": "D5FA4750-30B7-42C7-B7D2-2585BB562FD1.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "upstream-v2-live-transcript_0_EFD9D652-2C0C-4F24-BF4B-651DB51ABE4F.png",
+    "timestamp": 1789161759.501,
+    "file": "upstream-v2-live-transcript.png",
+    "sha256": "92bf41f9328a6c6ece1738a35dd8f86e8ada0f7650485842fb49b845a3faf5eb"
+  },
+  {
+    "testIdentifier": "OpenCodeUpstreamLiveUITests/testV1AndV2ConnectSendReloadAndSwitchServers()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testV1AndV2ConnectSendReloadAndSwitchServers",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "3ECBA471-F9A1-4280-BBF7-1703BB87C379",
+    "deviceName": "BYOT Upstream E2E",
+    "exportedFileName": "B85A506B-0E68-4010-8424-CB72834D43FD.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "upstream-v1-live-transcript_0_CB86765C-07BE-420F-A6D7-422BA4867D43.png",
+    "timestamp": 1789161719.659,
+    "file": "upstream-v1-live-transcript.png",
+    "sha256": "6065a33ace7969f48f69edd9369e5ae473737a7e1030d34cda2d5408a2a06306"
+  }
+]

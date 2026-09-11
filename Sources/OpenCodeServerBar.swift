@@ -22,6 +22,7 @@ struct OpenCodeServerBar: View {
                             .padding(.horizontal, 14)
                             .frame(minHeight: 44)
                             .background(profile.id == selectedID ? BYOTBrand.accent.opacity(0.18) : Color.secondary.opacity(0.1), in: Capsule())
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(profile.id == selectedID ? BYOTBrand.accent : .primary)
@@ -37,6 +38,7 @@ struct OpenCodeServerBar: View {
                 .padding(.horizontal, 16)
             }
             .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .padding(.vertical, 8)
             .onChange(of: selectedID, initial: true) { _, id in
                 if let id { proxy.scrollTo(id, anchor: .center) }

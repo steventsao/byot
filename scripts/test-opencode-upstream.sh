@@ -67,11 +67,15 @@ for target in targets:
     target.setdefault('EnvironmentVariables', {}).update(environment)
 (products / 'BYOT-live.xctestrun').write_bytes(plistlib.dumps(data))
 PY
+test_selection=("$@")
+if [ ${#test_selection[@]} -eq 0 ]; then
+  test_selection=(-only-testing:BYOTTests -only-testing:BYOTUITests/OpenCodeUpstreamLiveUITests)
+fi
 set +e
 xcodebuild test-without-building -xctestrun "$derived_data/Build/Products/BYOT-live.xctestrun" \
   -destination "platform=iOS Simulator,id=$simulator" -parallel-testing-enabled NO \
   -resultBundlePath "$run_root/tests.xcresult" \
-  -only-testing:BYOTTests -only-testing:BYOTUITests/OpenCodeUpstreamLiveUITests \
+  "${test_selection[@]}" \
   >"$run_root/tests.log" 2>&1
 test_status=$?
 set -e

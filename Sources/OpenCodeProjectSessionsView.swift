@@ -122,6 +122,7 @@ struct OpenCodeSessionRow: View {
     let session: OpenCodeSession
     let status: OpenCodeSessionStatus?
     var projectName: String? = nil
+    var attentionMessage: String? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -184,7 +185,11 @@ struct OpenCodeSessionRow: View {
 
     @ViewBuilder
     private var statusView: some View {
-        if let status {
+        if attentionMessage != nil {
+            Label("Needs attention", systemImage: "exclamationmark.circle.fill")
+                .font(.cleanCaption)
+                .foregroundStyle(.red)
+        } else if let status {
             OpenCodeStatusLabel(status: status, eventConnected: nil)
         } else {
             Label("Status unavailable", systemImage: "questionmark.circle")
@@ -194,6 +199,7 @@ struct OpenCodeSessionRow: View {
     }
 
     private var statusErrorMessage: String? {
+        if let attentionMessage { return attentionMessage }
         guard case .retry(_, let message, _) = status else { return nil }
         return message.trimmedNonEmpty
     }

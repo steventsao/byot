@@ -11,6 +11,7 @@ struct OpenCodeSessionComposerTests {
     func stopControlVisibility() {
         #expect(OpenCodeSessionComposerView.showsStopControl(canStop: true, text: ""))
         #expect(OpenCodeSessionComposerView.showsStopControl(canStop: true, text: "  \n"))
+        #expect(!OpenCodeSessionComposerView.showsStopControl(canStop: true, text: "", hasAttachments: true))
         #expect(
             OpenCodeSessionComposerView.showsStopControl(canStop: true, text: "steer it") == false
         )

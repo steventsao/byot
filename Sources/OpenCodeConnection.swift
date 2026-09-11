@@ -182,6 +182,7 @@ final class OpenCodeProfileStore: ObservableObject {
 
     func remove(_ profile: OpenCodeServerProfile) throws {
         try KeychainStore.delete(passwordKey(for: profile.id))
+        defaults.removeObject(forKey: "byot.opencode.attention.\(profile.id.uuidString)")
         profiles.removeAll { $0.id == profile.id }
         if activeProfileID == profile.id {
             activeProfileID = profiles.first?.id

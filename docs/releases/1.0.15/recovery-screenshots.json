@@ -1,0 +1,54 @@
+[
+  {
+    "testIdentifier": "OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "1511233A-D1BC-47E0-A572-7CE0647AB930",
+    "deviceName": "BYOT Upstream E2E",
+    "exportedFileName": "F65D100F-374A-427A-9672-708CDE7B7ED8.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "v2-recovered-with-active-model_0_177DE72B-6F4A-460C-B2F3-FC1D0D9A1D80.png",
+    "timestamp": 1789162116.082,
+    "file": "v2-recovered-with-active-model.png",
+    "sha256": "fa4225628c47f98ff580f2b630eed05555c583fe11e2a9fc4c5a3ad0d67937b9"
+  },
+  {
+    "testIdentifier": "OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "1511233A-D1BC-47E0-A572-7CE0647AB930",
+    "deviceName": "BYOT Upstream E2E",
+    "exportedFileName": "318A38D3-E192-4A32-AB57-F71B73E4FB02.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "v2-retired-model-recovery_0_C963D698-4F3B-45C0-9A5F-D34883789630.png",
+    "timestamp": 1789162109.632,
+    "file": "v2-retired-model-recovery.png",
+    "sha256": "dc36383b67187eb89788cd87506244d015cf1919e9b92bf503d79f3b1074f8a0"
+  },
+  {
+    "testIdentifier": "OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "1511233A-D1BC-47E0-A572-7CE0647AB930",
+    "deviceName": "BYOT Upstream E2E",
+    "exportedFileName": "0FD6D8A6-EF2A-4DD2-86C5-A30894FE78EE.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "v1-recovered-with-active-model_0_BA409F1E-E7F6-4449-91CD-78D7C18C4998.png",
+    "timestamp": 1789162079.973,
+    "file": "v1-recovered-with-active-model.png",
+    "sha256": "6c89aaee7129bd0b788816e6a416202722658ed45526dad364dfa96ac4ebd328"
+  },
+  {
+    "testIdentifier": "OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2",
+    "configurationName": "Test Scheme Action",
+    "deviceId": "1511233A-D1BC-47E0-A572-7CE0647AB930",
+    "deviceName": "BYOT Upstream E2E",
+    "exportedFileName": "53FE9A87-E1DE-4526-8464-6405E7C6FD08.png",
+    "isAssociatedWithFailure": false,
+    "suggestedHumanReadableName": "v1-retired-model-recovery_0_B04D188A-D5A6-406F-8290-083AD4B9E8F2.png",
+    "timestamp": 1789162074.172,
+    "file": "v1-retired-model-recovery.png",
+    "sha256": "1fc123c8ab14ccba5e1a740aaf908ec1920e15a853aac8fc3621ba26dcae1d03"
+  }
+]

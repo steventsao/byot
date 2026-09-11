@@ -7,17 +7,21 @@ final class BYOTAppearanceUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.buttons["About BYOT"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["about-byot"].waitForExistence(timeout: 10))
         let systemIsDark = try backgroundIsDark(app)
-        app.buttons["About BYOT"].tap()
+        app.buttons["about-byot"].tap()
         let picker = app.buttons["appearance-picker"]
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
         XCTAssertTrue(picker.label.contains("System"), picker.debugDescription)
 
         for (name, isDark) in [("Dark", true), ("Light", false)] {
-            picker.tap()
+            // A native menu picker's accessibility frame includes its leading
+            // title. Open the visible trailing value, not the gap between them.
+            picker.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.5)).tap()
+            XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 5))
             app.buttons[name].tap()
-            XCTAssertTrue(picker.label.contains(name), picker.debugDescription)
+            expectation(for: NSPredicate(format: "label CONTAINS %@", name), evaluatedWith: picker)
+            waitForExpectations(timeout: 5)
             try assertAppearance(app, dark: isDark, name: "settings-\(name)")
             app.buttons["Done"].tap()
             try assertAppearance(app, dark: isDark, name: "home-\(name)")
@@ -30,21 +34,22 @@ final class BYOTAppearanceUITests: XCTestCase {
 
             app.terminate()
             app.launch()
-            XCTAssertTrue(app.buttons["About BYOT"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["about-byot"].waitForExistence(timeout: 5))
             try assertAppearance(app, dark: isDark, name: "relaunch-\(name)")
-            app.buttons["About BYOT"].tap()
+            app.buttons["about-byot"].tap()
             XCTAssertTrue(picker.waitForExistence(timeout: 5))
             XCTAssertTrue(picker.label.contains(name), picker.debugDescription)
         }
 
-        picker.tap()
+        picker.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["System"].waitForExistence(timeout: 5))
         app.buttons["System"].tap()
         try assertAppearance(app, dark: systemIsDark, name: "settings-System")
         app.buttons["Done"].tap()
         try assertAppearance(app, dark: systemIsDark, name: "home-System")
         app.terminate()
         app.launch()
-        XCTAssertTrue(app.buttons["About BYOT"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["about-byot"].waitForExistence(timeout: 5))
         try assertAppearance(app, dark: systemIsDark, name: "relaunch-System")
     }
 

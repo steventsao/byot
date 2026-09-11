@@ -18,7 +18,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: newSession)
             waitForExpectations(timeout: 20)
             newSession.tap()
-            app.buttons["retired"].firstMatch.tap()
+            startConfiguredSession(app)
             // SwiftUI removes the placeholder from the accessibility identifier
             // after typing. The chat has one text field, which remains stable.
             let composer = app.textFields.firstMatch
@@ -110,6 +110,15 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
     }
 
     @MainActor
+    private func startConfiguredSession(_ app: XCUIApplication) {
+        let start = app.buttons["start-session"]
+        XCTAssertTrue(start.waitForExistence(timeout: 10), app.debugDescription)
+        expectation(for: NSPredicate(format: "enabled == true AND hittable == true"), evaluatedWith: start)
+        waitForExpectations(timeout: 20)
+        start.tap()
+    }
+
+    @MainActor
     private func connect(_ app: XCUIApplication, name serverName: String, port: Int, directory workingDirectory: String) {
         let add = app.buttons["Add server"].firstMatch
         XCTAssertTrue(add.waitForExistence(timeout: 10), app.debugDescription)
@@ -138,9 +147,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         expectation(for: ready, evaluatedWith: newSession)
         waitForExpectations(timeout: 20)
         newSession.tap()
-        let project = app.buttons["project"].firstMatch
-        XCTAssertTrue(project.waitForExistence(timeout: 5), app.debugDescription)
-        project.tap()
+        startConfiguredSession(app)
         let composer = app.textFields["Message"]
         XCTAssertTrue(composer.waitForExistence(timeout: 10), "Creating a session must open its chat immediately")
         XCTAssertFalse(app.buttons["Navigation"].exists)
@@ -165,7 +172,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             XCTAssertFalse(app.buttons["Changes"].isEnabled, "A v1 session without file changes has no diff to present")
         }
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.navigationBars["BYOT"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["session-search"].waitForExistence(timeout: 5))
         let latestSession = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session-")).firstMatch
         XCTAssertTrue(latestSession.waitForExistence(timeout: 10), app.debugDescription)
         attach("upstream-\(major)-session-browser")

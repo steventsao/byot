@@ -11,10 +11,14 @@ struct OpenCodeSessionRoute: Hashable {
     }
 }
 
+struct OpenCodeNewSessionRoute: Hashable {}
+
 struct OpenCodeConnectedView: View {
+    let openNewSession: () -> Void
     @State private var client: OpenCodeClient
     @StateObject private var workspace: OpenCodeWorkspaceStore
     @StateObject private var browser: OpenCodeSessionBrowserStore
+    @StateObject private var attention: OpenCodeSessionAttentionStore
     @AppStorage("byot.sessions.group-by-project") private var groupByProject = false
     @AppStorage("byot.sessions.sort") private var sort: OpenCodeSessionSort = .recent
     @AppStorage("byot.projects.sort") private var projectSort: OpenCodeSessionSort = .recent
@@ -26,13 +30,14 @@ struct OpenCodeConnectedView: View {
     @State private var createdRoute: OpenCodeSessionRoute?
     @State private var isCreating = false
     @State private var creationError: String?
-    @State private var isShowingDirectory = false
-    @State private var newDirectory = ""
+    @FocusState private var isSearching: Bool
 
-    init(client: OpenCodeClient) {
+    init(client: OpenCodeClient, openNewSession: @escaping () -> Void) {
+        self.openNewSession = openNewSession
         _client = State(initialValue: client)
         _workspace = StateObject(wrappedValue: OpenCodeWorkspaceStore(service: client))
         _browser = StateObject(wrappedValue: OpenCodeSessionBrowserStore(service: client))
+        _attention = StateObject(wrappedValue: OpenCodeSessionAttentionStore(serverID: client.profile.id))
     }
 
     var body: some View {
@@ -43,7 +48,7 @@ struct OpenCodeConnectedView: View {
             if !browser.groups.isEmpty && (groupByProject || !visibleSessions(browser.sessions).isEmpty) {
                 Section {
                     if groupByProject {
-                        ForEach(browser.orderedGroups(by: projectSort)) { group in
+                        ForEach(browser.orderedGroups(by: projectSort, attention: attentionIDs)) { group in
                             projectSection(group)
                         }
                     } else {
@@ -112,20 +117,48 @@ struct OpenCodeConnectedView: View {
                 BYOTActivityView(.connecting, layout: .blocking)
             }
         }
-        .searchable(text: $search, prompt: "Search sessions or projects")
-        .alert("New session", isPresented: $isShowingDirectory) {
-            TextField("Working directory", text: $newDirectory)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            Button("Cancel", role: .cancel) { newDirectory = "" }
-            Button("Create") {
-                let directory = newDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
-                newDirectory = ""
-                guard !directory.isEmpty else { return }
-                createSession(in: Self.project(directory: directory))
+        .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        .font(.cleanControlIcon)
+                        .accessibilityHidden(true)
+                    TextField("Search", text: $search)
+                        .focused($isSearching)
+                        .font(.cleanBody)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .onSubmit { isSearching = false }
+                        .accessibilityLabel("Search sessions or projects")
+                        .accessibilityIdentifier("session-search")
+                    if !search.isEmpty {
+                        Button {
+                            search = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.cleanControlIcon)
+                                .frame(width: 44, height: 44)
+                        }
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Clear search")
+                    }
+                }
+                .padding(.leading, 14)
+                .padding(.trailing, search.isEmpty ? 14 : 0)
+                .frame(minHeight: 48)
+                .background(BYOTBrand.controlSurface, in: RoundedRectangle(cornerRadius: 24))
+                newSessionMenu
+                    .labelStyle(.iconOnly)
+                    .font(.cleanControlIcon)
+                    .frame(width: 48, height: 48)
+                    .background(BYOTBrand.controlSurface, in: Circle())
             }
-        } message: {
-            Text(client.profile.name)
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(BYOTBrand.canvas)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -147,7 +180,6 @@ struct OpenCodeConnectedView: View {
                     }
                 }
             }
-            ToolbarItem(placement: .bottomBar) { newSessionMenu }
         }
         .refreshable { await reload() }
         .onAppear { isVisible = true }
@@ -162,6 +194,7 @@ struct OpenCodeConnectedView: View {
                 guard workspace.compatibility != nil,
                       workspace.compatibility?.state != .unsupported else { continue }
                 await browser.load(projects: projects)
+                await attention.refresh(sessions: browser.sessions, service: client)
             }
         }
         .navigationDestination(for: OpenCodeSessionRoute.self) { route in
@@ -174,15 +207,11 @@ struct OpenCodeConnectedView: View {
 
     @ViewBuilder
     private var newSessionMenu: some View {
-        Menu("New session", systemImage: "square.and.pencil") {
-            ForEach(projects) { project in
-                Button(project.displayName) { createSession(in: project) }
-            }
-            Button("Other directory…", systemImage: "folder.badge.plus") {
-                isShowingDirectory = true
-            }
+        Button(action: openNewSession) {
+            Label("New session", systemImage: "square.and.pencil")
+                .frame(minWidth: 48, minHeight: 48)
+                .contentShape(Rectangle())
         }
-        .disabled(isCreating || workspace.compatibility == nil || workspace.compatibility?.state == .unsupported)
     }
 
     @ViewBuilder
@@ -250,8 +279,12 @@ struct OpenCodeConnectedView: View {
                 if case .retry = group.status(for: $0) { return true }
                 return false
             }.count
+            let failures = group.sessions.filter { attentionIDs.contains($0.id) }.count
             let active = group.sessions.filter { group.status(for: $0)?.isActive == true }.count
-            if retries > 0 {
+            if failures > 0 {
+                Label("\(failures) need attention · \(countLabel)", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+            } else if retries > 0 {
                 Label("\(retries) retrying · \(countLabel)", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.red)
             } else if active > 0 {
@@ -267,14 +300,16 @@ struct OpenCodeConnectedView: View {
             OpenCodeSessionRow(
                 session: session,
                 status: browser.statuses[session.id],
-                projectName: showProject ? projectName(for: session) : nil
+                projectName: showProject ? projectName(for: session) : nil,
+                attentionMessage: attentionIDs.contains(session.id) ? attention.failures[session.id] : nil
             )
         }
         .accessibilityIdentifier("session-\(session.id)")
     }
 
     private func sessionView(_ route: OpenCodeSessionRoute) -> some View {
-        OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory)
+        OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory,
+                            attention: attention)
     }
 
     private func projectName(for session: OpenCodeSession) -> String {
@@ -288,7 +323,11 @@ struct OpenCodeConnectedView: View {
             search.isEmpty || $0.title.localizedStandardContains(search)
                 || $0.directory.localizedStandardContains(search)
                 || projectName(for: $0).localizedStandardContains(search)
-        }, statuses: browser.statuses)
+        }, statuses: browser.statuses, attention: attentionIDs)
+    }
+
+    private var attentionIDs: Set<String> {
+        Set(attention.failures.keys.filter { browser.statuses[$0]?.isActive != true })
     }
 
     private var projects: [OpenCodeProject] {
@@ -306,6 +345,7 @@ struct OpenCodeConnectedView: View {
     }
 
     private func reload() async {
+        attention.reload()
         await workspace.load()
         guard !Task.isCancelled else { return }
         if workspace.compatibility?.state == .unsupported {
@@ -314,6 +354,7 @@ struct OpenCodeConnectedView: View {
         }
         guard workspace.compatibility != nil else { return }
         await browser.load(projects: projects)
+        await attention.refresh(sessions: browser.sessions, service: client)
     }
 
     private func createSession(in project: OpenCodeProject) {

@@ -23,15 +23,23 @@ xcrun simctl ui "$simulator" appearance light
 xcrun simctl status_bar "$simulator" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
 cd "$repo"
 xcodegen generate > "$run_root/generate.log"
+test_selection=("$@")
+if [[ ${#test_selection[@]} -eq 0 ]]; then
+  test_selection=(
+    -only-testing:BYOTTests/BYOTAppearanceTests
+    -only-testing:BYOTTests/OpenCodeAttachmentPreviewTests
+    -only-testing:BYOTTests/OpenCodeSessionAttentionTests
+    -only-testing:BYOTUITests/BYOTAppearanceUITests
+    -only-testing:BYOTUITests/OpenCodeAttachmentUITests
+    -only-testing:BYOTUITests/OpenCodeSessionBrowserUITests
+  )
+fi
 set +e
 xcodebuild test -project BYOT.xcodeproj -scheme BYOT \
   -destination "platform=iOS Simulator,id=$simulator" \
   -derivedDataPath "${BYOT_UI_DERIVED_DATA:-$run_root/DerivedData}" \
   -parallel-testing-enabled NO -resultBundlePath "$run_root/tests.xcresult" \
-  -only-testing:BYOTTests/BYOTAppearanceTests \
-  -only-testing:BYOTUITests/BYOTAppearanceUITests \
-  -only-testing:BYOTUITests/OpenCodeAttachmentUITests \
-  -only-testing:BYOTUITests/OpenCodeSessionBrowserUITests/testLargeTypeSearchAndServerBar \
+  "${test_selection[@]}" \
   > "$run_root/tests.log" 2>&1
 result=$?
 set -e

@@ -18,26 +18,22 @@ struct OpenCodeRootView: View {
 
     @StateObject private var profileStore: OpenCodeProfileStore
     @State private var path = NavigationPath()
-    @State private var isShowingProfileEditor = false
-    @State private var profileBeingEdited: OpenCodeServerProfile?
+    private struct ProfileEditor: Identifiable {
+        let id = UUID()
+        let profile: OpenCodeServerProfile?
+    }
+    @State private var profileEditor: ProfileEditor?
     @State private var profilePendingRemoval: OpenCodeServerProfile?
     @State private var profileRemovalError: String?
 
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
-                if !profileStore.profiles.isEmpty {
-                    OpenCodeServerBar(
-                        profiles: profileStore.profiles,
-                        selectedID: profileStore.activeProfileID,
-                        select: profileStore.select,
-                        add: { edit(nil) }
-                    )
-                }
                 Group {
                     if let profile = profileStore.activeProfile {
                         OpenCodeConnectedView(
-                            client: makeClient(profile, profileStore.password(for: profile))
+                            client: makeClient(profile, profileStore.password(for: profile)),
+                            openNewSession: { path.append(OpenCodeNewSessionRoute()) }
                         )
                         .id("\(profileFingerprint(profile))|\(profileStore.connectionGeneration)")
                     } else {
@@ -56,13 +52,34 @@ struct OpenCodeRootView: View {
                 }
             }
             .background(BYOTBrand.canvas)
-            .navigationTitle("BYOT")
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if !profileStore.profiles.isEmpty {
+                    OpenCodeServerBar(
+                        profiles: profileStore.profiles,
+                        selectedID: profileStore.activeProfileID,
+                        select: profileStore.select,
+                        add: { edit(nil) }
+                    )
+                    .background(BYOTBrand.canvas)
+                }
+            }
+            .navigationTitle(BYOTBrand.wordmark)
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: OpenCodeNewSessionRoute.self) { _ in
+                if let profile = profileStore.activeProfile {
+                    OpenCodeNewSessionView(profiles: profileStore.profiles,
+                        initialProfile: profile) { profile in
+                        makeClient(profile, profileStore.password(for: profile))
+                    }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("About BYOT", systemImage: "info.circle", action: openAppNavigation)
+                    Button("About byot", systemImage: "info.circle", action: openAppNavigation)
                         .labelStyle(.iconOnly)
+                        .accessibilityIdentifier("about-byot")
                 }
+                ToolbarItem(placement: .principal) { BYOTWordmark() }
                 if profileStore.activeProfile != nil {
                     ToolbarItem(placement: .topBarTrailing) {
                         profileMenu
@@ -71,10 +88,10 @@ struct OpenCodeRootView: View {
             }
         }
         .onChange(of: profileStore.activeProfileID) { _, _ in path = NavigationPath() }
-        .sheet(isPresented: $isShowingProfileEditor) {
+        .sheet(item: $profileEditor) { editor in
             OpenCodeProfileEditorView(
-                profile: profileBeingEdited,
-                existingPassword: profileBeingEdited.map(profileStore.password(for:)) ?? ""
+                profile: editor.profile,
+                existingPassword: editor.profile.map(profileStore.password(for:)) ?? ""
             ) { profile, password in
                 try profileStore.save(profile, password: password)
             }
@@ -122,19 +139,19 @@ struct OpenCodeRootView: View {
     private var profileMenu: some View {
         Menu("OpenCode servers", systemImage: "server.rack") {
             if profileStore.profiles.count > 1 {
-                Section("Servers") {
-                    ForEach(profileStore.profiles) { profile in
-                        Button {
+                Picker("Servers", selection: Binding(
+                    get: { profileStore.activeProfileID },
+                    set: { id in
+                        if let profile = profileStore.profiles.first(where: { $0.id == id }) {
                             profileStore.select(profile)
-                        } label: {
-                            if profile.id == profileStore.activeProfileID {
-                                Label(profile.name, systemImage: "checkmark")
-                            } else {
-                                Text(profile.name)
-                            }
                         }
                     }
+                )) {
+                    ForEach(profileStore.profiles) { profile in
+                        Text(profile.name).tag(Optional(profile.id))
+                    }
                 }
+                .pickerStyle(.inline)
             }
             if let profile = profileStore.activeProfile {
                 Button("Edit server", systemImage: "pencil") {
@@ -151,8 +168,7 @@ struct OpenCodeRootView: View {
     }
 
     private func edit(_ profile: OpenCodeServerProfile?) {
-        profileBeingEdited = profile
-        isShowingProfileEditor = true
+        profileEditor = ProfileEditor(profile: profile)
     }
 
     private func profileFingerprint(_ profile: OpenCodeServerProfile) -> String {
