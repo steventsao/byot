@@ -172,7 +172,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             XCTAssertFalse(app.buttons["Changes"].isEnabled, "A v1 session without file changes has no diff to present")
         }
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.navigationBars["BYOT"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["session-search"].waitForExistence(timeout: 5))
         let latestSession = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session-")).firstMatch
         XCTAssertTrue(latestSession.waitForExistence(timeout: 10), app.debugDescription)
         attach("upstream-\(major)-session-browser")
