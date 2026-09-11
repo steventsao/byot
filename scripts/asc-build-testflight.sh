@@ -63,6 +63,18 @@ archive_flags=(
 export_flags=()
 validate_args=()
 
+# A distribution-only keychain cannot satisfy Xcode's automatic development
+# signature during archive. Allow an explicit identity/profile pair for CI.
+if [[ -n "${BYOT_CODE_SIGN_IDENTITY:-}" ]]; then
+  archive_flags+=(--xcodebuild-flag="CODE_SIGN_IDENTITY=$BYOT_CODE_SIGN_IDENTITY")
+fi
+if [[ -n "${BYOT_PROVISIONING_PROFILE_SPECIFIER:-}" ]]; then
+  archive_flags+=(
+    --xcodebuild-flag=CODE_SIGN_STYLE=Manual
+    --xcodebuild-flag="PROVISIONING_PROFILE_SPECIFIER=$BYOT_PROVISIONING_PROFILE_SPECIFIER"
+  )
+fi
+
 SWIFTPM_CACHE_PATH="$HOME/Library/Caches/org.swift.swiftpm"
 SWIFTPM_ISOLATION="${BYOT_ISOLATE_SWIFTPM_CACHE:-auto}"
 if [[ "$SWIFTPM_ISOLATION" == "1" ||
