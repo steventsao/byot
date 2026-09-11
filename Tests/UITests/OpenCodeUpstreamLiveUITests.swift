@@ -22,9 +22,17 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             let composer = app.textFields["Message"]
             XCTAssertTrue(composer.waitForExistence(timeout: 10))
             XCTAssertEqual(app.buttons["Choose model"].value as? String, "Automatic")
+            let prompt = "Recover this prompt on \(major)."
             composer.tap()
-            composer.typeText("Recover this prompt on \(major).")
-            app.buttons["Send message"].tap()
+            composer.typeText(prompt)
+            let send = app.buttons["Send message"]
+            expectation(for: NSPredicate(format: "enabled == true AND hittable == true"), evaluatedWith: send)
+            waitForExpectations(timeout: 10)
+            XCTAssertEqual(composer.value as? String, prompt)
+            attach("\(major)-retired-prompt-ready")
+            send.tap()
+            expectation(for: NSPredicate(format: "value != %@", prompt), evaluatedWith: composer)
+            waitForExpectations(timeout: 5)
             let choose = app.buttons["Choose another model"]
             XCTAssertTrue(choose.waitForExistence(timeout: 30), app.debugDescription)
             XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10), "Model recovery must be visible above the composer")
