@@ -7,6 +7,9 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         app.launchArguments = ["--attachment-screenshot", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         XCTAssertTrue(app.buttons["Add attachment"].waitForExistence(timeout: 10))
+        let composer = app.textFields["Message"]
+        composer.tap()
+        composer.typeText("Review this design")
         app.buttons["Add attachment"].tap()
         app.buttons["Add Screenshot Fixture"].tap()
         let remove = app.buttons["Remove byot-design.png"]
