@@ -19,7 +19,9 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             waitForExpectations(timeout: 20)
             newSession.tap()
             app.buttons["retired"].firstMatch.tap()
-            let composer = app.textFields["Message"]
+            // SwiftUI removes the placeholder from the accessibility identifier
+            // after typing. The chat has one text field, which remains stable.
+            let composer = app.textFields.firstMatch
             XCTAssertTrue(composer.waitForExistence(timeout: 10))
             XCTAssertEqual(app.buttons["Choose model"].value as? String, "Automatic")
             let prompt = "Recover this prompt on \(major)."
