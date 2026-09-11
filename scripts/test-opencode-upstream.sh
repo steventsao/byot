@@ -4,6 +4,7 @@ set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 run_root=$(mktemp -d /tmp/byot-upstream-e2e.XXXXXX)
 tools_root=${BYOT_E2E_TOOLS:-/tmp/byot-upstream-e2e-tools}
+derived_data=${BYOT_E2E_DERIVED_DATA:-$run_root/DerivedData}
 fixture_pid=
 simulator=
 cleanup() {
@@ -47,13 +48,13 @@ cd "$repo"
 xcodegen generate >"$run_root/generate.log"
 # Keep signing enabled: the normal server editor saves passwords in Keychain.
 xcodebuild build-for-testing -project BYOT.xcodeproj -scheme BYOT \
-  -destination "platform=iOS Simulator,id=$simulator" -derivedDataPath "$run_root/DerivedData" \
+  -destination "platform=iOS Simulator,id=$simulator" -derivedDataPath "$derived_data" \
   >"$run_root/build.log" 2>&1
-python3 - "$run_root" <<'PY'
+python3 - "$run_root" "$derived_data" <<'PY'
 import json, plistlib, sys
 from pathlib import Path
 root = Path(sys.argv[1]).resolve()
-products = root / 'DerivedData/Build/Products'
+products = Path(sys.argv[2]).resolve() / 'Build/Products'
 source = next(products.glob('BYOT_*.xctestrun'))
 data = plistlib.loads(source.read_bytes())
 environment = {'BYOT_LIVE_ACCEPTANCE': '1', 'BYOT_LIVE_ROOT': str(root)}
@@ -67,7 +68,7 @@ for target in targets:
 (products / 'BYOT-live.xctestrun').write_bytes(plistlib.dumps(data))
 PY
 set +e
-xcodebuild test-without-building -xctestrun "$run_root/DerivedData/Build/Products/BYOT-live.xctestrun" \
+xcodebuild test-without-building -xctestrun "$derived_data/Build/Products/BYOT-live.xctestrun" \
   -destination "platform=iOS Simulator,id=$simulator" -parallel-testing-enabled NO \
   -resultBundlePath "$run_root/tests.xcresult" \
   -only-testing:BYOTTests -only-testing:BYOTUITests/OpenCodeUpstreamLiveUITests \
