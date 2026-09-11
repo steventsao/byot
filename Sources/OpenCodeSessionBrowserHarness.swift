@@ -58,6 +58,15 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
         ]
         let body: Any
         switch url.path {
+        case "/event":
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "text/event-stream"])!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data("data: {\"type\":\"server.connected\",\"properties\":{}}\n\n".utf8))
+            // Keep this fixture stream open until the conversation cancels it.
+            return
+        case let endpoint where endpoint.hasPrefix("/api/"):
+            respond(url, body: ["message": "Unavailable"], status: 404); return
         case "/global/health": body = ["healthy": true, "version": "1.18.10"]
         case "/project": body = ["byot", "docs"].map { name in
             ["id": base + "/" + name, "worktree": base + "/" + name, "name": name,

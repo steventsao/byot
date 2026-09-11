@@ -22,6 +22,7 @@ struct OpenCodeServerBar: View {
                             .padding(.horizontal, 14)
                             .frame(minHeight: 44)
                             .background(profile.id == selectedID ? BYOTBrand.accent.opacity(0.18) : Color.secondary.opacity(0.1), in: Capsule())
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(profile.id == selectedID ? BYOTBrand.accent : .primary)

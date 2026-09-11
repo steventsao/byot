@@ -54,7 +54,7 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         app.swipeUp()
         app.buttons["start-session"].tap()
         XCTAssertTrue(app.textFields["opencode-composer-message"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Windows · new-project"].exists, app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Server Windows, project C:/work/new-project"].exists, app.debugDescription)
         attach("new-session-custom-directory")
     }
 
@@ -118,7 +118,9 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         XCTAssertTrue(app.buttons["New session in byot"].waitForExistence(timeout: 10))
         XCTAssertLessThan(app.buttons["session-retry"].frame.minY, app.buttons["session-active"].frame.minY)
         app.buttons["Windows"].tap()
-        XCTAssertTrue(app.staticTexts["Windows build"].waitForExistence(timeout: 10))
+        expectation(for: NSPredicate(format: "value == %@", "Selected server"), evaluatedWith: app.buttons["Windows"])
+        waitForExpectations(timeout: 5)
+        XCTAssertTrue(app.staticTexts["Windows build"].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertFalse(app.staticTexts["Fix checkout"].exists)
         app.buttons["session-active"].tap()
         XCTAssertTrue(app.textFields["Message"].waitForExistence(timeout: 10), app.debugDescription)
