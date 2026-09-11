@@ -13,7 +13,8 @@ struct OpenCodeFailure: Equatable, Sendable {
         // Current v2 deliberately drops the provider response body. Its
         // provider.invalid-request + status:410 still identifies a gone model.
         let status = details?["status"]?.numberValue ?? details?["statusCode"]?.numberValue
-        let providerGone = status == 410 && (raw.hasPrefix("provider.") || ["APIError", "APICallError"].contains(raw))
+        let errorType = details?["type"]?.stringValue ?? raw
+        let providerGone = status == 410 && (errorType.hasPrefix("provider.") || ["APIError", "APICallError"].contains(errorType))
         isModelUnavailable = providerGone || description.contains("modelnotfound")
             || (description.contains("model") && [
                 "end of life", "no longer available", "not found", "does not exist",

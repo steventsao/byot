@@ -62,7 +62,6 @@ struct OpenCodeModelPickerView: View {
                                         Text(model.modelID)
                                             .font(.cleanCaption)
                                             .foregroundStyle(.secondary)
-                                            .textSelection(.enabled)
                                         if dynamicTypeSize.isAccessibilitySize,
                                            let status = model.status,
                                            status != "active" {
