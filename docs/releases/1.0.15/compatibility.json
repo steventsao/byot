@@ -45,5 +45,25 @@
     "architecture": "arm64",
     "testBundles": [],
     "debugFixtureMarkersFound": []
+  },
+  "release": {
+    "verifiedDate": "2026-09-11",
+    "appID": "6782403920",
+    "version": "1.0.15",
+    "buildNumber": "20260911144503",
+    "buildID": "7a47c651-b88f-4f32-b060-9e66925da25c",
+    "uploadedDate": "2026-09-11T14:48:35-07:00",
+    "processingState": "VALID",
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+    "group": {
+      "id": "a2c29c92-ddfd-4c22-9368-8563d9b756ea",
+      "name": "Internal Testers",
+      "isInternalGroup": true,
+      "explicitMembershipVerified": true
+    },
+    "testNotesLocale": "en-US",
+    "testNotesMatchRepository": true,
+    "externalReviewSubmitted": false
   }
 }

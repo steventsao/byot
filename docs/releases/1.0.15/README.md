@@ -44,4 +44,4 @@ The final application source is `a936d51`. It differs from live acceptance only 
 
 **1.0.15 (20260911144503)** was archived from `a936d51` using the existing distribution identity and provisioning profile. Apple validation and signature verification passed. The arm64 IPA contains no test bundles or DEBUG acceptance markers. SHA-256: `39dfd265ecfd41d33fb555811446eac3a546d775a6408ef99a8a559616a585d0`.
 
-Internal TestFlight processing and the distribution receipt are pending. [Compatibility and archive metadata](compatibility.json).
+Published September 11, 2026 to **Internal Testers**. App Store Connect build `7a47c651-b88f-4f32-b060-9e66925da25c` is **VALID** and **IN_BETA_TESTING**. Explicit group membership and the English What to Test notes were verified against the repository. External beta review was not submitted. [Distribution receipt](testflight.json) · [Compatibility and archive metadata](compatibility.json).
