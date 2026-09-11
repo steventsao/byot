@@ -7,7 +7,7 @@ struct OpenCodeAttachmentPreviewTests {
     @Test("Preview owns a private copy and never treats a filename as a path",
           arguments: ["../notes.txt", "C:\\private\\notes.txt", "/etc/notes.txt", "..", "notes"])
     func previewLifetime(filename: String) throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let data = Data("Preview this text".utf8)
         let attachment = OpenCodePromptAttachment(filename: filename, mimeType: "text/plain", data: data)
