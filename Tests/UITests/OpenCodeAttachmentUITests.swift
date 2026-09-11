@@ -1,6 +1,64 @@
 import XCTest
+import UIKit
 
 final class OpenCodeAttachmentUITests: XCTestCase {
+    @MainActor
+    func testImageAndDocumentPreviewsKeepTheDraft() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--attachment-screenshot"]
+        app.launch()
+        let composer = app.textFields["opencode-composer-message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        composer.tap()
+        composer.typeText("Keep this draft while previewing")
+        for (fixture, filename) in [("Add Screenshot Fixture", "byot-design.png"),
+                                    ("Add Text Fixture", "review-notes.txt")] {
+            app.buttons["Add attachment"].tap()
+            app.buttons[fixture].tap()
+            let preview = app.buttons["Preview \(filename)"]
+            XCTAssertTrue(preview.waitForExistence(timeout: 5))
+            XCTAssertTrue(preview.isHittable)
+            preview.tap()
+            XCTAssertTrue(app.navigationBars[filename].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.otherElements["attachment-preview-content"].waitForExistence(timeout: 10))
+            if filename.hasSuffix("png") {
+                expectation(for: NSPredicate { _, _ in
+                    (try? self.previewGreenCoverage(app)) ?? 0 > 0.04
+                }, evaluatedWith: app)
+                waitForExpectations(timeout: 15)
+            } else {
+                XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(
+                    format: "label CONTAINS %@ OR value CONTAINS %@",
+                    "Review the attachment preview", "Review the attachment preview"
+                )).firstMatch.waitForExistence(timeout: 10))
+            }
+            attach("preview-\(filename)")
+            app.buttons["Done"].tap()
+            XCTAssertTrue(composer.waitForExistence(timeout: 5))
+            XCTAssertEqual(composer.value as? String, "Keep this draft while previewing")
+            let remove = app.buttons["Remove \(filename)"]
+            XCTAssertTrue(remove.isHittable)
+            remove.tap()
+            XCTAssertTrue(preview.waitForNonExistence(timeout: 5))
+        }
+        attach("composer-after-previews")
+    }
+
+    @MainActor
+    private func previewGreenCoverage(_ app: XCUIApplication) throws -> Double {
+        let image = try XCTUnwrap(app.screenshot().image.cgImage)
+        var pixels = [UInt8](repeating: 0, count: 40 * 80 * 4)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: 40, height: 80,
+            bitsPerComponent: 8, bytesPerRow: 160, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 40, height: 80))
+        let count = stride(from: 0, to: pixels.count, by: 4).filter { i in
+            Double(pixels[i + 1]) > Double(pixels[i]) * 1.4 &&
+            Double(pixels[i + 1]) > Double(pixels[i + 2]) * 1.2 && pixels[i + 1] > 40
+        }.count
+        return Double(count) / 3_200
+    }
+
     @MainActor
     func testAttachmentRemovalAtLargestTextSize() throws {
         let app = XCUIApplication()

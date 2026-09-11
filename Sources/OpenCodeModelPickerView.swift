@@ -12,7 +12,8 @@ struct OpenCodeModelPickerView: View {
                 if automaticMatchesSearch {
                     Section {
                         Button(action: chooseAutomatic) {
-                            Label {
+                            HStack(alignment: .top, spacing: 12) {
+                                selectionIndicator(selected: store.selectedModel == nil)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("Automatic")
                                         .font(.cleanBodySemibold)
@@ -21,9 +22,7 @@ struct OpenCodeModelPickerView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .fixedSize(horizontal: false, vertical: true)
-                            } icon: {
-                                Image(systemName: store.selectedModel == nil ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(store.selectedModel == nil ? BYOTBrand.accent : .secondary)
+                                Spacer(minLength: 8)
                             }
                         }
                         .foregroundStyle(.primary)
@@ -44,17 +43,7 @@ struct OpenCodeModelPickerView: View {
                                 choose(model)
                             } label: {
                                 HStack(alignment: .top, spacing: 12) {
-                                    Image(
-                                        systemName: store.selectedModel?.id == model.id
-                                            ? "checkmark.circle.fill"
-                                            : "circle"
-                                    )
-                                    .foregroundStyle(
-                                        store.selectedModel?.id == model.id
-                                            ? BYOTBrand.accent
-                                            : .secondary
-                                    )
-                                    .accessibilityHidden(true)
+                                    selectionIndicator(selected: store.selectedModel?.id == model.id)
 
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(model.modelName)
@@ -130,6 +119,14 @@ struct OpenCodeModelPickerView: View {
                 }
             }
         }
+    }
+
+    private func selectionIndicator(selected: Bool) -> some View {
+        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+            .font(.cleanBody)
+            .foregroundStyle(selected ? BYOTBrand.accent : .secondary)
+            .frame(width: 24)
+            .accessibilityHidden(true)
     }
 
     private var filteredProviders: [OpenCodeProviderModels] {

@@ -7,9 +7,9 @@ final class BYOTAppearanceUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.buttons["About BYOT"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["about-byot"].waitForExistence(timeout: 10))
         let systemIsDark = try backgroundIsDark(app)
-        app.buttons["About BYOT"].tap()
+        app.buttons["about-byot"].tap()
         let picker = app.buttons["appearance-picker"]
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
         XCTAssertTrue(picker.label.contains("System"), picker.debugDescription)
@@ -30,9 +30,9 @@ final class BYOTAppearanceUITests: XCTestCase {
 
             app.terminate()
             app.launch()
-            XCTAssertTrue(app.buttons["About BYOT"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["about-byot"].waitForExistence(timeout: 5))
             try assertAppearance(app, dark: isDark, name: "relaunch-\(name)")
-            app.buttons["About BYOT"].tap()
+            app.buttons["about-byot"].tap()
             XCTAssertTrue(picker.waitForExistence(timeout: 5))
             XCTAssertTrue(picker.label.contains(name), picker.debugDescription)
         }
@@ -44,7 +44,7 @@ final class BYOTAppearanceUITests: XCTestCase {
         try assertAppearance(app, dark: systemIsDark, name: "home-System")
         app.terminate()
         app.launch()
-        XCTAssertTrue(app.buttons["About BYOT"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["about-byot"].waitForExistence(timeout: 5))
         try assertAppearance(app, dark: systemIsDark, name: "relaunch-System")
     }
 

@@ -20,6 +20,9 @@ struct OpenCodeSessionBrowserHarness: View {
             UserDefaults.standard.removeObject(forKey: "byot.sessions.group-by-project")
             UserDefaults.standard.removeObject(forKey: "byot.sessions.sort")
             UserDefaults.standard.removeObject(forKey: "byot.projects.sort")
+            for profile in profiles {
+                UserDefaults.standard.removeObject(forKey: "byot.opencode.attention.\(profile.id.uuidString)")
+            }
         }
         return OpenCodeProfileStore(defaults: defaults)
     }
@@ -64,6 +67,14 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
         case "/session": body = sessions.filter { $0["directory"] as? String == directory }
         case "/session/status": body = ["active": ["type": "busy"], "retry": ["type": "retry", "attempt": 1, "message": "Provider rate limit", "next": now + 10_000]]
         case "/provider": body = ["all": [], "connected": [], "default": [:]] as [String: Any]
+        case "/session/idle/message":
+            body = [
+                ["info": ["id": "user-fixture", "sessionID": "idle", "role": "user", "time": ["created": now - 1000]],
+                 "parts": [["id": "part-user", "sessionID": "idle", "messageID": "user-fixture", "type": "text", "text": "Review this project"]]],
+                ["info": ["id": "assistant-fixture", "sessionID": "idle", "role": "assistant", "time": ["created": now],
+                          "error": ["name": "ProviderError", "data": ["message": "This model is no longer available."]]],
+                 "parts": []]
+            ]
         case "/experimental/capabilities":
             respond(url, body: ["message": "Unavailable"], status: 404); return
         default: body = []

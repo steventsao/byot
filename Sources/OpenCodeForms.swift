@@ -49,7 +49,7 @@ struct OpenCodeForm: Codable, Equatable, Sendable {
                 }
                 values[key] = .number(number)
             case "external": continue
-            default: throw invalid(field, "This field requires a newer BYOT version.")
+            default: throw invalid(field, "This field requires a newer byot version.")
             }
         }
         return values

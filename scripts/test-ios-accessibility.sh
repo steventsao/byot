@@ -29,9 +29,11 @@ xcodebuild test -project BYOT.xcodeproj -scheme BYOT \
   -derivedDataPath "${BYOT_UI_DERIVED_DATA:-$run_root/DerivedData}" \
   -parallel-testing-enabled NO -resultBundlePath "$run_root/tests.xcresult" \
   -only-testing:BYOTTests/BYOTAppearanceTests \
+  -only-testing:BYOTTests/OpenCodeAttachmentPreviewTests \
+  -only-testing:BYOTTests/OpenCodeSessionAttentionTests \
   -only-testing:BYOTUITests/BYOTAppearanceUITests \
   -only-testing:BYOTUITests/OpenCodeAttachmentUITests \
-  -only-testing:BYOTUITests/OpenCodeSessionBrowserUITests/testLargeTypeSearchAndServerBar \
+  -only-testing:BYOTUITests/OpenCodeSessionBrowserUITests \
   > "$run_root/tests.log" 2>&1
 result=$?
 set -e

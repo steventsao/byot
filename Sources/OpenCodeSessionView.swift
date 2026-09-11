@@ -7,15 +7,18 @@ struct OpenCodeSessionView: View {
     @State private var isShowingRecoveryModelPicker = false
     @State private var isAtBottom = true
     private let serverName: String
+    private let attention: OpenCodeSessionAttentionStore?
 
     private let bottomAnchorID = "opencode-session-bottom"
 
     init(
         client: OpenCodeClient,
         session: OpenCodeSession,
-        directory: String
+        directory: String,
+        attention: OpenCodeSessionAttentionStore? = nil
     ) {
         serverName = client.profile.name
+        self.attention = attention
         _store = StateObject(
             wrappedValue: OpenCodeSessionStore(
                 client: client,
@@ -96,6 +99,7 @@ struct OpenCodeSessionView: View {
                             sessionActivityPhase,
                             title: sessionActivityTitle,
                             detail: sessionActivityDetail,
+                            layout: sessionActivityPhase == .thinking || sessionActivityPhase == .working ? .indicator : .inline,
                             accessibilityLabel: sessionActivityAccessibilityLabel
                         )
                         .id("opencode-session-activity")
@@ -156,6 +160,7 @@ struct OpenCodeSessionView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: store.transcriptRevision) { _, _ in
+                rememberAttention()
                 scrollToConversationBottomIfNeeded(proxy)
             }
             .onChange(of: sessionActivityAnnouncementKey) { _, newValue in
@@ -225,7 +230,17 @@ struct OpenCodeSessionView: View {
                 .task { await store.reloadModels() }
         }
         .task { await store.start() }
-        .onDisappear { store.stop() }
+        .onChange(of: store.errorMessage) { _, _ in rememberAttention() }
+        .onDisappear {
+            rememberAttention()
+            store.stop()
+        }
+    }
+
+    private func rememberAttention() {
+        guard !store.messages.isEmpty || store.errorMessage != nil else { return }
+        attention?.record(sessionID: store.session.id,
+            message: OpenCodeSessionAttentionStore.message(in: store.messages) ?? store.errorMessage)
     }
 
     private var sessionContext: some View {

@@ -51,12 +51,27 @@ struct OpenCodeAttachmentScreenshotHarness: View {
                     screenshotAttachment: OpenCodePromptAttachment(
                         filename: "byot-design.png",
                         mimeType: "image/png",
-                        data: Data("simulator-screenshot-fixture".utf8)
+                        data: Self.previewImage
                     )
                 )
             }
         }
         .onAppear { store.prepareForAttachmentScreenshot() }
+    }
+
+    private static var previewImage: Data {
+        UIGraphicsImageRenderer(size: CGSize(width: 480, height: 320)).pngData { context in
+            UIColor(red: 0.12, green: 0.38, blue: 0.26, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 480, height: 320))
+            ("byot" as NSString).draw(at: CGPoint(x: 32, y: 60), withAttributes: [
+                .font: UIFont(name: "OpenRunde-Bold", size: 80)!,
+                .foregroundColor: UIColor.white
+            ])
+            ("Design review" as NSString).draw(at: CGPoint(x: 32, y: 200), withAttributes: [
+                .font: UIFont(name: "OpenRunde-Regular", size: 28)!,
+                .foregroundColor: UIColor.white
+            ])
+        }
     }
 }
 #endif

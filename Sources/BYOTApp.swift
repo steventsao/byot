@@ -79,9 +79,10 @@ private struct AboutView: View {
                     Link("Privacy policy", destination: URL(string: "https://byot.app/privacy")!)
                 }
             }
-            .navigationTitle("BYOT")
+            .navigationTitle(BYOTBrand.wordmark)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) { BYOTWordmark() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }

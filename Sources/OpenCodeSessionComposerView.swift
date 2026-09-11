@@ -13,6 +13,7 @@ struct OpenCodeSessionComposerView: View {
     @State private var isImportingAttachment = false
     @State private var attachmentErrorMessage: String?
     @State private var isShowingModelPicker = false
+    @State private var previewAttachment: OpenCodePromptAttachment?
     @FocusState private var isFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -25,159 +26,64 @@ struct OpenCodeSessionComposerView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Divider()
-            VStack(alignment: .leading, spacing: 4) {
-                Button(action: showModelPicker) {
-                    HStack(spacing: 6) {
-                        Text(store.selectedModel?.modelName ?? "Automatic")
-                        Image(systemName: "chevron.down")
-                            .imageScale(.small)
-                    }
-                    .font(.cleanCaptionBold)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 11)
-                    .frame(minHeight: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Choose model")
-                .accessibilityValue(
-                    store.selectedModel.map {
-                        "\($0.modelName), \($0.providerName)"
-                    } ?? "Automatic"
-                )
-
-                if store.canSubmitPrompt == false {
-                    Label("Checking session status", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.cleanCaption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if store.willQueueNextPrompt {
-                    Label(
-                        "Next message will be queued",
-                        systemImage: "clock.arrow.circlepath"
-                    )
-                    .font(.cleanCaption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if !attachments.isEmpty {
+        VStack(alignment: .leading, spacing: 10) {
+            if !attachments.isEmpty {
+                ScrollView(dynamicTypeSize.isAccessibilitySize ? .vertical : .horizontal,
+                           showsIndicators: dynamicTypeSize.isAccessibilitySize) {
                     if dynamicTypeSize.isAccessibilitySize {
-                        ScrollView(.vertical) {
-                            VStack(spacing: 8) {
-                                ForEach(attachments) { attachment in
-                                    attachmentChip(attachment)
-                                }
-                            }
+                        VStack(spacing: 8) {
+                            ForEach(attachments) { attachmentChip($0) }
                         }
-                        .frame(maxHeight: 160)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityLabel("Attachments")
                     } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(attachments) { attachment in
-                                    attachmentChip(attachment)
-                                }
-                            }
-                            .padding(.vertical, 2)
+                        HStack(spacing: 8) {
+                            ForEach(attachments) { attachmentChip($0) }
                         }
-                        .accessibilityLabel("Attachments")
                     }
                 }
+                .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? 132 : 80)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("Attachments")
+            }
 
-                HStack(alignment: .bottom, spacing: 10) {
-                    Menu {
-                        Button("Choose Photo", systemImage: "photo") {
-                            isShowingPhotoPicker = true
-                        }
-                        Button("Choose File", systemImage: "doc") {
-                            isShowingFileImporter = true
-                        }
-#if DEBUG
-                        if let screenshotAttachment {
-                            Button("Add Screenshot Fixture", systemImage: "sparkles") {
-                                do {
-                                    try appendAttachments([screenshotAttachment])
-                                } catch {
-                                    attachmentErrorMessage = error.localizedDescription
-                                }
-                            }
-                        }
-#endif
-                    } label: {
-                        Group {
-                            if isImportingAttachment {
-                                ProgressView()
-                            } else {
-                                Image(systemName: "paperclip")
-                                    .font(.cleanControlIcon)
-                            }
-                        }
-                        .frame(width: 44, height: 44)
-                        .background(
-                            BYOTBrand.controlSurface,
-                            in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius)
-                        )
-                    }
-                    .accessibilityLabel("Add attachment")
-                    .disabled(
-                        isImportingAttachment
-                            || attachments.count >= OpenCodePromptAttachment.maximumCount
-                    )
+            TextField("Message", text: $text, axis: .vertical)
+                .focused($isFocused)
+                .lineLimit(1...(dynamicTypeSize.isAccessibilitySize ? 2 : 6))
+                .padding(.horizontal, 8)
+                .padding(.top, 6)
+                .accessibilityIdentifier("opencode-composer-message")
+                .submitLabel(.send)
+                .onSubmit(send)
 
-                    TextField("Message", text: $text, axis: .vertical)
-                        .focused($isFocused)
-                        .lineLimit(1...8)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 11)
-                        .background(
-                            BYOTBrand.controlSurface,
-                            in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius)
-                        )
-                        .submitLabel(.send)
-                        .onSubmit(send)
-
-                    if showsStopControl {
-                        Button(action: stopTurn) {
-                            Image(systemName: "stop.fill")
-                                .font(.cleanControlIcon)
-                                .foregroundStyle(BYOTBrand.primaryActionInk)
-                                .frame(width: 44, height: 44)
-                                .background(
-                                    BYOTBrand.primaryAction,
-                                    in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius)
-                                )
-                        }
-                        .accessibilityLabel("Stop the current turn")
-                        .accessibilityInputLabels(["Stop", "Stop turn"])
-                        .accessibilityIdentifier("opencode-composer-stop")
-                    } else {
-                        Button(action: send) {
-                            Image(systemName: "arrow.up")
-                                .font(.cleanControlIcon)
-                            .foregroundStyle(BYOTBrand.primaryActionInk)
-                            .frame(width: 44, height: 44)
-                            .background(
-                                BYOTBrand.primaryAction,
-                                in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius)
-                            )
-                        }
-                        .accessibilityLabel(
-                            store.willQueueNextPrompt ? "Queue message" : "Send message"
-                        )
-                        .disabled(
-                            !hasSendableContent
-                                || store.canSubmitPrompt == false
-                        )
-                    }
+            if dynamicTypeSize.isAccessibilitySize {
+                modelButton
+                HStack(spacing: 8) {
+                    attachmentButton
+                    Spacer(minLength: 8)
+                    sessionProgress
+                    submitButton
+                }
+            } else {
+                HStack(spacing: 4) {
+                    attachmentButton
+                    modelButton
+                    Spacer(minLength: 4)
+                    sessionProgress
+                    submitButton
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(BYOTBrand.canvas)
+        }
+        .padding(10)
+        .background(BYOTBrand.controlSurface, in: RoundedRectangle(cornerRadius: 26))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26)
+                .strokeBorder(BYOTBrand.hairline, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(BYOTBrand.canvas)
+        .sheet(item: $previewAttachment) { attachment in
+            OpenCodeAttachmentPreview(attachment: attachment)
         }
         .sheet(isPresented: $isShowingModelPicker) {
             OpenCodeModelPickerView(store: store)
@@ -225,48 +131,146 @@ struct OpenCodeSessionComposerView: View {
             || !attachments.isEmpty
     }
 
-    private func attachmentChip(_ attachment: OpenCodePromptAttachment) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: attachment.mimeType.hasPrefix("image/") ? "photo" : "doc")
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(attachment.filename)
-                    .font(.cleanCaptionBold)
-                    .lineLimit(1)
-                Text(attachment.formattedByteCount)
-                    .font(.cleanCaption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+    private var modelButton: some View {
+        Button(action: showModelPicker) {
+            HStack(spacing: 6) {
+                Text(store.selectedModel?.modelName ?? "Automatic")
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .truncationMode(.tail)
+                Image(systemName: "chevron.down")
+                    .imageScale(.small)
             }
-            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : 240, alignment: .leading)
+            .font(.cleanCaptionBold)
+            .padding(.horizontal, 8)
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Choose model")
+        .accessibilityValue(store.selectedModel.map {
+            "\($0.modelName), \($0.providerName)"
+        } ?? "Automatic")
+    }
+
+    private var attachmentButton: some View {
+        Menu {
+            Button("Choose Photo", systemImage: "photo") {
+                isShowingPhotoPicker = true
+            }
+            Button("Choose File", systemImage: "doc") {
+                isShowingFileImporter = true
+            }
+#if DEBUG
+            if let screenshotAttachment {
+                Button("Add Screenshot Fixture", systemImage: "sparkles") {
+                    do { try appendAttachments([screenshotAttachment]) }
+                    catch { attachmentErrorMessage = error.localizedDescription }
+                }
+                Button("Add Text Fixture", systemImage: "doc.text") {
+                    do {
+                        try appendAttachments([OpenCodePromptAttachment(
+                            filename: "review-notes.txt", mimeType: "text/plain",
+                            data: Data("Review the attachment preview and composer layout.".utf8)
+                        )])
+                    } catch { attachmentErrorMessage = error.localizedDescription }
+                }
+            }
+#endif
+        } label: {
+            Group {
+                if isImportingAttachment { ProgressView() }
+                else { Image(systemName: "plus").font(.cleanControlIcon) }
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .foregroundStyle(.primary)
+        .accessibilityLabel("Add attachment")
+        .disabled(isImportingAttachment || attachments.count >= OpenCodePromptAttachment.maximumCount)
+    }
+
+    @ViewBuilder
+    private var sessionProgress: some View {
+        if !store.canSubmitPrompt {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel("Checking session status")
+        }
+    }
+
+    private var submitButton: some View {
+        Button {
+            if showsStopControl { stopTurn() }
+            else { send() }
+        } label: {
+            Image(systemName: showsStopControl ? "stop.fill" : "arrow.up")
+                .font(.cleanControlIcon)
+                .foregroundStyle(BYOTBrand.primaryActionInk)
+                .frame(width: 44, height: 44)
+                .background(BYOTBrand.primaryAction, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(showsStopControl ? "Stop the current turn" :
+            (store.willQueueNextPrompt ? "Queue message" : "Send message"))
+        .accessibilityIdentifier(showsStopControl ? "opencode-composer-stop" : "opencode-composer-send")
+        .disabled(!showsStopControl && (!hasSendableContent || !store.canSubmitPrompt))
+    }
+
+    private func attachmentChip(_ attachment: OpenCodePromptAttachment) -> some View {
+        HStack(spacing: 2) {
+            Button {
+                isFocused = false
+                previewAttachment = attachment
+            } label: {
+                HStack(spacing: 8) {
+                    OpenCodeAttachmentThumbnail(attachment: attachment)
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(attachment.filename)
+                            .font(.cleanCaptionBold)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text(attachment.formattedByteCount)
+                            .font(.cleanCaption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : 160,
+                           alignment: .leading)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Preview \(attachment.filename)")
             Button {
                 attachments.removeAll { $0.id == attachment.id }
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .frame(minWidth: 44, minHeight: 44)
+                Image(systemName: "xmark")
+                    .font(.cleanCaptionBold)
+                    .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("Remove \(attachment.filename)")
             .foregroundStyle(.secondary)
             .fixedSize()
         }
-        .padding(.leading, 10)
-        .padding(.trailing, 6)
-        .padding(.vertical, 6)
-        .background(BYOTBrand.controlSurface, in: Capsule())
+        .padding(6)
+        .background(BYOTBrand.canvas, in: RoundedRectangle(cornerRadius: 14))
         .accessibilityElement(children: .contain)
     }
 
     private var showsStopControl: Bool {
-        Self.showsStopControl(canStop: store.canStopTurn, text: text)
+        Self.showsStopControl(canStop: store.canStopTurn, text: text, hasAttachments: !attachments.isEmpty)
     }
 
     // The stop control takes the send slot only while the composer is empty;
     // typed text switches back to send/queue so a steering message is never
     // blocked by the stop affordance.
-    static func showsStopControl(canStop: Bool, text: String) -> Bool {
-        canStop && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    nonisolated static func showsStopControl(canStop: Bool, text: String, hasAttachments: Bool = false) -> Bool {
+        canStop && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasAttachments
     }
 
     private func showModelPicker() {

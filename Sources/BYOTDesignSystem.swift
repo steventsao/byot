@@ -1,5 +1,13 @@
 import SwiftUI
 
+struct BYOTWordmark: View {
+    var body: some View {
+        Text(BYOTBrand.wordmark)
+            .font(.custom("OpenRunde-Bold", size: 23, relativeTo: .headline))
+            .accessibilityLabel(BYOTBrand.wordmark)
+    }
+}
+
 extension Font {
     static let cleanTitle = Font.custom("OpenRunde-Semibold", size: 28, relativeTo: .title)
     static let cleanTitleBold = Font.custom("OpenRunde-Bold", size: 28, relativeTo: .title)

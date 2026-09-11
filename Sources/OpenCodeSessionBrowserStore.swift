@@ -40,10 +40,12 @@ enum OpenCodeSessionSort: String, CaseIterable, Identifiable {
         }
     }
 
-    func ordered(_ sessions: [OpenCodeSession], statuses: [String: OpenCodeSessionStatus]) -> [OpenCodeSession] {
+    func ordered(_ sessions: [OpenCodeSession], statuses: [String: OpenCodeSessionStatus],
+                 attention: Set<String> = []) -> [OpenCodeSession] {
         sessions.sorted { lhs, rhs in
             if self == .status {
-                let a = Self.priority(statuses[lhs.id]), b = Self.priority(statuses[rhs.id])
+                let a = attention.contains(lhs.id) ? 0 : Self.priority(statuses[lhs.id])
+                let b = attention.contains(rhs.id) ? 0 : Self.priority(statuses[rhs.id])
                 if a != b { return a < b }
             }
             if self == .name {
@@ -86,9 +88,11 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
         return result
     }
 
-    func orderedGroups(by sort: OpenCodeSessionSort) -> [OpenCodeSessionGroup] {
+    func orderedGroups(by sort: OpenCodeSessionSort, attention: Set<String> = []) -> [OpenCodeSessionGroup] {
         uniqueGroups.sorted { lhs, rhs in
-            if sort == .status, lhs.priority != rhs.priority { return lhs.priority < rhs.priority }
+            let a = lhs.sessions.contains { attention.contains($0.id) } ? 0 : lhs.priority
+            let b = rhs.sessions.contains { attention.contains($0.id) } ? 0 : rhs.priority
+            if sort == .status, a != b { return a < b }
             if sort == .name {
                 let comparison = lhs.project.displayName.localizedStandardCompare(rhs.project.displayName)
                 if comparison != .orderedSame { return comparison == .orderedAscending }
