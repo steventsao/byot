@@ -1,0 +1,26 @@
+[
+  {
+    "file": "sessions-grouped-dark.png",
+    "sourceName": "sessions-grouped_0_E2206E0A-BDAC-4C29-84C9-A6822D6C5891.png",
+    "test": "OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation()",
+    "sha256": "e80636a438395790694c271b3f2fa6a9f9079c731d8910f3a5ae9e0d649a6f87"
+  },
+  {
+    "file": "sessions-recent-dark.png",
+    "sourceName": "sessions-recent_0_B0209D31-FEE2-45C3-8F89-D3DE238BA3FE.png",
+    "test": "OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation()",
+    "sha256": "6315eff24f485ab35e2c5479bcee360fa143a5e39fda7e8e9ea8f95cfb4c68b2"
+  },
+  {
+    "file": "sessions-search-accessibility-dark.png",
+    "sourceName": "sessions-search-accessibility_0_0663677B-9DD7-4836-B7D6-F439312177F4.png",
+    "test": "OpenCodeSessionBrowserUITests/testLargeTypeSearchAndServerBar()",
+    "sha256": "bd57b84d20099ef802a644056c67ff2ecb1d696441dcdacb3f1a4fe07d1cf209"
+  },
+  {
+    "file": "sessions-accessibility-dark.png",
+    "sourceName": "sessions-accessibility_0_E35D1C01-EB54-4B26-99EE-84EB2D440873.png",
+    "test": "OpenCodeSessionBrowserUITests/testLargeTypeSearchAndServerBar()",
+    "sha256": "63aa80efb14b7094d59d38e51dd02253b803283e8a10332fb2f794cdaadc3f33"
+  }
+]

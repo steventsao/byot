@@ -1,0 +1,24 @@
+{
+  "verifiedDate": "2026-09-11",
+  "appID": "6782403920",
+  "version": "1.0.16",
+  "buildNumber": "20260911160436",
+  "buildID": "b7bbe66f-ea07-4ea4-be80-5d20f5d42ed2",
+  "uploadedDate": "2026-09-11T16:09:11-07:00",
+  "processingState": "VALID",
+  "internalBuildState": "IN_BETA_TESTING",
+  "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+  "group": {
+    "id": "a2c29c92-ddfd-4c22-9368-8563d9b756ea",
+    "name": "Internal Testers",
+    "isInternalGroup": true,
+    "explicitMembershipVerified": true
+  },
+  "testNotesLocale": "en-US",
+  "testNotesMatchRepository": true,
+  "externalReviewSubmitted": false,
+  "applicationSourceCommit": "a3a36e35713d56f9cc4ac6251aaab8b8e212bc91",
+  "ipaSHA256": "838d2959240622baac8ddfed351af9dcb9b190a792caf6b81bc908f020d76d71",
+  "appleValidation": "passed",
+  "codeSignatureVerified": true
+}

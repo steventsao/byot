@@ -1,0 +1,14 @@
+[
+  {
+    "file": "sessions-grouped-light.png",
+    "sourceName": "sessions-grouped_0_5AAE21F8-7AEC-412B-9583-44141FDF19A2.png",
+    "test": "OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation()",
+    "sha256": "17898319fa8b00e11e16595ea82ac714ca3cca554da4785978635e69624090f0"
+  },
+  {
+    "file": "sessions-recent-light.png",
+    "sourceName": "sessions-recent_0_832F002F-833E-4957-8DD2-17676824D1CB.png",
+    "test": "OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation()",
+    "sha256": "257724b1c488ac7ad6674ba51473f0c2cedea464105d1ec7b58f45ccb4a3a1ea"
+  }
+]
