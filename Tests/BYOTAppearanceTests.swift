@@ -23,6 +23,13 @@ struct BYOTAppearanceTests {
         #expect(contrast(BYOTBrand.accent, BYOTBrand.canvas, environment) >= 4.5)
     }
 
+    @Test("Filled mint buttons keep their labels readable", arguments: [false, true])
+    func filledAccentContrast(dark: Bool) {
+        var environment = EnvironmentValues()
+        environment.colorScheme = dark ? .dark : .light
+        #expect(contrast(BYOTBrand.accentInk, BYOTBrand.accent, environment) >= 4.5)
+    }
+
     private func contrast(_ foreground: Color, _ background: Color, _ environment: EnvironmentValues) -> Double {
         func luminance(_ color: Color) -> Double {
             let resolved = color.resolve(in: environment)

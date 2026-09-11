@@ -50,6 +50,7 @@ struct OpenCodeRootView: View {
                                 edit(nil)
                             }
                             .buttonStyle(.borderedProminent)
+                            .foregroundStyle(BYOTBrand.accentInk)
                         }
                     }
                 }

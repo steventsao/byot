@@ -131,6 +131,7 @@ struct OpenCodeSessionView: View {
                                 Task { await store.refresh(showLoading: true) }
                             }
                             .buttonStyle(.borderedProminent)
+                            .foregroundStyle(BYOTBrand.accentInk)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 48)

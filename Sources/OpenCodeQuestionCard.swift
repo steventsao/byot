@@ -97,6 +97,7 @@ struct OpenCodeQuestionCard: View {
             Task { await submit(answers) }
         }
         .buttonStyle(.borderedProminent)
+        .foregroundStyle(BYOTBrand.accentInk)
         .frame(minHeight: 44)
         .disabled(request.form.map { (try? $0.answer(responseState.resolvedAnswers(for: request.questions))) == nil } ?? !responseState.canSubmit(questions: request.questions))
     }

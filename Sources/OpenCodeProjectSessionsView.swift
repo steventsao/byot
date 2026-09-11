@@ -60,6 +60,7 @@ struct OpenCodeProjectSessionsView: View {
                         Task { await store.load() }
                     }
                     .buttonStyle(.borderedProminent)
+                    .foregroundStyle(BYOTBrand.accentInk)
                 }
             } else if !store.isLoading,
                       store.sessions.isEmpty,
@@ -71,6 +72,7 @@ struct OpenCodeProjectSessionsView: View {
                         isCreatingSession = true
                     }
                     .buttonStyle(.borderedProminent)
+                    .foregroundStyle(BYOTBrand.accentInk)
                 }
             }
         }

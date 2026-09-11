@@ -28,6 +28,7 @@ xcodebuild test -project BYOT.xcodeproj -scheme BYOT \
   -destination "platform=iOS Simulator,id=$simulator" \
   -derivedDataPath "${BYOT_UI_DERIVED_DATA:-$run_root/DerivedData}" \
   -parallel-testing-enabled NO -resultBundlePath "$run_root/tests.xcresult" \
+  -only-testing:BYOTTests/BYOTAppearanceTests \
   -only-testing:BYOTUITests/BYOTAppearanceUITests \
   -only-testing:BYOTUITests/OpenCodeAttachmentUITests \
   -only-testing:BYOTUITests/OpenCodeSessionBrowserUITests/testLargeTypeSearchAndServerBar \
