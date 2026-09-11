@@ -4,6 +4,49 @@ import XCTest
 /// scripts/test-opencode-upstream.sh supplies real, pinned upstream servers.
 final class OpenCodeUpstreamLiveUITests: XCTestCase {
     @MainActor
+    func testRetiredAutomaticModelRecoversOnV1AndV2() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Run scripts/test-opencode-upstream.sh") }
+        let root = try XCTUnwrap(environment["BYOT_LIVE_ROOT"])
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launch()
+        for (major, port) in [("v1", 4195), ("v2", 4199)] {
+            connect(app, name: "Recovery \(major)", port: port, directory: root + "/\(major)/retired")
+            let newSession = app.buttons["New session"].firstMatch
+            XCTAssertTrue(newSession.waitForExistence(timeout: 10))
+            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: newSession)
+            waitForExpectations(timeout: 20)
+            newSession.tap()
+            app.buttons["retired"].firstMatch.tap()
+            let composer = app.textFields["Message"]
+            XCTAssertTrue(composer.waitForExistence(timeout: 10))
+            XCTAssertEqual(app.buttons["Choose model"].value as? String, "Automatic")
+            composer.tap()
+            composer.typeText("Recover this prompt on \(major).")
+            app.buttons["Send message"].tap()
+            let choose = app.buttons["Choose another model"]
+            XCTAssertTrue(choose.waitForExistence(timeout: 30), app.debugDescription)
+            app.swipeUp()
+            attach("\(major)-retired-model-recovery")
+            XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "no longer available")).firstMatch.exists)
+            XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "about:blank")).firstMatch.exists)
+            choose.tap()
+            let active = app.buttons["Local acceptance fixture, BYOT Fixture"]
+            XCTAssertTrue(active.waitForExistence(timeout: 10))
+            active.tap()
+            let retry = app.buttons["retry-model-failure"]
+            XCTAssertTrue(retry.waitForExistence(timeout: 10), app.debugDescription)
+            retry.tap()
+            let reply = app.staticTexts["BYOT upstream compatibility verified."].firstMatch
+            XCTAssertTrue(reply.waitForExistence(timeout: 30), app.debugDescription)
+            app.swipeUp()
+            attach("\(major)-recovered-with-active-model")
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
+    }
+
+    @MainActor
     func testV1AndV2ConnectSendReloadAndSwitchServers() throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Run scripts/test-opencode-upstream.sh") }

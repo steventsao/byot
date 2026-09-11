@@ -58,7 +58,7 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         if !search.isHittable { app.swipeDown() }
         XCTAssertTrue(search.waitForExistence(timeout: 5), app.debugDescription)
         search.tap()
-        search.typeText("nonexistent-long-search-string-without-results")
+        search.typeText("FUZZ-SEARCH-" + String(repeating: "A", count: 128))
         XCTAssertTrue(app.staticTexts["No matching sessions"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["No matching sessions"].isHittable)
         attach("sessions-search-accessibility")

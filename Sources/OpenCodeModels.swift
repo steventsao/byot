@@ -142,8 +142,10 @@ struct OpenCodeMessageError: Codable, Equatable, Sendable {
     let data: [String: OpenCodeJSONValue]?
 
     var displayMessage: String {
-        data?["message"]?.stringValue ?? name
+        failure.message
     }
+
+    var failure: OpenCodeFailure { OpenCodeFailure(message: name, details: data) }
 }
 
 struct OpenCodePart: Codable, Identifiable, Equatable, Sendable {

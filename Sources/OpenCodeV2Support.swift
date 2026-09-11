@@ -110,7 +110,7 @@ enum OpenCodeV2Normalization {
             let error = object["error"]?.objectValue.map {
                 OpenCodeMessageError(
                     name: $0["type"]?.stringValue ?? "error",
-                    data: $0["message"]?.stringValue.map { ["message": .string($0)] }
+                    data: $0
                 )
             }
             var parts: [OpenCodePart] = []
@@ -276,4 +276,3 @@ enum OpenCodeV2Normalization {
         )
     }
 }
-

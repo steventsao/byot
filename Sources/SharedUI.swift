@@ -70,6 +70,6 @@ extension String {
     }
 
     var agentDisplayErrorText: String {
-        trimmedNonEmpty ?? "Request failed. Check the connection and try again."
+        OpenCodeFailure(message: self).message
     }
 }

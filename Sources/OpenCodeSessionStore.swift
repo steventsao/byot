@@ -113,6 +113,48 @@ final class OpenCodeSessionStore: ObservableObject {
         isRunning && isStatusReady && isStoppingTurn == false
     }
 
+    var modelFailure: OpenCodeMessageError? {
+        guard let userIndex = messages.lastIndex(where: { $0.info.role == "user" }),
+              let assistant = messages.suffix(from: userIndex + 1).last(where: { $0.info.role == "assistant" }),
+              let error = assistant.info.error, error.failure.isModelUnavailable
+        else { return nil }
+        return error
+    }
+
+    private var modelFailurePrompt: OpenCodeRecoverablePrompt? {
+        guard modelFailure != nil,
+              let userIndex = messages.lastIndex(where: { $0.info.role == "user" }),
+              messages[userIndex].id != dismissedUnansweredMessageID
+        else { return nil }
+        // Offer replay only when this turn produced no usable assistant output
+        // or tool calls. A partially executed turn can still select a new model.
+        guard messages.suffix(from: userIndex + 1).allSatisfy({ message in
+            message.parts.allSatisfy { part in
+                part.type != "tool" && (part.text?.trimmedNonEmpty == nil)
+            }
+        }) else { return nil }
+        return Self.recoverablePrompt(in: [messages[userIndex]])
+    }
+
+    var canRetryWithSelectedModel: Bool {
+        guard canSubmitPrompt, !status.isActive, !isSending,
+              let selectedModel, modelFailurePrompt != nil else { return false }
+        let failed = messages.last(where: { $0.info.role == "assistant" })?.info
+        return failed?.providerID != selectedModel.providerID || failed?.modelID != selectedModel.modelID
+    }
+
+    @discardableResult
+    func retryWithSelectedModel() -> Bool {
+        guard canRetryWithSelectedModel, let original = modelFailurePrompt,
+              let prompt = promptQueue.beginExplicitDispatch(
+                text: original.text, model: selectedModel, attachments: original.attachments
+              ) else { return false }
+        dismissedUnansweredMessageID = original.messageID
+        publishPromptQueue()
+        schedulePromptDispatch(prompt)
+        return true
+    }
+
     var canRetryFirstQueuedPrompt: Bool {
         canSubmitPrompt
             && status.isActive == false
@@ -818,7 +860,7 @@ final class OpenCodeSessionStore: ObservableObject {
             scheduleMessageRefresh()
         case "session.execution.failed", "session.execution.interrupted":
             if event.type == "session.execution.failed" {
-                errorMessage = event.properties["error"]?.objectValue?["message"]?.stringValue ?? "The turn failed."
+                errorMessage = OpenCodeFailure(message: "The turn failed.", details: event.properties["error"]?.objectValue).message
             }
             settleTurnLocally(dismissingUnansweredPrompt: false)
             scheduleMessageRefresh()

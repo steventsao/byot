@@ -23,6 +23,13 @@ REPLY = "BYOT upstream compatibility verified."
 class Model(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        if body.get("model") == "retired":
+            self.send_response(410)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"type": "about:blank", "title": "Gone", "status": 410,
+                "detail": "The model 'fixture/retired' has reached its end of life and is no longer available."}).encode())
+            return
         common = {"id": "fixture", "created": int(time.time()), "model": body.get("model", "test")}
         self.send_response(200)
         if not body.get("stream"):
@@ -139,6 +146,14 @@ def main():
                     "name": "BYOT Fixture", "package": "aisdk:@ai-sdk/openai-compatible", "settings": options,
                     "models": {"test": model_config}}}, "permissions": [{"action": "byot_acceptance", "resource": "*", "effect": "ask"}]}
             (project / "opencode.json").write_text(json.dumps(config, indent=2))
+            retired_project = runtime / "retired"
+            retired_project.mkdir()
+            retired_config = json.loads(json.dumps(config))
+            retired_config["model"] = "fixture/retired"
+            provider_key = "provider" if major == "v1" else "providers"
+            retired_config[provider_key]["fixture"]["models"]["retired"] = {
+                **model_config, "name": "Retired model fixture"}
+            (retired_project / "opencode.json").write_text(json.dumps(retired_config, indent=2))
             executable = str(args.tools.resolve() / "node_modules" / ".bin" / binary)
             versions[major] = subprocess.check_output([executable, "--version"], env=env, text=True).strip().removeprefix("opencode2 v")
             with (runtime / "server.log").open("w") as log:
