@@ -64,15 +64,28 @@ struct OpenCodeSessionComposerView: View {
                 }
 
                 if !attachments.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(attachments) { attachment in
-                                attachmentChip(attachment)
+                    if dynamicTypeSize.isAccessibilitySize {
+                        ScrollView(.vertical) {
+                            VStack(spacing: 8) {
+                                ForEach(attachments) { attachment in
+                                    attachmentChip(attachment)
+                                }
                             }
                         }
-                        .padding(.vertical, 2)
+                        .frame(maxHeight: 160)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel("Attachments")
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(attachments) { attachment in
+                                    attachmentChip(attachment)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        .accessibilityLabel("Attachments")
                     }
-                    .accessibilityLabel("Attachments")
                 }
 
                 HStack(alignment: .bottom, spacing: 10) {
@@ -189,6 +202,9 @@ struct OpenCodeSessionComposerView: View {
             guard !items.isEmpty else { return }
             importPhotos(items)
         }
+        .onChange(of: store.modelFailure) { _, failure in
+            if failure != nil { isFocused = false }
+        }
         .alert(
             "Couldn’t Add Attachment",
             isPresented: Binding(
@@ -213,6 +229,7 @@ struct OpenCodeSessionComposerView: View {
         HStack(spacing: 8) {
             Image(systemName: attachment.mimeType.hasPrefix("image/") ? "photo" : "doc")
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(attachment.filename)
                     .font(.cleanCaptionBold)
@@ -220,13 +237,19 @@ struct OpenCodeSessionComposerView: View {
                 Text(attachment.formattedByteCount)
                     .font(.cleanCaption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            Button("Remove \(attachment.filename)", systemImage: "xmark.circle.fill") {
+            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : 240, alignment: .leading)
+            Button {
                 attachments.removeAll { $0.id == attachment.id }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             }
-            .labelStyle(.iconOnly)
+            .accessibilityLabel("Remove \(attachment.filename)")
             .foregroundStyle(.secondary)
-            .frame(minWidth: 32, minHeight: 32)
+            .fixedSize()
         }
         .padding(.leading, 10)
         .padding(.trailing, 6)
@@ -247,6 +270,7 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private func showModelPicker() {
+        isFocused = false
         isShowingModelPicker = true
     }
 

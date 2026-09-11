@@ -4,6 +4,61 @@ import Testing
 
 @Suite("OpenCode session recovery")
 struct OpenCodeSessionRecoveryTests {
+    @Test("A retired automatic model can retry the original text and attachment with an explicit model")
+    @MainActor
+    func retiredModelRecoveryPreservesPrompt() async throws {
+        var messages = try #require(JSONSerialization.jsonObject(with: Data(Self.userOnlyMessages.utf8)) as? [[String: Any]])
+        var parts = try #require(messages[0]["parts"] as? [[String: Any]])
+        parts.append(["id": "file", "sessionID": "ses-recovery", "messageID": "msg-user", "type": "file",
+                      "filename": "notes.txt", "mime": "text/plain", "url": "data:text/plain;base64,aGVsbG8="])
+        messages[0]["parts"] = parts
+        messages.append(["info": ["id": "failed", "sessionID": "ses-recovery", "role": "assistant",
+                                   "time": ["created": 2, "completed": 3],
+                                   "error": ["name": "APIError", "data": ["message": "The model has reached its end of life."]]], "parts": []])
+        let harness = OpenCodeRecoveryStub.register(messages: String(decoding: try JSONSerialization.data(withJSONObject: messages), as: UTF8.self), statusCode: 200, statusBody: "{}")
+        defer { harness.unregister() }
+        let store = makeStore(client: harness.client, sessionID: harness.sessionID)
+        await store.start()
+        defer { store.stop() }
+        #expect(store.modelFailure != nil)
+        #expect(!store.canRetryWithSelectedModel)
+        #expect(!store.retryWithSelectedModel())
+        store.selectModel(OpenCodeModelOption(providerID: "active", providerName: "Active", modelID: "working", modelName: "Working", status: "active"))
+        #expect(store.canRetryWithSelectedModel)
+        #expect(store.retryWithSelectedModel())
+        #expect(!store.retryWithSelectedModel())
+        for _ in 0..<100 where harness.promptBodies.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        let body = try #require(harness.promptBodies.first)
+        let prompt = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect((prompt["model"] as? [String: String])?["modelID"] == "working")
+        let sentParts = try #require(prompt["parts"] as? [[String: Any]])
+        #expect(sentParts.contains { $0["text"] as? String == "Find accessible PDF labeling tools" })
+        #expect(sentParts.contains { $0["filename"] as? String == "notes.txt" && $0["url"] as? String == "data:text/plain;base64,aGVsbG8=" })
+        #expect(harness.promptBodies.count == 1)
+        #expect(harness.abortCount == 0)
+    }
+
+    @Test("Model recovery does not replay a busy or partly executed turn", arguments: [true, false])
+    @MainActor
+    func modelRecoveryRespectsExecutionState(busy: Bool) async throws {
+        var messages = try #require(JSONSerialization.jsonObject(with: Data(Self.userOnlyMessages.utf8)) as? [[String: Any]])
+        let parts: [[String: Any]] = busy ? [] : [["id": "output", "sessionID": "ses-recovery", "messageID": "failed", "type": "text", "text": "I already changed a file."]]
+        messages.append(["info": ["id": "failed", "sessionID": "ses-recovery", "role": "assistant",
+                                   "time": ["created": 2], "providerID": "old", "modelID": "retired",
+                                   "error": ["name": "APIError", "data": ["message": "The model is no longer available."]]], "parts": parts])
+        let harness = OpenCodeRecoveryStub.register(messages: String(decoding: try JSONSerialization.data(withJSONObject: messages), as: UTF8.self), statusCode: 200,
+            statusBody: busy ? #"{"ses-recovery":{"type":"busy"}}"# : "{}")
+        defer { harness.unregister() }
+        let store = makeStore(client: harness.client, sessionID: harness.sessionID)
+        await store.start()
+        defer { store.stop() }
+        store.selectModel(OpenCodeModelOption(providerID: "active", providerName: "Active", modelID: "working", modelName: "Working", status: "active"))
+        #expect(store.modelFailure != nil)
+        #expect(!store.canRetryWithSelectedModel)
+        #expect(!store.retryWithSelectedModel())
+        #expect(harness.promptBodies.isEmpty)
+    }
+
     @Test(
         "An unanswered transcript keeps Stop available when status cannot load",
         .bug(id: "ASC-ANy3NA4eHNR2IR5fHp0S56U")

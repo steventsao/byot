@@ -1,0 +1,32 @@
+[
+  {
+    "file": "home-Light.png",
+    "sha256": "9f63981d591922da8d6b7cf2f284ecb1dd852499fff05180bdcd5c4e2f4687f0",
+    "test": "BYOTAppearanceUITests/testAppearanceChangesImmediatelyAndPersists()",
+    "original": "E87428A5-0F81-485C-93CD-F1708B0FEDAB.png"
+  },
+  {
+    "file": "home-Dark.png",
+    "sha256": "f0aec6c34e91086a85b63466be7a451d01e5878416b936259e1d82f07f181d7c",
+    "test": "BYOTAppearanceUITests/testAppearanceChangesImmediatelyAndPersists()",
+    "original": "99634E24-1C6A-4D60-B8C7-CDE9E60A7A00.png"
+  },
+  {
+    "file": "attachment-largest-text.png",
+    "sha256": "6032a6be4e82f69ff514a082c46ee09d8e5f7a4f0f7e01620336db0244417744",
+    "test": "OpenCodeAttachmentUITests/testAttachmentRemovalAtLargestTextSize()",
+    "original": "CE987DC8-3713-45E7-81C5-1B1C5A89DEC4.png"
+  },
+  {
+    "file": "empty-model-picker-largest-text.png",
+    "sha256": "4cf2a77ff024ec141a97ab0c2f9865fd29a800c51a83fb2a34c27255667129d0",
+    "test": "OpenCodeAttachmentUITests/testEmptyModelPickerDoesNotOverlapAutomaticAtLargestTextSize()",
+    "original": "574F515C-735F-4085-8720-3EB9DFBDEC52.png"
+  },
+  {
+    "file": "sessions-search-accessibility.png",
+    "sha256": "9c3bdc650288d8143922505ae1aa46ece900c88960eaad593e5e7db259655d74",
+    "test": "OpenCodeSessionBrowserUITests/testLargeTypeSearchAndServerBar()",
+    "original": "F6BA647F-828C-4C9C-BD35-8BD3AB5935EC.png"
+  }
+]

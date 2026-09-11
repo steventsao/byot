@@ -1,0 +1,32 @@
+[
+  {
+    "file": "v2-recovered-with-active-model.png",
+    "sha256": "16f31036df23d8bec433dd526cd03acc079229e10e7dfbd5b7059cae60db9030",
+    "test": "OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2()",
+    "original": "4973579E-9095-47EC-905C-35C2CC74E506.png"
+  },
+  {
+    "file": "v2-retired-model-recovery.png",
+    "sha256": "684b707160fe3846241dab90924499674c0670d09b452eba79fa298976c151be",
+    "test": "OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2()",
+    "original": "5A93E7BF-CD43-4338-B10A-C94929DCCC34.png"
+  },
+  {
+    "file": "v1-recovered-with-active-model.png",
+    "sha256": "b96eedbf7a2d128ca3153221baa972bec56b94b725d96637384601ee4b0d6bd2",
+    "test": "OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2()",
+    "original": "3A10E719-D406-4777-A46C-F26BA0204874.png"
+  },
+  {
+    "file": "v1-retired-model-recovery.png",
+    "sha256": "ee54e426e9dcb5d078df4546054155d02046eb8bd5c7db785aba21feded66f58",
+    "test": "OpenCodeUpstreamLiveUITests/testRetiredAutomaticModelRecoversOnV1AndV2()",
+    "original": "9249BDD8-AC58-455A-8F09-615153DE4F99.png"
+  },
+  {
+    "file": "upstream-v2-restored-server-switch.png",
+    "sha256": "169f593bf535a0657968c00daae2a5a89fb050676c7a3ab0dd4c3b2b02017d1e",
+    "test": "OpenCodeUpstreamLiveUITests/testV1AndV2ConnectSendReloadAndSwitchServers()",
+    "original": "C7AD6DF2-9F58-4EAF-87A5-BF9BB6A71F65.png"
+  }
+]

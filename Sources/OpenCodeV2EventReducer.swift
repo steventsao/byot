@@ -94,7 +94,7 @@ struct OpenCodeV2EventReducer: Sendable {
         case "session.step.ended", "session.step.failed":
             let old = messages[index].info
             let error = data["error"]?.objectValue.map {
-                OpenCodeMessageError(name: $0["type"]?.stringValue ?? "Error", data: ["message": $0["message"] ?? .string("The turn failed.")])
+                OpenCodeMessageError(name: $0["type"]?.stringValue ?? "Error", data: $0)
             }
             messages[index].info = OpenCodeMessageInfo(id: old.id, sessionID: old.sessionID, role: old.role,
                 time: OpenCodeMessageTime(created: old.time.created, completed: created), agent: old.agent,

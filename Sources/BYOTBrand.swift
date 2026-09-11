@@ -41,7 +41,9 @@ enum BYOTBrand {
         })
     }
     static var accentSoft: Color { accent.opacity(0.12) }
-    static var accentInk: Color { .primary }
+    // Filled accent buttons need white ink on forest green in Light appearance
+    // and black ink on mint in Dark appearance.
+    static var accentInk: Color { Color(uiColor: .systemBackground) }
     static var primaryAction: Color { Color(uiColor: .label) }
     static var primaryActionInk: Color { Color(uiColor: .systemBackground) }
     static var ink: Color { .primary }

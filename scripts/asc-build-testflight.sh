@@ -23,7 +23,7 @@ run_asc() {
   fi
 }
 
-BYOT_VERSION="${BYOT_VERSION:-1.0.9}"
+BYOT_VERSION="${BYOT_VERSION:-1.0.14}"
 # 14-digit YYYYMMDDHHMMSS: monotonically increasing and always larger than the
 # 20260624152336 build that poisoned the sequence. A 12-digit %Y%m%d%H%M number is
 # numerically smaller than that one, so iOS/TestFlight treats such builds as
@@ -62,6 +62,18 @@ archive_flags=(
 )
 export_flags=()
 validate_args=()
+
+# A distribution-only keychain cannot satisfy Xcode's automatic development
+# signature during archive. Allow an explicit identity/profile pair for CI.
+if [[ -n "${BYOT_CODE_SIGN_IDENTITY:-}" ]]; then
+  archive_flags+=(--xcodebuild-flag="CODE_SIGN_IDENTITY=$BYOT_CODE_SIGN_IDENTITY")
+fi
+if [[ -n "${BYOT_PROVISIONING_PROFILE_SPECIFIER:-}" ]]; then
+  archive_flags+=(
+    --xcodebuild-flag=CODE_SIGN_STYLE=Manual
+    --xcodebuild-flag="PROVISIONING_PROFILE_SPECIFIER=$BYOT_PROVISIONING_PROFILE_SPECIFIER"
+  )
+fi
 
 SWIFTPM_CACHE_PATH="$HOME/Library/Caches/org.swift.swiftpm"
 SWIFTPM_ISOLATION="${BYOT_ISOLATE_SWIFTPM_CACHE:-auto}"

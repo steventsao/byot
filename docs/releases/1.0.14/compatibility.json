@@ -1,0 +1,61 @@
+{
+  "app": {
+    "version": "1.0.14",
+    "build": "20260911130732",
+    "bundleID": "com.steventsao.byot",
+    "applicationSourceCommit": "55aa4320ee44b39ad3f4fcfc346154fe17c01b14",
+    "archiveSourceCommit": "eeb5dce7a5e912731f164eec54f658d1dc36ea8d",
+    "ipaSHA256": "e4f8b17a4457feb35bffeaf67786d440626318b034a27e12230bdc128f744fdf"
+  },
+  "upstream": {
+    "v1": {
+      "package": "opencode-ai",
+      "version": "1.18.29"
+    },
+    "v2": {
+      "package": "@opencode-ai/cli",
+      "version": "0.0.0-beta-19271",
+      "openapiSHA256": "54382521d4383aa59b5b1ddeddc87298a1ac713d96dc7ca2814698a11c9e8556"
+    }
+  },
+  "tests": {
+    "live": {
+      "passed": 184,
+      "failed": 0,
+      "skipped": 0,
+      "xctest": 71,
+      "swiftTesting": 111,
+      "uiWorkflows": 2,
+      "sourceCommit": "89167c7085a192d52a991e9c43b9c9684061b72f",
+      "iOS": "26.5 (23F77)",
+      "xcode": "26.5 (17F42)"
+    },
+    "accessibility": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "contrastTests": 3,
+      "uiWorkflows": 5,
+      "sourceCommit": "ed6c8b442c082e66c3eedeacb11e4e18386fe4af",
+      "iOS": "26.3.1 (23D8133)",
+      "xcode": "26.3 (17C529)"
+    }
+  },
+  "scope": {
+    "device": "iPhone 17 Pro simulator",
+    "physicalDeviceTested": false,
+    "paidProvidersTested": false,
+    "model": "Deterministic local OpenAI-compatible fixture",
+    "transport": "Production HTTPS and authentication with a simulator-scoped test CA"
+  },
+  "release": {
+    "appleValidation": "passed",
+    "codeSignatureVerified": true,
+    "testBundles": [],
+    "debugFixtureMarkersFound": [],
+    "internalDistribution": "IN_BETA_TESTING",
+    "externalReviewSubmitted": false,
+    "buildID": "cd676c09-1ca6-4152-b1d0-46111ae91590",
+    "groupID": "a2c29c92-ddfd-4c22-9368-8563d9b756ea"
+  }
+}

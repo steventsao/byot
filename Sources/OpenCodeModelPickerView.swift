@@ -20,12 +20,14 @@ struct OpenCodeModelPickerView: View {
                                         .font(.cleanCaption)
                                         .foregroundStyle(.secondary)
                                 }
+                                .fixedSize(horizontal: false, vertical: true)
                             } icon: {
                                 Image(systemName: store.selectedModel == nil ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(store.selectedModel == nil ? BYOTBrand.accent : .secondary)
                             }
                         }
                         .foregroundStyle(.primary)
+                        .accessibilityIdentifier("automatic-model-option")
                     }
                 }
 
@@ -60,7 +62,6 @@ struct OpenCodeModelPickerView: View {
                                         Text(model.modelID)
                                             .font(.cleanCaption)
                                             .foregroundStyle(.secondary)
-                                            .textSelection(.enabled)
                                         if dynamicTypeSize.isAccessibilitySize,
                                            let status = model.status,
                                            status != "active" {
@@ -87,6 +88,28 @@ struct OpenCodeModelPickerView: View {
                     }
                 }
 
+                if store.isLoadingModels && store.providerModels.isEmpty {
+                    Section {
+                        BYOTActivityView(.loading, title: "Loading models", layout: .inline)
+                    }
+                } else if !store.isLoadingModels,
+                          store.providerModels.isEmpty,
+                          store.modelErrorMessage == nil {
+                    Section {
+                        ContentUnavailableView(
+                            "No models", systemImage: "cpu",
+                            description: Text("Connect a provider, then refresh.")
+                        )
+                    }
+                } else if !normalizedSearchText.isEmpty,
+                          filteredProviders.isEmpty,
+                          !automaticMatchesSearch {
+                    Section {
+                        Text("No matching models")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 if let errorMessage = store.modelErrorMessage {
                     Section {
                         ErrorBanner(message: errorMessage)
@@ -95,27 +118,6 @@ struct OpenCodeModelPickerView: View {
                             Task { await store.reloadModels() }
                         }
                     }
-                }
-            }
-            .overlay {
-                if store.isLoadingModels && store.providerModels.isEmpty {
-                    BYOTActivityView(
-                        .loading,
-                        title: "Loading models",
-                        layout: .blocking
-                    )
-                } else if !store.isLoadingModels,
-                          store.providerModels.isEmpty,
-                          store.modelErrorMessage == nil {
-                    ContentUnavailableView(
-                        "No models",
-                        systemImage: "cpu",
-                        description: Text("Connect a provider, then refresh.")
-                    )
-                } else if !normalizedSearchText.isEmpty,
-                          filteredProviders.isEmpty,
-                          !automaticMatchesSearch {
-                    ContentUnavailableView.search
                 }
             }
             .navigationTitle("Choose model")

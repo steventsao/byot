@@ -7,7 +7,7 @@ import XCTest
 final class OpenCodeLiveServerTests: XCTestCase {
     func testLiveBetaPromptStreamSnapshotRetryFormsAndInterrupt() async throws {
         guard ProcessInfo.processInfo.environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Requires the isolated live server fixture") }
-        let directory = "/tmp/byot-v2-runtime-19242/project"
+        let directory = try fixtureDirectory("v2")
         let client = OpenCodeClient(profile: OpenCodeServerProfile(name: "Live beta", baseURL: "https://127.0.0.1:4199", directory: directory), password: "byot-local-fixture-only")
         _ = try await client.probeCompatibility()
         let projects = try await client.listProjects()
@@ -32,7 +32,7 @@ final class OpenCodeLiveServerTests: XCTestCase {
         let connected = await collector.connected
         XCTAssertTrue(connected)
         let promptID = UUID()
-        try await client.sendMessage(sessionID: session.id, directory: directory, model: model, text: "Say BYOT live beta verified.", promptID: promptID)
+        try await client.sendMessage(sessionID: session.id, directory: directory, model: model, text: "Say BYOT upstream compatibility verified.", promptID: promptID)
         for _ in 0..<150 {
             if await collector.finished { break }
             try await Task.sleep(for: .milliseconds(200))
@@ -41,13 +41,13 @@ final class OpenCodeLiveServerTests: XCTestCase {
         XCTAssertTrue(events.contains { $0.type == "session.execution.succeeded" }, "Events: \(events.map(\.type))")
         var reducer = OpenCodeTranscriptReducer()
         for event in events where event.isV2 { _ = reducer.apply(event) }
-        XCTAssertTrue(reducer.messages.flatMap(\.parts).contains { $0.text == "BYOT live beta verified." })
+        XCTAssertTrue(reducer.messages.flatMap(\.parts).contains { $0.text == "BYOT upstream compatibility verified." })
         let snapshot = try await client.messages(sessionID: session.id, directory: directory)
-        XCTAssertTrue(snapshot.flatMap(\.parts).contains { $0.text == "BYOT live beta verified." })
+        XCTAssertTrue(snapshot.flatMap(\.parts).contains { $0.text == "BYOT upstream compatibility verified." })
         let expectedID = "msg_" + promptID.uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         XCTAssertEqual(snapshot.filter { $0.id == expectedID }.count, 1)
         // Replay the same admission ID, as a retry after an ambiguous response.
-        try await client.sendMessage(sessionID: session.id, directory: directory, text: "Say BYOT live beta verified.", promptID: promptID)
+        try await client.sendMessage(sessionID: session.id, directory: directory, text: "Say BYOT upstream compatibility verified.", promptID: promptID)
         let retried = try await client.messages(sessionID: session.id, directory: directory)
         XCTAssertEqual(retried.filter { $0.id == expectedID }.count, 1)
         let formBody: [String: Any] = ["title": "Live form", "fields": [["key": "speed", "type": "string", "required": true, "options": [["value": "fast", "label": "Quick"]]]]]
@@ -82,7 +82,7 @@ final class OpenCodeLiveServerTests: XCTestCase {
 
     func testLiveV1ExistingProtocolStillSendsAndReloads() async throws {
         guard ProcessInfo.processInfo.environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Requires isolated v1 fixture") }
-        let directory = "/tmp/byot-v1-runtime-11821/project"
+        let directory = try fixtureDirectory("v1")
         let client = OpenCodeClient(profile: OpenCodeServerProfile(name: "Live v1", baseURL: "https://127.0.0.1:4195", directory: directory), password: "byot-local-fixture-only")
         _ = try await client.probeCompatibility()
         let providers = try await client.connectedProviderModels(directory: directory)
@@ -92,10 +92,10 @@ final class OpenCodeLiveServerTests: XCTestCase {
         var snapshot: [OpenCodeMessageEnvelope] = []
         for _ in 0..<100 {
             snapshot = try await client.messages(sessionID: session.id, directory: directory)
-            if snapshot.flatMap(\.parts).contains(where: { $0.text == "BYOT live beta verified." }) { break }
+            if snapshot.flatMap(\.parts).contains(where: { $0.text == "BYOT upstream compatibility verified." }) { break }
             try await Task.sleep(for: .milliseconds(200))
         }
-        XCTAssertTrue(snapshot.flatMap(\.parts).contains { $0.text == "BYOT live beta verified." })
+        XCTAssertTrue(snapshot.flatMap(\.parts).contains { $0.text == "BYOT upstream compatibility verified." })
         XCTAssertEqual(snapshot.filter { $0.info.role == "user" }.count, 1)
         let questions = try await client.questions(directory: directory)
         let permissions = try await client.permissions(directory: directory)
@@ -104,7 +104,7 @@ final class OpenCodeLiveServerTests: XCTestCase {
 
     func testLiveBetaAttachmentOnlyPromptRoundTripsFile() async throws {
         guard ProcessInfo.processInfo.environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Requires isolated beta fixture") }
-        let directory = "/tmp/byot-v2-runtime-19242/project"
+        let directory = try fixtureDirectory("v2")
         let client = OpenCodeClient(profile: OpenCodeServerProfile(name: "Live beta", baseURL: "https://127.0.0.1:4199", directory: directory), password: "byot-local-fixture-only")
         let session = try await client.createSession(directory: directory, title: "BYOT attachment acceptance")
         let attachment = OpenCodePromptAttachment(filename: "acceptance.txt", mimeType: "text/plain", data: Data("BYOT attachment fixture".utf8))
@@ -119,7 +119,12 @@ final class OpenCodeLiveServerTests: XCTestCase {
         XCTAssertEqual(file.filename, "acceptance.txt")
         XCTAssertEqual(file.mime, "text/plain")
         XCTAssertEqual(file.url, attachment.dataURL)
-        XCTAssertTrue(messages.flatMap(\.parts).contains { $0.text == "BYOT live beta verified." })
+        XCTAssertTrue(messages.flatMap(\.parts).contains { $0.text == "BYOT upstream compatibility verified." })
+    }
+
+    private func fixtureDirectory(_ major: String) throws -> String {
+        let root = try XCTUnwrap(ProcessInfo.processInfo.environment["BYOT_LIVE_ROOT"], "Run scripts/test-opencode-upstream.sh")
+        return root + "/" + major + "/project"
     }
 
     private func request(_ path: String, body: [String: Any]? = nil) async throws -> [String: Any] {

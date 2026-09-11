@@ -1,0 +1,9 @@
+{
+  "name": "byot-upstream-e2e",
+  "private": true,
+  "description": "Pinned real upstream OpenCode servers for BYOT acceptance tests",
+  "dependencies": {
+    "@opencode-ai/cli": "0.0.0-beta-19271",
+    "opencode-ai": "1.18.29"
+  }
+}

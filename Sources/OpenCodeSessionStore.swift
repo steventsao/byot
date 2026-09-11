@@ -40,7 +40,7 @@ final class OpenCodeSessionStore: ObservableObject {
     let session: OpenCodeSession
     let directory: String
     private let workspace: String?
-    private let client: OpenCodeClient
+    private let service: any OpenCodeSessionServicing
     private let defaults: UserDefaults
     private let modelSelectionKey: String
     private let serverDefaultModelKey: String
@@ -75,17 +75,18 @@ final class OpenCodeSessionStore: ObservableObject {
     private var lifecycleGeneration = 0
 
     init(
-        client: OpenCodeClient,
+        service: any OpenCodeSessionServicing,
+        serverID: UUID,
         session: OpenCodeSession,
         directory: String,
         defaults: UserDefaults = .standard
     ) {
-        self.client = client
+        self.service = service
         self.session = session
         self.directory = directory
         self.defaults = defaults
-        modelSelectionKey = "byot.opencode.model.\(client.profile.id.uuidString).\(session.id)"
-        serverDefaultModelKey = "byot.opencode.model.default.\(client.profile.id.uuidString)"
+        modelSelectionKey = "byot.opencode.model.\(serverID.uuidString).\(session.id)"
+        serverDefaultModelKey = "byot.opencode.model.default.\(serverID.uuidString)"
         persistedModelID = defaults.string(forKey: modelSelectionKey)
         workspace = session.workspaceID
     }
@@ -110,6 +111,48 @@ final class OpenCodeSessionStore: ObservableObject {
 
     var canSubmitPrompt: Bool {
         isRunning && isStatusReady && isStoppingTurn == false
+    }
+
+    var modelFailure: OpenCodeMessageError? {
+        guard let userIndex = messages.lastIndex(where: { $0.info.role == "user" }),
+              let assistant = messages.suffix(from: userIndex + 1).last(where: { $0.info.role == "assistant" }),
+              let error = assistant.info.error, error.failure.isModelUnavailable
+        else { return nil }
+        return error
+    }
+
+    private var modelFailurePrompt: OpenCodeRecoverablePrompt? {
+        guard modelFailure != nil,
+              let userIndex = messages.lastIndex(where: { $0.info.role == "user" }),
+              messages[userIndex].id != dismissedUnansweredMessageID
+        else { return nil }
+        // Offer replay only when this turn produced no usable assistant output
+        // or tool calls. A partially executed turn can still select a new model.
+        guard messages.suffix(from: userIndex + 1).allSatisfy({ message in
+            message.parts.allSatisfy { part in
+                part.type != "tool" && (part.text?.trimmedNonEmpty == nil)
+            }
+        }) else { return nil }
+        return Self.recoverablePrompt(in: [messages[userIndex]])
+    }
+
+    var canRetryWithSelectedModel: Bool {
+        guard canSubmitPrompt, !status.isActive, !isSending,
+              let selectedModel, modelFailurePrompt != nil else { return false }
+        let failed = messages.last(where: { $0.info.role == "assistant" })?.info
+        return failed?.providerID != selectedModel.providerID || failed?.modelID != selectedModel.modelID
+    }
+
+    @discardableResult
+    func retryWithSelectedModel() -> Bool {
+        guard canRetryWithSelectedModel, let original = modelFailurePrompt,
+              let prompt = promptQueue.beginExplicitDispatch(
+                text: original.text, model: selectedModel, attachments: original.attachments
+              ) else { return false }
+        dismissedUnansweredMessageID = original.messageID
+        publishPromptQueue()
+        schedulePromptDispatch(prompt)
+        return true
     }
 
     var canRetryFirstQueuedPrompt: Bool {
@@ -212,8 +255,8 @@ final class OpenCodeSessionStore: ObservableObject {
             if generation == refreshGeneration { isLoading = false }
         }
         do {
-            protocolCapabilities = try await client.capabilities()
-            let actionClient = client
+            protocolCapabilities = try await service.capabilities()
+            let actionClient = service
             let actionDirectory = directory
             let actionWorkspace = workspace
             let actionSessionID = session.id
@@ -386,7 +429,7 @@ final class OpenCodeSessionStore: ObservableObject {
         }
 
         do {
-            let didAbort = try await client.abort(
+            let didAbort = try await service.abort(
                 sessionID: session.id,
                 directory: directory,
                 workspace: workspace
@@ -443,7 +486,7 @@ final class OpenCodeSessionStore: ObservableObject {
         promptQueue.pausePendingPrompts()
         publishPromptQueue()
         do {
-            let didAbort = try await client.abort(
+            let didAbort = try await service.abort(
                 sessionID: session.id,
                 directory: directory,
                 workspace: workspace
@@ -472,7 +515,7 @@ final class OpenCodeSessionStore: ObservableObject {
     ) async {
         guard isCurrentPromptDispatch(dispatchID), !Task.isCancelled else { return }
         do {
-            try await client.sendMessage(
+            try await service.sendMessage(
                 sessionID: session.id,
                 directory: directory,
                 workspace: workspace,
@@ -521,7 +564,7 @@ final class OpenCodeSessionStore: ObservableObject {
         isLoadingModels = true
         defer { isLoadingModels = false }
         do {
-            let providers = try await client.connectedProviderModels(
+            let providers = try await service.connectedProviderModels(
                 directory: directory,
                 workspace: workspace
             )
@@ -576,7 +619,7 @@ final class OpenCodeSessionStore: ObservableObject {
             if actionInFlightID == permission.presentationID { actionInFlightID = nil }
         }
         do {
-            try await client.reply(
+            try await service.reply(
                 to: permission,
                 directory: directory,
                 workspace: workspace,
@@ -595,7 +638,7 @@ final class OpenCodeSessionStore: ObservableObject {
             if actionInFlightID == question.presentationID { actionInFlightID = nil }
         }
         do {
-            try await client.answer(
+            try await service.answer(
                 question,
                 directory: directory,
                 workspace: workspace,
@@ -614,7 +657,7 @@ final class OpenCodeSessionStore: ObservableObject {
             if actionInFlightID == question.presentationID { actionInFlightID = nil }
         }
         do {
-            try await client.reject(
+            try await service.reject(
                 question,
                 directory: directory,
                 workspace: workspace
@@ -627,14 +670,14 @@ final class OpenCodeSessionStore: ObservableObject {
 
     private func connectEvents() {
         guard eventTask == nil else { return }
-        let client = client
+        let service = service
         let directory = directory
         let workspace = workspace
         eventTask = Task { [weak self] in
             var retryDelay: UInt64 = 1_000_000_000
             while !Task.isCancelled {
                 do {
-                    for try await event in client.events(
+                    for try await event in service.events(
                         directory: directory,
                         workspace: workspace
                     ) {
@@ -817,7 +860,7 @@ final class OpenCodeSessionStore: ObservableObject {
             scheduleMessageRefresh()
         case "session.execution.failed", "session.execution.interrupted":
             if event.type == "session.execution.failed" {
-                errorMessage = event.properties["error"]?.objectValue?["message"]?.stringValue ?? "The turn failed."
+                errorMessage = OpenCodeFailure(message: "The turn failed.", details: event.properties["error"]?.objectValue).message
             }
             settleTurnLocally(dismissingUnansweredPrompt: false)
             scheduleMessageRefresh()
@@ -1173,7 +1216,7 @@ final class OpenCodeSessionStore: ObservableObject {
                       promptQueue.needsServerReconciliation
                 else { return }
                 let baseline = statusMutationGeneration
-                let statuses = try await client.sessionStatuses(
+                let statuses = try await service.sessionStatuses(
                     directory: directory,
                     workspace: workspace
                 )
@@ -1249,7 +1292,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let requestGeneration = messageRequestGeneration
         let mutationBaseline = transcriptMutationGeneration
         do {
-            let messages = try await client.messages(
+            let messages = try await service.messages(
                 sessionID: session.id,
                 directory: directory,
                 workspace: workspace
@@ -1272,7 +1315,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let requestGeneration = actionRequestGeneration
         let mutationBaseline = actionMutationGeneration
         do {
-            let actionClient = client
+            let actionClient = service
             let actionDirectory = directory
             let actionWorkspace = workspace
             let actionSessionID = session.id

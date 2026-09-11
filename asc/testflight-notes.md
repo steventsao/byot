@@ -1,7 +1,8 @@
-Fixed the unreadable colors reported in TestFlight. Chat text, message cards, the composer, and controls now follow your iPhone’s light or dark appearance.
+BYOT 1.0.14
 
-Simplified navigation: one Back button in projects and chats, a clear About BYOT button on the home screen, and room for the session title. Server, project, and connection status appear together below the title.
+- If an Automatic model is retired or unavailable, choose another model directly from the failed conversation and retry the original message, including its attachments. Provider errors now show readable details.
+- Attachment removal stays visible and tappable at the largest accessibility text size.
+- The model picker keeps Automatic and its empty state in separate scrollable rows.
+- Includes the latest appearance settings, direct session browsing, and OpenCode 1 and 2 support.
 
-Creating a session now opens the chat immediately. The model picker has a dropdown indicator, and server compatibility details can be expanded when needed.
-
-Please check light and dark mode, creating a session, returning to projects, choosing a model, and sending messages with your existing OpenCode or OpenCode 2 server.
+Please check model selection and recovery, file attachments, session search with large text, and Light/Dark/System appearance.

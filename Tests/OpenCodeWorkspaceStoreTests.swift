@@ -104,15 +104,7 @@ struct OpenCodeWorkspaceStoreTests {
     }
 
     private func makeStore(service: MockWorkspaceService) -> OpenCodeWorkspaceStore {
-        let profile = OpenCodeServerProfile(
-            name: "Mac mini",
-            baseURL: "https://mac.example.test",
-            username: "opencode"
-        )
-        return OpenCodeWorkspaceStore(
-            client: OpenCodeClient(profile: profile, password: "store-secret"),
-            service: service
-        )
+        OpenCodeWorkspaceStore(service: service)
     }
 
     private func makeSummary(

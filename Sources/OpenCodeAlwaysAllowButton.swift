@@ -11,6 +11,7 @@ struct OpenCodeAlwaysAllowButton: View {
             isConfirming = true
         }
         .buttonStyle(.borderedProminent)
+        .foregroundStyle(BYOTBrand.accentInk)
         .frame(minHeight: 44)
         .disabled(isWorking || request.alwaysAllowConfirmationMessage == nil)
         .confirmationDialog(

@@ -10,7 +10,7 @@ struct OpenCodeProtocolDetectionTests {
             "/global/health": .html("<!doctype html><html></html>"),
             "/api/health": .json(#"{"healthy":true}"#),
         ])
-        let probe = try await OpenCodeProtocolDetector(client: client).probe()
+        let probe = try await client.probeServer()
         #expect(probe.protocol == .v2)
         let verdict = OpenCodeCompatibilityEvaluator.evaluate(
             health: probe.health, serverProtocol: probe.protocol
@@ -25,7 +25,7 @@ struct OpenCodeProtocolDetectionTests {
             "/global/health": .json(#"{"healthy":true,"version":"1.18.18"}"#),
         ])
 
-        let probe = try await OpenCodeProtocolDetector(client: client).probe()
+        let probe = try await client.probeServer()
 
         #expect(probe.protocol == .v1)
         #expect(probe.health == OpenCodeHealth(healthy: true, version: "1.18.18"))
@@ -38,7 +38,7 @@ struct OpenCodeProtocolDetectionTests {
             "/global/health": .json(#"{"healthy":false,"version":"1.18.10"}"#),
         ])
 
-        let probe = try await OpenCodeProtocolDetector(client: client).probe()
+        let probe = try await client.probeServer()
 
         #expect(probe.protocol == .v1)
         #expect(probe.health.healthy == false)
@@ -51,7 +51,7 @@ struct OpenCodeProtocolDetectionTests {
             "/api/health": .json(#"{"healthy":true,"version":"0.0.0-beta-17595","pid":69310}"#),
         ])
 
-        let probe = try await OpenCodeProtocolDetector(client: client).probe()
+        let probe = try await client.probeServer()
 
         #expect(probe.protocol == .v2)
         #expect(probe.health.version == "0.0.0-beta-17595")
@@ -64,7 +64,7 @@ struct OpenCodeProtocolDetectionTests {
             "/api/health": .json(#"{"healthy":true,"version":"0.0.0-beta-17595","pid":69310}"#),
         ])
 
-        let probe = try await OpenCodeProtocolDetector(client: client).probe()
+        let probe = try await client.probeServer()
 
         #expect(probe.protocol == .v2)
     }
@@ -76,7 +76,7 @@ struct OpenCodeProtocolDetectionTests {
             "/api/health": .json(#"{"healthy":true,"version":"1.18.18"}"#),
         ])
 
-        let probe = try await OpenCodeProtocolDetector(client: client).probe()
+        let probe = try await client.probeServer()
 
         #expect(probe.protocol == .v1)
     }
@@ -89,7 +89,7 @@ struct OpenCodeProtocolDetectionTests {
         ])
 
         await #expect(throws: OpenCodeConnectionError.self) {
-            _ = try await OpenCodeProtocolDetector(client: client).probe()
+            _ = try await client.probeServer()
         }
     }
 
@@ -104,7 +104,7 @@ struct OpenCodeProtocolDetectionTests {
         ])
 
         do {
-            _ = try await OpenCodeProtocolDetector(client: client).probe()
+            _ = try await client.probeServer()
             Issue.record("Expected httpStatus(401)")
         } catch let error as OpenCodeConnectionError {
             guard case .httpStatus(401, _) = error else {
@@ -123,7 +123,7 @@ struct OpenCodeProtocolDetectionTests {
         ])
 
         do {
-            _ = try await OpenCodeProtocolDetector(client: client).probe()
+            _ = try await client.probeServer()
             Issue.record("Expected httpStatus(500)")
         } catch let error as OpenCodeConnectionError {
             guard case .httpStatus(500, _) = error else {
@@ -142,7 +142,7 @@ struct OpenCodeProtocolDetectionTests {
             ),
         ])
 
-        let probe = try await OpenCodeProtocolDetector(client: client).probe()
+        let probe = try await client.probeServer()
 
         #expect(probe.protocol == .v2)
         #expect(probe.health.version == "0.0.0-beta-18001")
@@ -154,7 +154,7 @@ struct OpenCodeProtocolDetectionTests {
             "/global/health": .json(#"{"healthy":true,"version":"1.18.18"}"#),
         ])
 
-        _ = try await OpenCodeProtocolDetector(client: client).probe()
+        _ = try await client.probeServer()
 
         let authorization = try #require(stub.recordedAuthorization())
         #expect(

@@ -4,6 +4,7 @@ struct OpenCodeSessionView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
     @State private var isShowingDiff = false
+    @State private var isShowingRecoveryModelPicker = false
     @State private var isAtBottom = true
     private let serverName: String
 
@@ -60,6 +61,26 @@ struct OpenCodeSessionView: View {
                             .id(message.id)
                     }
 
+                    if store.modelFailure != nil {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Choose an available model to continue.")
+                                .font(.cleanBodySemibold)
+                            Button("Choose another model", systemImage: "cpu") {
+                                isShowingRecoveryModelPicker = true
+                            }
+                            if store.canRetryWithSelectedModel {
+                                Button("Retry last message", systemImage: "arrow.clockwise") {
+                                    store.retryWithSelectedModel()
+                                }
+                                .accessibilityIdentifier("retry-model-failure")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
+                    }
+
                     if store.canRetryUnansweredPrompt {
                         ErrorBanner(
                             message: "OpenCode returned to idle without a reply. Choose another model if needed, then retry the last message.",
@@ -110,6 +131,7 @@ struct OpenCodeSessionView: View {
                                 Task { await store.refresh(showLoading: true) }
                             }
                             .buttonStyle(.borderedProminent)
+                            .foregroundStyle(BYOTBrand.accentInk)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 48)
@@ -197,6 +219,10 @@ struct OpenCodeSessionView: View {
         }
         .sheet(isPresented: $isShowingDiff) {
             OpenCodeDiffView(diffs: store.diffs, unavailableReason: store.diffPresentation.unavailableReason)
+        }
+        .sheet(isPresented: $isShowingRecoveryModelPicker) {
+            OpenCodeModelPickerView(store: store)
+                .task { await store.reloadModels() }
         }
         .task { await store.start() }
         .onDisappear { store.stop() }
