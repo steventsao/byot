@@ -19,7 +19,7 @@ simulator=$(xcrun simctl create "BYOT Accessibility" "${BYOT_UI_DEVICE_TYPE:-com
 printf '%s\n' "$simulator" > "$run_root/simulator.txt"
 xcrun simctl boot "$simulator"
 xcrun simctl bootstatus "$simulator" -b > "$run_root/simulator.log" 2>&1
-xcrun simctl ui "$simulator" appearance light
+xcrun simctl ui "$simulator" appearance "${BYOT_UI_APPEARANCE:-light}"
 xcrun simctl status_bar "$simulator" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
 cd "$repo"
 xcodegen generate > "$run_root/generate.log"

@@ -25,6 +25,8 @@ struct OpenCodeProjectSessionsView: View {
             if let errorMessage = store.errorMessage, !store.sessions.isEmpty {
                 ErrorBanner(message: errorMessage)
                     .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
             ForEach(store.sessions) { session in
                 NavigationLink {
@@ -39,8 +41,13 @@ struct OpenCodeProjectSessionsView: View {
                         status: store.statuses[session.id] ?? .idle
                     )
                 }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(BYOTBrand.canvas)
         .overlay {
             if store.isLoading && store.sessions.isEmpty {
                 BYOTActivityView(

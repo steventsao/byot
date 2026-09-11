@@ -42,76 +42,84 @@ struct OpenCodeConnectedView: View {
 
     var body: some View {
         List {
-            if let error = creationError ?? workspace.errorMessage {
-                Section { ErrorBanner(message: error) }
-            }
-            if !browser.groups.isEmpty && (groupByProject || !visibleSessions(browser.sessions).isEmpty) {
-                Section {
-                    if groupByProject {
-                        ForEach(browser.orderedGroups(by: projectSort, attention: attentionIDs)) { group in
-                            projectSection(group)
+            Group {
+                if let error = creationError ?? workspace.errorMessage {
+                    Section { ErrorBanner(message: error) }
+                }
+                if !browser.groups.isEmpty && (groupByProject || !visibleSessions(browser.sessions).isEmpty) {
+                    Section {
+                        if groupByProject {
+                            ForEach(browser.orderedGroups(by: projectSort, attention: attentionIDs)) { group in
+                                projectSection(group)
+                            }
+                        } else {
+                            ForEach(visibleSessions(browser.sessions)) { session in
+                                sessionLink(session, showProject: true)
+                            }
                         }
-                    } else {
-                        ForEach(visibleSessions(browser.sessions)) { session in
-                            sessionLink(session, showProject: true)
-                        }
-                    }
-                } header: {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(groupByProject ? "Projects" : "Sessions")
-                            Text(groupByProject ? projectSort.title : sort.title)
-                        }
-                        .font(.cleanCaption)
-                    } else {
-                        HStack {
-                            Text(groupByProject ? "Projects" : "Sessions")
-                            Spacer()
-                            Text(groupByProject ? projectSort.title : sort.title)
-                        }
-                        .font(.cleanCaption)
-                    }
-                }
-            }
-            if !groupByProject {
-                ForEach(browser.groups.filter { $0.error != nil }) { group in
-                    Section(group.project.displayName) {
-                        ErrorBanner(message: group.error ?? "Couldn’t refresh sessions")
-                    }
-                }
-            }
-            if browser.isLoading {
-                Section {
-                    BYOTActivityView(.loading, title: "Refreshing sessions", layout: .inline)
-                }
-            }
-            if !workspace.isLoading && !browser.isLoading && browser.sessions.isEmpty && workspace.errorMessage == nil {
-                Section {
-                    ContentUnavailableView {
-                        Label("No sessions", systemImage: "bubble.left.and.bubble.right")
-                    } actions: {
-                        newSessionMenu
-                    }
-                }
-            } else if !browser.sessions.isEmpty && visibleSessions(browser.sessions).isEmpty {
-                Section {
-                    Text("No matching sessions")
-                        .font(.cleanBody)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            if let compatibility = workspace.compatibility {
-                Section {
-                    DisclosureGroup("Server details") {
-                        Text(compatibility.redactedSummary)
+                    } header: {
+                        if dynamicTypeSize.isAccessibilitySize {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(groupByProject ? "Projects" : "Sessions")
+                                Text(groupByProject ? projectSort.title : sort.title)
+                            }
                             .font(.cleanCaption)
+                        } else {
+                            HStack {
+                                Text(groupByProject ? "Projects" : "Sessions")
+                                Spacer()
+                                Text(groupByProject ? projectSort.title : sort.title)
+                            }
+                            .font(.cleanCaption)
+                        }
+                    }
+                }
+                if !groupByProject {
+                    ForEach(browser.groups.filter { $0.error != nil }) { group in
+                        Section(group.project.displayName) {
+                            ErrorBanner(message: group.error ?? "Couldn’t refresh sessions")
+                        }
+                    }
+                }
+                if browser.isLoading {
+                    Section {
+                        BYOTActivityView(.loading, title: "Refreshing sessions", layout: .inline)
+                    }
+                }
+                if !workspace.isLoading && !browser.isLoading && browser.sessions.isEmpty && workspace.errorMessage == nil {
+                    Section {
+                        ContentUnavailableView {
+                            Label("No sessions", systemImage: "bubble.left.and.bubble.right")
+                        } actions: {
+                            newSessionMenu
+                        }
+                    }
+                } else if !browser.sessions.isEmpty && visibleSessions(browser.sessions).isEmpty {
+                    Section {
+                        Text("No matching sessions")
+                            .font(.cleanBody)
                             .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if let compatibility = workspace.compatibility {
+                    Section {
+                        DisclosureGroup("Server details") {
+                            Text(compatibility.redactedSummary)
+                                .font(.cleanCaption)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
                     }
                 }
             }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listSectionSeparator(.hidden)
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(BYOTBrand.canvas)
         .overlay {
             if workspace.isLoading && browser.groups.isEmpty {
                 BYOTActivityView(.connecting, layout: .blocking)
