@@ -15,7 +15,10 @@ final class BYOTAppearanceUITests: XCTestCase {
         XCTAssertTrue(picker.label.contains("System"), picker.debugDescription)
 
         for (name, isDark) in [("Dark", true), ("Light", false)] {
-            picker.tap()
+            // A native menu picker's accessibility frame includes its leading
+            // title. Open the visible trailing value, not the gap between them.
+            picker.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.5)).tap()
+            XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 5))
             app.buttons[name].tap()
             expectation(for: NSPredicate(format: "label CONTAINS %@", name), evaluatedWith: picker)
             waitForExpectations(timeout: 5)
@@ -38,7 +41,8 @@ final class BYOTAppearanceUITests: XCTestCase {
             XCTAssertTrue(picker.label.contains(name), picker.debugDescription)
         }
 
-        picker.tap()
+        picker.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["System"].waitForExistence(timeout: 5))
         app.buttons["System"].tap()
         try assertAppearance(app, dark: systemIsDark, name: "settings-System")
         app.buttons["Done"].tap()
