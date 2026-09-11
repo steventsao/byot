@@ -38,6 +38,7 @@ struct OpenCodeServerBar: View {
                 .padding(.horizontal, 16)
             }
             .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .padding(.vertical, 8)
             .onChange(of: selectedID, initial: true) { _, id in
                 if let id { proxy.scrollTo(id, anchor: .center) }

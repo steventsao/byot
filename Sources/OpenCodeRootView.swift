@@ -29,14 +29,6 @@ struct OpenCodeRootView: View {
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
-                if !profileStore.profiles.isEmpty {
-                    OpenCodeServerBar(
-                        profiles: profileStore.profiles,
-                        selectedID: profileStore.activeProfileID,
-                        select: profileStore.select,
-                        add: { edit(nil) }
-                    )
-                }
                 Group {
                     if let profile = profileStore.activeProfile {
                         OpenCodeConnectedView(
@@ -60,6 +52,17 @@ struct OpenCodeRootView: View {
                 }
             }
             .background(BYOTBrand.canvas)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if !profileStore.profiles.isEmpty {
+                    OpenCodeServerBar(
+                        profiles: profileStore.profiles,
+                        selectedID: profileStore.activeProfileID,
+                        select: profileStore.select,
+                        add: { edit(nil) }
+                    )
+                    .background(BYOTBrand.canvas)
+                }
+            }
             .navigationTitle(BYOTBrand.wordmark)
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: OpenCodeNewSessionRoute.self) { _ in
