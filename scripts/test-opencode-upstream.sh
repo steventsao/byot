@@ -48,6 +48,7 @@ cd "$repo"
 xcodegen generate >"$run_root/generate.log"
 # Keep signing enabled: the normal server editor saves passwords in Keychain.
 xcodebuild build-for-testing -project BYOT.xcodeproj -scheme BYOT \
+  -jobs "${BYOT_XCODE_JOBS:-2}" \
   -destination "platform=iOS Simulator,id=$simulator" -derivedDataPath "$derived_data" \
   >"$run_root/build.log" 2>&1
 python3 - "$run_root" "$derived_data" <<'PY'
