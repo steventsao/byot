@@ -660,7 +660,7 @@ final class OpenCodeSessionStore: ObservableObject {
         dismissUnansweredPromptRecovery()
         if revertMessageID != nil, !status.isActive, !isSending,
            let prompt = promptQueue.beginExplicitDispatch(text: trimmed, model: selectedModel, attachments: attachments,
-               agent: selectedAgentID, variant: selectedVariant,
+               agent: effectiveAgentID, variant: selectedVariant,
                command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands),
                remoteReferences: remoteReferences) {
             publishPromptQueue()
