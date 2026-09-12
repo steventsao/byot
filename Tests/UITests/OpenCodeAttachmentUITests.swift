@@ -121,8 +121,18 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         composer.tap()
         composer.typeText("Review this design and suggest the next implementation step")
 
-        app.buttons["Add attachment"].tap()
+        let opener = app.buttons["Add attachment"]
+        let openerReady = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"), object: opener)
+        XCTAssertEqual(XCTWaiter.wait(for: [openerReady], timeout: 5), .completed,
+                       "The attachment menu must be available before opening it")
+        opener.tap()
         let addFixture = app.buttons["Add Screenshot Fixture"]
+        // Retry one missed opening tap only while the fixture is still absent;
+        // leave an already-open menu untouched.
+        if !addFixture.waitForExistence(timeout: 3), opener.exists, opener.isHittable, !addFixture.exists {
+            opener.tap()
+        }
         XCTAssertTrue(addFixture.waitForExistence(timeout: 5))
         addFixture.tap()
         XCTAssertTrue(addFixture.waitForNonExistence(timeout: 5))

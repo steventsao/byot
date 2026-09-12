@@ -11,6 +11,7 @@ struct OpenCodeSessionComposerView: View {
     private let screenshotAttachment: OpenCodePromptAttachment?
     @State private var text = ""
     @State private var remoteReferences: [OpenCodePromptFileReference] = []
+    @State private var isShowingRemoteFiles = false
     @State private var isShowingAgentPicker = false
     @State private var attachments: [OpenCodePromptAttachment] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -43,7 +44,8 @@ struct OpenCodeSessionComposerView: View {
         VStack(alignment: .leading, spacing: 10) {
             slashSuggestions
             if let files = store.remoteFiles {
-                OpenCodeRemoteContextView(text: $text, references: $remoteReferences, files: files)
+                OpenCodeRemoteContextView(text: $text, references: $remoteReferences, files: files,
+                                          showingPicker: $isShowingRemoteFiles)
             }
             if !attachments.isEmpty {
                 ScrollView(dynamicTypeSize.isAccessibilitySize ? .vertical : .horizontal,
@@ -72,12 +74,21 @@ struct OpenCodeSessionComposerView: View {
                 .submitLabel(.send)
                 .onSubmit(send)
 
-            if !store.composerCatalog.agents.isEmpty || !store.availableVariants.isEmpty {
-                HStack(spacing: 8) {
-                    if !store.composerCatalog.agents.isEmpty { agentButton }
-                    if !store.availableVariants.isEmpty { variantMenu }
-                    Spacer(minLength: 0)
+            if store.remoteFiles != nil || !store.composerCatalog.agents.isEmpty || !store.availableVariants.isEmpty {
+                ScrollView(.horizontal, showsIndicators: dynamicTypeSize.isAccessibilitySize) {
+                    HStack(spacing: 8) {
+                        if store.remoteFiles != nil {
+                            OpenCodeRemoteFileButton {
+                                isFocused = false
+                                isShowingRemoteFiles = true
+                            }
+                        }
+                        if !store.composerCatalog.agents.isEmpty { agentButton }
+                        if !store.availableVariants.isEmpty { variantMenu }
+                    }
                 }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             if dynamicTypeSize.isAccessibilitySize {

@@ -1,0 +1,17 @@
+Run manually interrupted after repeated 60-second XCTest animation-completion waits following v2 rename. No application assertion failure preceded the interruption.
+
+Test Case '-[BYOTUITests.OpenCodeAttachmentUITests testAttachmentRemovalAtLargestTextSize]' started.
+Test Case '-[BYOTUITests.OpenCodeAttachmentUITests testAttachmentRemovalAtLargestTextSize]' passed (24.915 seconds).
+Test Case '-[BYOTUITests.OpenCodeRemoteFileUITests testBrowseReadSelectLinesRemoveAndSendContext]' started.
+Test Case '-[BYOTUITests.OpenCodeRemoteFileUITests testBrowseReadSelectLinesRemoveAndSendContext]' passed (34.589 seconds).
+Test Case '-[BYOTUITests.OpenCodeRemoteFileUITests testExplicitAtMentionSearchAddsStructuredContextAndKeepsProse]' started.
+Test Case '-[BYOTUITests.OpenCodeRemoteFileUITests testExplicitAtMentionSearchAddsStructuredContextAndKeepsProse]' passed (17.142 seconds).
+Test Case '-[BYOTUITests.OpenCodeUpstreamLiveUITests testComposerSlashAgentAndVariantControlsOnRealServers]' started.
+    t =   267.96s App animations complete notification not received, will attempt to continue.
+    t =   328.26s App animations complete notification not received, will attempt to continue.
+    t =   389.41s App animations complete notification not received, will attempt to continue.
+    t =   451.07s App animations complete notification not received, will attempt to continue.
+    t =   511.99s App animations complete notification not received, will attempt to continue.
+    t =   576.09s App animations complete notification not received, will attempt to continue.
+    t =   636.96s App animations complete notification not received, will attempt to continue.
+** TEST EXECUTE INTERRUPTED **

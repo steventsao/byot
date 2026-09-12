@@ -1,0 +1,84 @@
+{
+  "checked_at_utc": "2026-09-12T16:30:05.203656+00:00",
+  "remote_artifact_directory": "/Volumes/T7-Warm/byot-release-1.0.18",
+  "source_commit": "5b4fa554be8c93c6821ff968f14d21ec6b75a02d",
+  "recorded_build": "20260912092708",
+  "ipa_sha256": "c71f1ea0bf398aee9423b36caf0d527ee10021f4f5304bb3a889710c20c2b388",
+  "ipa_bytes": 3277076,
+  "archive_metadata": {
+    "CFBundleIdentifier": "com.steventsao.byot",
+    "CFBundleShortVersionString": "1.0.18",
+    "CFBundleVersion": "20260912092708"
+  },
+  "ipa_metadata": {
+    "CFBundleIdentifier": "com.steventsao.byot",
+    "CFBundleShortVersionString": "1.0.18",
+    "CFBundleVersion": "20260912092708"
+  },
+  "metadata_agrees": true,
+  "app_plist_semantically_identical": true,
+  "architectures": [
+    "arm64"
+  ],
+  "archive_codesign_valid": true,
+  "archive_signing_identity": "iPhone Distribution: Steven Tsao (449BD89VDV)",
+  "team": "449BD89VDV",
+  "ipa_file_count": 16,
+  "packaged_scan_hits": {
+    "xctest": [],
+    "private_key": [],
+    "debug_fixture": []
+  },
+  "debug_fixture_markers_checked": [
+    "--attachment-screenshot",
+    "--remote-files-fixture",
+    "--session-browser-fixture",
+    "--text-selection-fixture",
+    "screenshot.invalid",
+    "byot-local-fixture-only",
+    "OpenCodeRemoteFileHarness",
+    "OpenCodeAttachmentScreenshotHarness",
+    "OpenCodeSessionBrowserHarness",
+    "AgentTextSelectionHarness"
+  ],
+  "private_key_scan": "Packaged key-file extensions and standard PEM/OpenSSH private-key headers",
+  "apple_validation_success_recorded": true,
+  "remote_artifacts_modified": false,
+  "expected": {
+    "source_commit": "5b4fa554be8c93c6821ff968f14d21ec6b75a02d",
+    "version": "1.0.18",
+    "build": "20260912092708",
+    "bundle": "com.steventsao.byot",
+    "team": "449BD89VDV"
+  },
+  "download_sha256_agrees": true,
+  "ipa_codesign_valid": true,
+  "ipa_architectures": [
+    "arm64"
+  ],
+  "ipa_links_xctest": false,
+  "ipa_distribution_profile": {
+    "team": [
+      "449BD89VDV"
+    ],
+    "get_task_allow": false,
+    "has_device_allowlist": false,
+    "provisions_all_devices": false
+  },
+  "checks": {
+    "source_commit_matches": true,
+    "version_matches": true,
+    "build_matches": true,
+    "bundle_matches": true,
+    "team_matches": true,
+    "archive_signature_valid": true,
+    "ipa_signature_valid": true,
+    "arm64_only": true,
+    "metadata_agrees": true,
+    "download_matches_current_ipa": true,
+    "packaged_scans_clean": true,
+    "distribution_profile": true,
+    "apple_validation_success_recorded": true
+  },
+  "all_requested_checks_pass": true
+}
