@@ -37,7 +37,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             variants.tap()
             app.buttons["byot-careful"].tap()
             XCTAssertEqual(variants.value as? String, "byot-careful")
-            composer.tap()
+            XCTAssertTrue(focus(composer, in: app), "The composer must have keyboard focus before typing")
             composer.typeText("/byot")
             let custom = app.buttons["opencode-command-command:byot-acceptance"]
             XCTAssertTrue(custom.waitForExistence(timeout: 10))
