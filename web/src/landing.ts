@@ -54,12 +54,6 @@ export function renderLanding(): string {
       ${renderPreview()}
     </section>
 
-    <section class="features" aria-label="Made for your workflow">
-      <article><span class="feature-icon">${icon("terminal")}</span><h2>Keep a session moving.</h2><p>Follow every tool call. Queue your next idea.</p></article>
-      <article><span class="feature-icon">${icon("diff")}</span><h2>See it. Then approve it.</h2><p>Review the diff. Decide what runs.</p></article>
-      <article><span class="feature-icon">${icon("cpu")}</span><h2>Make yourself at home.</h2><p>Your projects, servers, and favorite models.</p></article>
-    </section>
-
     <section class="setup" id="setup" aria-labelledby="setup-title">
       <div class="setup-copy">
         <p class="section-label">Bring your own server</p>

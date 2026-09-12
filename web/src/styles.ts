@@ -143,11 +143,6 @@ h1 .quiet { color: var(--muted); }
 .permission-actions button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }
 .permission-result { min-height: 44px; margin-top: 16px; color: var(--muted); font-size: 10px; line-height: 1.7; }
 
-.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 55px; padding: 40px 0 44px; border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); }
-.feature-icon { display: inline-flex; color: #b8b8bf; margin-bottom: 16px; }
-.feature-icon .icon { width: 21px; height: 21px; }
-.features h2 { font-size: 17px; font-weight: 600; letter-spacing: -.025em; line-height: 1.5; }
-.features p { margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.75; }
 .setup { display: grid; grid-template-columns: 1fr 1fr; gap: 90px; align-items: center; padding-block: 82px 88px; }
 .section-label { color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; }
 .setup h2 { margin-top: 18px; font-size: 39px; line-height: 1.2; letter-spacing: -.05em; font-weight: 600; }
@@ -187,7 +182,6 @@ details[open] summary::after { content: "−"; }
   h1 { font-size: clamp(46px, 5.5vw, 60px); }
   .hero-actions { gap: 16px; }
   .hero-description { font-size: 15px; }
-  .features { gap: 30px; }
   .setup { gap: 50px; }
   .setup h2 { font-size: 34px; }
 }
@@ -205,11 +199,6 @@ details[open] summary::after { content: "−"; }
   .hero-actions { margin-top: 25px; gap: 22px; }
   .hero-note { margin-top: 18px; }
   .phone-shell { width: 326px; max-width: calc(100% - 8px); }
-  .features { grid-template-columns: 1fr; gap: 28px; padding-block: 32px; }
-  .features article { display: grid; grid-template-columns: 26px 1fr; column-gap: 16px; }
-  .feature-icon { grid-row: 1 / 3; padding-top: 2px; margin-bottom: 0; }
-  .features h2 { font-size: 16px; }
-  .features p { margin-top: 3px; font-size: 12px; }
   .setup { grid-template-columns: 1fr; gap: 32px; padding-block: 48px; }
   .setup h2 { font-size: 34px; }
   .setup-copy > p:last-of-type { max-width: 100%; }
