@@ -111,6 +111,7 @@ struct OpenCodeSessionFeatureTests {
         #expect(store.restoredPrompt?.message.id == "msg_two")
         #expect(store.messages.map(\.id) == ["msg_one", "msg_answer"])
         #expect(store.queuedPrompts.count == 1)
+        #expect(!store.willQueueNextPrompt)
         #expect(await service.sentCount == 0)
         #expect(store.canRetryFirstQueuedPrompt)
         await store.performSessionAction(.undo)
@@ -122,6 +123,34 @@ struct OpenCodeSessionFeatureTests {
         #expect(store.messages.count == 3)
         #expect(store.restoredPrompt?.message.parts.isEmpty == true)
         #expect(await service.sentCount == 0)
+    }
+
+    @Test("A refresh during stage preserves redo boundaries after the server omits undone messages")
+    @MainActor
+    func refreshDuringUndoKeepsRecoveryHistory() async throws {
+        let service = FeatureStoreService()
+        let store = makeStore(service)
+        await store.start()
+        defer { store.stop() }
+        await service.omitRevertedSnapshots()
+        await service.setStagePaused(true)
+        let undo = Task { await store.performSessionAction(.undo) }
+        for _ in 0..<100 {
+            if await service.stageStarted { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await service.stageStarted)
+        // Details still report no revert while its stage request is pending.
+        // Publishing this snapshot must not erase the saved user boundaries.
+        await store.refresh()
+        await service.resumeStage()
+        await undo.value
+        await service.setStagePaused(false)
+        await store.performSessionAction(.undo)
+        #expect(store.revertMessageID == "msg_one")
+        await store.performSessionAction(.redo)
+        #expect(store.revertMessageID == "msg_two")
+        #expect(store.messages.map(\.id) == ["msg_one", "msg_answer"])
     }
 
     @Test("An edited undo prompt commits v2 history before dispatch and leaves old queued work paused")
@@ -228,6 +257,11 @@ private actor FeatureStoreService: OpenCodeSessionServicing, OpenCodeSessionFeat
     var lastForkMessage: String?
     var omitRevertedMessages = false
     var committed = false
+    var stagePaused = false
+    var stageStarted = false
+    var stageContinuation: CheckedContinuation<Void, Never>?
+    func setStagePaused(_ value: Bool) { stagePaused = value }
+    func resumeStage() { stageContinuation?.resume(); stageContinuation = nil }
     func omitRevertedSnapshots() { omitRevertedMessages = true }
     func setTodoDelay(_ value: Bool) { todoDelay = value }
     func setTodos(_ value: [OpenCodeTodo]) { todoValues = value }
@@ -237,7 +271,11 @@ private actor FeatureStoreService: OpenCodeSessionServicing, OpenCodeSessionFeat
     func deleteSession(sessionID: String, directory: String, workspace: String?) async throws {}
     func childSessions(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeSession] { [featureSession(id: "ses_child", parentID: sessionID)] }
     func sessionTodos(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeTodo]? { let snapshot = todoValues; if todoDelay { try await Task.sleep(for: .milliseconds(75)) }; return snapshot }
-    func stageSessionRevert(sessionID: String, directory: String, workspace: String?, messageID: String) async throws { revert = messageID }
+    func stageSessionRevert(sessionID: String, directory: String, workspace: String?, messageID: String) async throws {
+        stageStarted = true
+        if stagePaused { await withCheckedContinuation { stageContinuation = $0 } }
+        revert = messageID
+    }
     func clearSessionRevert(sessionID: String, directory: String, workspace: String?) async throws { revert = nil }
     func commitSessionRevert(sessionID: String, directory: String, workspace: String?) async throws -> Bool { revert = nil; committed = true; return true }
     func compactSession(sessionID: String, directory: String, workspace: String?, model: OpenCodeModelOption?) async throws {}

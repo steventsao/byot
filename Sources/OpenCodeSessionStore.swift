@@ -143,7 +143,8 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     var willQueueNextPrompt: Bool {
-        status.isActive || isSending || promptQueue.shouldQueueNextPrompt
+        if revertMessageID != nil, !status.isActive, !isSending { return false }
+        return status.isActive || isSending || promptQueue.shouldQueueNextPrompt
     }
 
     var canSubmitPrompt: Bool {
@@ -548,13 +549,17 @@ final class OpenCodeSessionStore: ObservableObject {
         do {
             switch action {
             case .undo:
-                if revertedUserMessages.isEmpty {
-                    revertedUserMessages = transcript.messages.filter { $0.info.role == "user" }
-                }
+                // A refresh already in flight may publish the old unreverted
+                // snapshot while staging. Keep the recovery boundaries local
+                // until the server confirms the new boundary.
+                let userHistory = revertedUserMessages.isEmpty
+                    ? transcript.messages.filter { $0.info.role == "user" }
+                    : revertedUserMessages
                 guard let target = messages.last(where: { $0.info.role == "user" && (messageID == nil || $0.id == messageID) }) else { return }
                 try await featureService.stageSessionRevert(sessionID: session.id, directory: directory, workspace: workspace, messageID: target.id)
                 guard generation == lifecycleGeneration, isRunning else { return }
                 revertMessageID = target.id
+                revertedUserMessages = userHistory
                 restoredPrompt = OpenCodeRestoredPrompt(message: target)
                 dismissUnansweredPromptRecovery()
             case .redo:
