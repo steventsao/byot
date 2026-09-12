@@ -257,6 +257,7 @@ struct OpenCodeSessionView: View {
                 onRestoreConsumed: { store.consumeRestoredPrompt() }
             )
         }
+        .environment(\.openCodeRemoteFiles, store.remoteFiles)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -538,8 +539,7 @@ private struct OpenCodePartView: View {
                 OpenCodeToolView(name: part.tool ?? "Tool", state: state)
             }
         case "file":
-            Label(part.filename ?? part.mime ?? "Attachment", systemImage: "paperclip")
-                .font(.cleanCaption)
+            OpenCodeRemoteFilePartView(part: part)
         case "patch":
             if let files = part.files, !files.isEmpty {
                 Label("Changed \(files.count) file\(files.count == 1 ? "" : "s")", systemImage: "plusminus")
