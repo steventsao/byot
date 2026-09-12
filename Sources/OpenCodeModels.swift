@@ -444,9 +444,9 @@ extension OpenCodeMessageInfo {
         agent = try c.decodeIfPresent(String.self, forKey: .agent)
         finish = try c.decodeIfPresent(String.self, forKey: .finish)
         error = try c.decodeIfPresent(OpenCodeMessageError.self, forKey: .error)
-        variant = try c.decodeIfPresent(String.self, forKey: .variant)
         let raw = try OpenCodeJSONValue(from: decoder).objectValue
         let model = raw?["model"]?.objectValue
+        variant = try c.decodeIfPresent(String.self, forKey: .variant) ?? model?["variant"]?.stringValue
         modelID = try c.decodeIfPresent(String.self, forKey: .modelID) ?? model?["modelID"]?.stringValue
         providerID = try c.decodeIfPresent(String.self, forKey: .providerID) ?? model?["providerID"]?.stringValue
     }

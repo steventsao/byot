@@ -189,7 +189,7 @@ final class OpenCodeComposerFeatureTests: XCTestCase {
     func testMessageSelectionMetadataSurvivesV1AndV2Reload() throws {
         let v1: OpenCodeMessageInfo = try decode("""
         {"id":"msg_a","sessionID":"ses_test","role":"user","time":{"created":1},"agent":"plan",
-         "model":{"providerID":"fixture","modelID":"m"},"variant":"careful"}
+         "model":{"providerID":"fixture","modelID":"m","variant":"careful"}}
         """)
         XCTAssertEqual(v1.modelID, "m")
         XCTAssertEqual(v1.variant, "careful")
