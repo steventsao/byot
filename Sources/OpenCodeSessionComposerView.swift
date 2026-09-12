@@ -42,6 +42,9 @@ struct OpenCodeSessionComposerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             slashSuggestions
+            if let files = store.remoteFiles {
+                OpenCodeRemoteContextView(text: $text, references: $remoteReferences, files: files)
+            }
             if !attachments.isEmpty {
                 ScrollView(dynamicTypeSize.isAccessibilitySize ? .vertical : .horizontal,
                            showsIndicators: dynamicTypeSize.isAccessibilitySize) {
@@ -463,7 +466,8 @@ struct OpenCodeSessionComposerView: View {
             return OpenCodePromptAttachment(filename: part.filename ?? "Attachment",
                                             mimeType: part.mime ?? "application/octet-stream", data: data)
         }
-        remoteReferences = []
+        remoteReferences = OpenCodePromptFileReference.restored(from: message, serverID: store.serverID,
+            projectID: store.session.projectID, directory: store.directory, workspaceID: store.session.workspaceID)
         if let providerID = message.info.providerID, let modelID = message.info.modelID,
            let model = store.providerModels.flatMap(\.models).first(where: { $0.providerID == providerID && $0.modelID == modelID }) {
             store.selectModel(model)
