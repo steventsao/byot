@@ -1,0 +1,50 @@
+[
+  {
+    "file": "attachment-largest-text-light.png",
+    "sha256": "37ce1f4253afc7852814b2fe8f787b1625e6a946cacba4e52dd632a25f72d9a1",
+    "source_run": "/tmp/byot-upstream-e2e.Qn8qLc",
+    "source_attachment": {
+      "configurationName": "Test Scheme Action",
+      "deviceId": "A3D50827-8C22-4CF9-81B9-74459AFCDB4F",
+      "deviceName": "BYOT Upstream E2E",
+      "exportedFileName": "5448CCCF-E82B-40C5-9887-45B94B87336D.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "attachment-largest-text_0_B5E89860-4279-4341-8218-34CD7060FCC8.png",
+      "timestamp": 1789231938.43
+    },
+    "test": "OpenCodeAttachmentUITests/testAttachmentRemovalAtLargestTextSize()",
+    "image_edited": false
+  },
+  {
+    "file": "v2-agent-variant-command-ready-light.png",
+    "sha256": "40ca57f6803e2df2f21f198983c4d372e903f1769bd8cb3f483559fbe770f735",
+    "source_run": "/tmp/byot-upstream-e2e.Qn8qLc",
+    "source_attachment": {
+      "configurationName": "Test Scheme Action",
+      "deviceId": "A3D50827-8C22-4CF9-81B9-74459AFCDB4F",
+      "deviceName": "BYOT Upstream E2E",
+      "exportedFileName": "14E05C4D-7AF4-4FF9-9B1D-C2865B68BCB9.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "v2-agent-variant-command-ready_0_748C62DB-4A3E-4FAD-8F01-83E3D39DD902.png",
+      "timestamp": 1789232154.675
+    },
+    "test": "OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers()",
+    "image_edited": false
+  },
+  {
+    "file": "v1-agent-variant-command-ready-light.png",
+    "sha256": "bc312327270b12cce32b668cb1e7fd5c5fa51e127f4036c2b921c5e8f9eb09dd",
+    "source_run": "/tmp/byot-upstream-e2e.Qn8qLc",
+    "source_attachment": {
+      "configurationName": "Test Scheme Action",
+      "deviceId": "A3D50827-8C22-4CF9-81B9-74459AFCDB4F",
+      "deviceName": "BYOT Upstream E2E",
+      "exportedFileName": "C4BC9C95-FB55-4B89-B4DF-16F746D01A19.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "v1-agent-variant-command-ready_0_C0C75E04-4272-47AE-BC7C-C0BC48C3EA02.png",
+      "timestamp": 1789232022.043
+    },
+    "test": "OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers()",
+    "image_edited": false
+  }
+]

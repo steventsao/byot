@@ -1,0 +1,98 @@
+[
+  {
+    "file": "attachment-largest-text-dark.png",
+    "sha256": "91ab44725f6cc798ccf8f35d51ce4107fa85aee9fb4eced1e1a64753ab3ec181",
+    "source_run": "/tmp/byot-upstream-e2e.OfRTKg",
+    "source_attachment": {
+      "configurationName": "Test Scheme Action",
+      "deviceId": "BF9CDB55-D3DC-49AE-BB52-D1B3BA1780BC",
+      "deviceName": "BYOT Upstream E2E",
+      "exportedFileName": "E459E4BB-54EC-41E7-B558-6FDF1465A5E9.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "attachment-largest-text_0_5666C4D8-2144-4D85-B8B8-BB76B9C166B2.png",
+      "timestamp": 1789230545.915
+    },
+    "test": "OpenCodeAttachmentUITests/testAttachmentRemovalAtLargestTextSize()",
+    "image_edited": false
+  },
+  {
+    "file": "server-file-context-composer-dark.png",
+    "sha256": "1bf9aab7a1963f58c58edbfd6787f1440e9702cc3a330f734ad9967e4fc3a931",
+    "source_run": "/tmp/byot-upstream-e2e.OfRTKg",
+    "source_attachment": {
+      "configurationName": "Test Scheme Action",
+      "deviceId": "BF9CDB55-D3DC-49AE-BB52-D1B3BA1780BC",
+      "deviceName": "BYOT Upstream E2E",
+      "exportedFileName": "A8D883AF-C186-4210-AFB2-47B474680C6A.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "server-file-context-composer_0_FEB816EB-AC7D-4909-ADAB-792FE60DDA9A.png",
+      "timestamp": 1789230580.873
+    },
+    "test": "OpenCodeRemoteFileUITests/testBrowseReadSelectLinesRemoveAndSendContext()",
+    "image_edited": false
+  },
+  {
+    "file": "server-file-line-range-dark.png",
+    "sha256": "12eda80baaf6b52e02ef92a342dbe80f8e6b258dabaf2b41b4179053c2f735af",
+    "source_run": "/tmp/byot-upstream-e2e.OfRTKg",
+    "source_attachment": {
+      "configurationName": "Test Scheme Action",
+      "deviceId": "BF9CDB55-D3DC-49AE-BB52-D1B3BA1780BC",
+      "deviceName": "BYOT Upstream E2E",
+      "exportedFileName": "F40B5B90-4038-48A2-B2A8-9D687ECF94F9.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "server-file-line-range_0_0EBF5409-C07D-4C6D-9C2E-C0608351E403.png",
+      "timestamp": 1789230570.053
+    },
+    "test": "OpenCodeRemoteFileUITests/testBrowseReadSelectLinesRemoveAndSendContext()",
+    "image_edited": false
+  },
+  {
+    "file": "at-mention-context-dark.png",
+    "sha256": "ef2edc4de3e91515c45d3d989e0d7a2f53d1a7ff3beb11480cc39fe0d2a18a75",
+    "source_run": "/tmp/byot-upstream-e2e.OfRTKg",
+    "source_attachment": {
+      "configurationName": "Test Scheme Action",
+      "deviceId": "BF9CDB55-D3DC-49AE-BB52-D1B3BA1780BC",
+      "deviceName": "BYOT Upstream E2E",
+      "exportedFileName": "A1333A75-02D3-46F9-A363-6A00822CDC17.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "at-mention-context_0_16D99B99-FE93-4D10-90FA-453B7679E67D.png",
+      "timestamp": 1789230599.498
+    },
+    "test": "OpenCodeRemoteFileUITests/testExplicitAtMentionSearchAddsStructuredContextAndKeepsProse()",
+    "image_edited": false
+  },
+  {
+    "file": "v2-agent-variant-command-ready-dark.png",
+    "sha256": "499fe843897550e1a5e4a625d7df86dc557c32096ad2362f64282727b0a33e99",
+    "source_run": "/tmp/byot-upstream-e2e.OfRTKg",
+    "source_attachment": {
+      "configurationName": "Test Scheme Action",
+      "deviceId": "BF9CDB55-D3DC-49AE-BB52-D1B3BA1780BC",
+      "deviceName": "BYOT Upstream E2E",
+      "exportedFileName": "54C349C6-0C53-4725-9518-CC5E26CCA35D.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "v2-agent-variant-command-ready_0_0B566196-28EB-4267-9BC9-2157A938F3A0.png",
+      "timestamp": 1789230787.275
+    },
+    "test": "OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers()",
+    "image_edited": false
+  },
+  {
+    "file": "v1-agent-variant-command-ready-dark.png",
+    "sha256": "e43ff6548a2fcc1ab876320420672917a21522ca15b1127d7eb0fa5da8092802",
+    "source_run": "/tmp/byot-upstream-e2e.OfRTKg",
+    "source_attachment": {
+      "configurationName": "Test Scheme Action",
+      "deviceId": "BF9CDB55-D3DC-49AE-BB52-D1B3BA1780BC",
+      "deviceName": "BYOT Upstream E2E",
+      "exportedFileName": "8E883A30-33BB-4001-9C26-74E5DC8F01E8.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "v1-agent-variant-command-ready_0_37033B0C-2D78-4FB9-8C9A-26C902BB7B33.png",
+      "timestamp": 1789230674.732
+    },
+    "test": "OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers()",
+    "image_edited": false
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "file": "prompt-attachments-light.png",
+    "sha256": "da43b775c5b2952e7b829997a02362a8044c26048f565056af78e37ce7b3fa07",
+    "source_run": "/tmp/byot-accessibility.UySXMI",
+    "source_attachment": {
+      "configurationName": "Test Scheme Action",
+      "deviceId": "C885EB80-E6EB-4B22-86D6-EAA83CF4559D",
+      "deviceName": "BYOT Accessibility",
+      "exportedFileName": "C60F2A25-828D-4151-BD95-4624D46D70DB.png",
+      "isAssociatedWithFailure": false,
+      "suggestedHumanReadableName": "prompt-attachments_0_5958559F-05C9-4438-B59F-C75076D6292E.png",
+      "timestamp": 1789232407.496
+    },
+    "test": "OpenCodeAttachmentUITests/testAttachmentPickerScreenshot()",
+    "image_edited": false
+  }
+]

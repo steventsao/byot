@@ -1,0 +1,51 @@
+{
+  "verified_at_utc": "2026-09-12T17:01:41.984824+00:00",
+  "app_id": "6782403920",
+  "bundle_id": "com.steventsao.byot",
+  "version": "1.0.18",
+  "build_number": "20260912092708",
+  "build_id": "badab880-0db2-452a-b5d8-981416bd30b2",
+  "application_source_commit": "5b4fa554be8c93c6821ff968f14d21ec6b75a02d",
+  "uploaded_date": "2026-09-12T09:53:38-07:00",
+  "processing_state": "VALID",
+  "beta_detail": {
+    "autoNotifyEnabled": true,
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "READY_FOR_BETA_SUBMISSION"
+  },
+  "groups": {
+    "buildId": "badab880-0db2-452a-b5d8-981416bd30b2",
+    "appId": "6782403920",
+    "complete": true,
+    "lookupMethod": "server_filter_with_inverse_all_builds",
+    "groupCount": 1,
+    "groups": [
+      {
+        "id": "a2c29c92-ddfd-4c22-9368-8563d9b756ea",
+        "name": "Internal Testers",
+        "type": "internal",
+        "membership": "explicit",
+        "hasAccessToAllBuilds": false
+      }
+    ]
+  },
+  "test_notes": {
+    "locale": "en-US",
+    "whatsNew": "byot 1.0.18 \u2014 compact composer controls\n\n- Files now uses a document icon and sits beside the agent and model-variant controls below the message input.\n- The controls stay in one scrollable row when larger text needs more space.\n\nPlease check the composer in Light and Dark Mode, with the keyboard open and with larger text. Try Files, adding file context, @ search, and switching between Build and Plan."
+  },
+  "test_notes_match_repository": true,
+  "pre_release_version": {
+    "version": "1.0.18",
+    "platform": "IOS"
+  },
+  "ipa_sha256": "c71f1ea0bf398aee9423b36caf0d527ee10021f4f5304bb3a889710c20c2b388",
+  "external_review_submitted": false,
+  "verification_commands": [
+    "asc builds info",
+    "asc builds build-beta-detail view",
+    "asc builds groups list",
+    "asc builds test-notes list",
+    "asc builds pre-release-version view",
+    "asc testflight distribution view"
+  ]
+}
