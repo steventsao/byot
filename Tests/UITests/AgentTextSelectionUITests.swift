@@ -13,7 +13,7 @@ final class AgentTextSelectionUITests: XCTestCase {
         let text = app.textViews["response-selection-text"]
         XCTAssertTrue(text.waitForExistence(timeout: 5), app.debugDescription)
         text.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.03)).press(forDuration: 1.2)
-        let copy = app.buttons["Copy"].firstMatch
+        let copy = app.menuItems["Copy"].firstMatch
         XCTAssertTrue(copy.waitForExistence(timeout: 5), app.debugDescription)
         copy.tap()
         app.buttons["Done"].tap()
