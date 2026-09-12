@@ -110,7 +110,7 @@ struct OpenCodeRemoteFilePicker: View {
                 Section {
                     Picker("Files", selection: $showChanges) {
                         Text("Browse").tag(false)
-                        Text("Changed").tag(true)
+                        Text("Changed").tag(true).disabled(files.capabilities?.changes == false)
                     }.pickerStyle(.segmented)
                     if !showChanges, !directory.isEmpty, query.isEmpty {
                         Button("Up one folder", systemImage: "arrow.turn.up.left") {
@@ -128,6 +128,7 @@ struct OpenCodeRemoteFilePicker: View {
                     }
                 } footer: {
                     if files.capabilities?.context == false { Text("This server does not accept file references in prompts.") }
+                    if files.capabilities?.changes == false { Text("Changed-file status is unavailable on this server.") }
                 }
             }
             .searchable(text: $query, prompt: "Search project files")
@@ -215,56 +216,8 @@ struct OpenCodeRemoteFileReader: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if files.isReading { ProgressView("Reading file").frame(maxHeight: .infinity) }
-            else if let error = files.readErrorMessage {
-                ContentUnavailableView { Label("Preview unavailable", systemImage: "doc") }
-                    description: { Text(error) }
-                    actions: { Button("Retry") { Task { await files.read(path: path) } } }
-            } else if let content = files.content, content.path == path {
-                if content.text != nil {
-                    Text("Tap a line, then another line to select a range.")
-                        .font(.cleanCaption).foregroundStyle(.secondary).padding(10)
-                    ScrollView([.horizontal, .vertical]) {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(content.lines.enumerated()), id: \.offset) { index, line in
-                                Button { select(line: index + 1) } label: {
-                                    HStack(alignment: .top, spacing: 12) {
-                                        Text("\(index + 1)").foregroundStyle(.secondary).frame(minWidth: 40, alignment: .trailing)
-                                        Text(line.isEmpty ? " " : line).foregroundStyle(.primary)
-                                    }
-                                    .font(.system(.footnote, design: .monospaced))
-                                    .padding(.horizontal, 12).padding(.vertical, 7)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(isSelected(index + 1) ? BYOTBrand.accent.opacity(0.18) : Color.clear)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Line \(index + 1): \(line)")
-                                .accessibilityIdentifier("remote-file-line-\(index + 1)")
-                                .accessibilityAddTraits(isSelected(index + 1) ? [.isSelected] : [])
-                            }
-                        }
-                    }
-                    .accessibilityIdentifier("remote-file-reader")
-                } else {
-                    ContentUnavailableView("Binary file", systemImage: "doc", description: Text("\(content.mimeType) · \(ByteCountFormatter.string(fromByteCount: Int64(content.byteCount), countStyle: .file))"))
-                }
-            }
-            VStack(spacing: 8) {
-                if let selection {
-                    HStack {
-                        Text("Lines \(selection.startLine)–\(selection.endLine)").font(.cleanCaption)
-                        Spacer()
-                        Button("Clear") { firstLine = nil; lastLine = nil }
-                    }
-                    Button("Add selected lines as context") { add(files.reference(path: path, selection: selection)) }
-                        .buttonStyle(.borderedProminent).accessibilityIdentifier("remote-file-add-lines")
-                }
-                Button("Add whole file as context", systemImage: "plus") { add(files.reference(path: path)) }
-                    .buttonStyle(.bordered).accessibilityIdentifier("remote-file-add-whole")
-            }
-            .padding().frame(maxWidth: .infinity)
-            .disabled(files.capabilities?.context != true)
+            previewContent
+            contextButtons
         }
         .navigationTitle(path.split(separator: "/").last.map(String.init) ?? path)
         .navigationBarTitleDisplayMode(.inline)
@@ -274,12 +227,83 @@ struct OpenCodeRemoteFileReader: View {
         }
     }
 
+    @ViewBuilder private var previewContent: some View {
+        if files.isReading { ProgressView("Reading file").frame(maxHeight: .infinity) }
+        else if let error = files.readErrorMessage {
+            ContentUnavailableView { Label("Preview unavailable", systemImage: "doc") }
+                description: { Text(error) }
+                actions: { Button("Retry") { Task { await files.read(path: path) } } }
+        } else if let content = files.content, content.path == path {
+            if content.text != nil { textPreview(content) }
+            else {
+                ContentUnavailableView("Binary file", systemImage: "doc", description:
+                    Text("\(content.mimeType) · \(ByteCountFormatter.string(fromByteCount: Int64(content.byteCount), countStyle: .file))"))
+            }
+        }
+    }
+
+    private func textPreview(_ content: OpenCodeRemoteFileContent) -> some View {
+        VStack(spacing: 0) {
+            Text(files.capabilities?.lineSelection == true
+                 ? "Tap a line, then another line to select a range."
+                 : "This server provides a trimmed preview. Add the whole file as context.")
+                .font(.cleanCaption).foregroundStyle(.secondary).padding(10)
+            ScrollView([.horizontal, .vertical]) {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(content.lines.enumerated()), id: \.offset) { index, line in
+                        lineRow(number: index + 1, text: line)
+                    }
+                }
+            }
+            .accessibilityIdentifier("remote-file-reader")
+        }
+    }
+
+    private func lineRow(number: Int, text: String) -> some View {
+        Button { select(line: number) } label: {
+            HStack(alignment: .top, spacing: 12) {
+                if files.capabilities?.lineSelection == true {
+                    Text("\(number)").foregroundStyle(.secondary).frame(minWidth: 40, alignment: .trailing)
+                }
+                Text(text.isEmpty ? " " : text).foregroundStyle(.primary)
+            }
+            .font(.system(.footnote, design: .monospaced))
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isSelected(number) ? BYOTBrand.accent.opacity(0.18) : Color.clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(files.capabilities?.lineSelection != true)
+        .accessibilityLabel(files.capabilities?.lineSelection == true ? "Line \(number): \(text)" : text)
+        .accessibilityIdentifier("remote-file-line-\(number)")
+        .accessibilityAddTraits(isSelected(number) ? [.isSelected] : [])
+    }
+
+    private var contextButtons: some View {
+        VStack(spacing: 8) {
+            if let selection, files.capabilities?.lineSelection == true {
+                HStack {
+                    Text("Lines \(selection.startLine)–\(selection.endLine)").font(.cleanCaption)
+                    Spacer()
+                    Button("Clear") { firstLine = nil; lastLine = nil }
+                }
+                Button("Add selected lines as context") { add(files.reference(path: path, selection: selection)) }
+                    .buttonStyle(.borderedProminent).accessibilityIdentifier("remote-file-add-lines")
+            }
+            Button("Add whole file as context", systemImage: "plus") { add(files.reference(path: path)) }
+                .buttonStyle(.bordered).accessibilityIdentifier("remote-file-add-whole")
+        }
+        .padding().frame(maxWidth: .infinity)
+        .disabled(files.capabilities?.context != true)
+    }
+
     private func select(line: Int) {
         if firstLine == nil || lastLine != nil { firstLine = line; lastLine = nil }
         else { lastLine = line }
     }
     private func isSelected(_ line: Int) -> Bool {
-        guard let selection else { return false }
+        guard files.capabilities?.lineSelection == true, let selection else { return false }
         return line >= selection.startLine && line <= selection.endLine
     }
 }

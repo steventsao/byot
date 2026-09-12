@@ -61,6 +61,12 @@ struct OpenCodeRemoteFileCapabilities: Equatable, Sendable {
     let read: Bool
     let changes: Bool
     let context: Bool
+    let lineSelection: Bool
+
+    init(search: Bool, browse: Bool, read: Bool, changes: Bool, context: Bool, lineSelection: Bool? = nil) {
+        self.search = search; self.browse = browse; self.read = read; self.changes = changes; self.context = context
+        self.lineSelection = lineSelection ?? (read && context)
+    }
 }
 
 enum OpenCodeRemoteFileError: LocalizedError, Equatable {
@@ -109,7 +115,9 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
         let connection = try await context()
         guard connection.profile.id == scope.serverID else { throw OpenCodeRemoteFileError.wrongLocation }
         if connection.serverProtocol == .v1 {
-            return .init(search: true, browse: true, read: true, changes: true, context: true)
+            // Supported v1 releases trim previews and implement /file/status as a constant empty array.
+            // Neither a precise source-line range nor a clean working copy can be inferred from those responses.
+            return .init(search: true, browse: true, read: true, changes: false, context: true, lineSelection: false)
         }
         return .init(search: connection.supports("/api/fs/find"), browse: connection.supports("/api/fs/list"),
                      read: connection.supports("/api/fs/read/*"), changes: connection.supports("/api/vcs/status"),
@@ -157,7 +165,7 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
         let connection = try await checkedContext(v2Path: "/api/vcs/status", operation: "changed files")
         let values: [OpenCodeRemoteFileChange]
         if connection.serverProtocol == .v1 {
-            values = try await connection.transport.get(["file", "status"], query: locationQuery(connection))
+            throw OpenCodeRemoteFileError.unsupported("changed files")
         } else {
             let response: FileLocationResponse<[OpenCodeRemoteFileChange]> = try await connection.transport.get(
                 ["api", "vcs", "status"], query: locationQuery(connection))
@@ -222,8 +230,9 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
     private func normalize(_ entries: [OpenCodeRemoteFileEntry]) throws -> [OpenCodeRemoteFileEntry] {
         var seen = Set<String>()
         return try entries.compactMap { entry in
-            let path = try scope.relativePath(entry.path)
-            guard entry.type == "file" || entry.type == "directory", seen.insert(path).inserted else { return nil }
+            var path = try scope.relativePath(entry.path)
+            if entry.isDirectory { path = path.replacingOccurrences(of: "/+$", with: "", options: .regularExpression) }
+            guard !path.isEmpty, entry.type == "file" || entry.type == "directory", seen.insert(path).inserted else { return nil }
             return .init(path: path, type: entry.type)
         }
     }

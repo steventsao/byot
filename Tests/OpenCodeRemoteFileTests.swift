@@ -57,7 +57,7 @@ final class OpenCodeRemoteFileTests: XCTestCase {
         let transport = FileTestTransport(profile: profile) { request in
             switch request.url!.path {
             case "/opencode/find/file": return .json(["src/a.swift"])
-            case "/opencode/file": return .json([["path": "src", "type": "directory", "name": "src", "absolute": "/repo/My Project/src", "ignored": false]])
+            case "/opencode/file": return .json([["path": "src/", "type": "directory", "name": "src", "absolute": "/repo/My Project/src", "ignored": false]])
             case "/opencode/file/status": return .json([["file": "src/a.swift", "additions": 3, "deletions": 1, "status": "modified"]])
             default: return .json(["type": "text", "content": "one\ntwo", "mimeType": "text/plain"])
             }
@@ -67,8 +67,13 @@ final class OpenCodeRemoteFileTests: XCTestCase {
         XCTAssertEqual(found.first?.path, "src/a.swift")
         let listed = try await service.list(path: "")
         XCTAssertEqual(listed.first?.type, "directory")
-        let changes = try await service.changes()
-        XCTAssertEqual(changes.first?.additions, 3)
+        XCTAssertEqual(listed.first?.path, "src")
+        let capabilities = try await service.capabilities()
+        XCTAssertFalse(capabilities.changes)
+        XCTAssertFalse(capabilities.lineSelection)
+        do { _ = try await service.changes(); XCTFail("The known v1 status stub must be unavailable") }
+        catch { XCTAssertEqual(error as? OpenCodeRemoteFileError, .unsupported("changed files")) }
+        XCTAssertFalse(transport.requests.contains { $0.url?.path.hasSuffix("/file/status") == true })
         let read = try await service.read(path: "src/a.swift")
         XCTAssertEqual(read.text, "one\ntwo")
         for request in transport.requests {
@@ -98,6 +103,15 @@ final class OpenCodeRemoteFileTests: XCTestCase {
         XCTAssertTrue(readURL.absoluteString.contains("a%20%23%3F%25.swift"))
         XCTAssertEqual(URLComponents(url: readURL, resolvingAgainstBaseURL: false)?.queryItems,
                        [URLQueryItem(name: "location[directory]", value: scope.directory), URLQueryItem(name: "location[workspace]", value: "wrk_test")])
+    }
+
+    func testDirectoryPathsNormalizeServerTrailingSlashWithoutChangingFileNames() async throws {
+        let transport = FileTestTransport(profile: profile) { _ in
+            self.envelope([["path": "src/", "type": "directory"], ["path": "readme.md", "type": "file"]])
+        }
+        let service = makeService(transport: transport, protocol: .v2, schema: try schema())
+        let entries = try await service.list(path: "")
+        XCTAssertEqual(entries.map(\.path), ["src", "readme.md"])
     }
 
     func testMissingV2RoutesDoNotIssueGuessedRequests() async throws {
