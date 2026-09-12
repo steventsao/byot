@@ -42,7 +42,7 @@ final class OpenCodeRemoteFileUITests: XCTestCase {
         app.launch()
         let draft = app.textFields["remote-file-draft"]
         XCTAssertTrue(draft.waitForExistence(timeout: 10))
-        draft.tap()
+        XCTAssertTrue(focus(draft, in: app), "The draft must have keyboard focus before typing")
         draft.typeText("Explain @App")
         let suggestion = app.buttons["remote-file-suggestion-Sources/App.swift"]
         XCTAssertTrue(suggestion.waitForExistence(timeout: 10))
@@ -50,6 +50,21 @@ final class OpenCodeRemoteFileUITests: XCTestCase {
         XCTAssertEqual(draft.value as? String, "Explain ")
         XCTAssertTrue(app.buttons["Preview server file Sources/App.swift"].exists)
         attach("at-mention-context")
+    }
+
+    @MainActor private func focus(_ field: XCUIElement, in app: XCUIApplication) -> Bool {
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: field)
+        guard XCTWaiter.wait(for: [hittable], timeout: 5) == .completed else { return false }
+        for _ in 0..<2 {
+            field.tap()
+            let focused = app.descendants(matching: field.elementType)
+                .matching(NSPredicate(format: "hasKeyboardFocus == true"))
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                app.keyboards.firstMatch.exists && focused.allElementsBoundByIndex.contains { $0.frame == field.frame }
+            }, object: nil)
+            if XCTWaiter.wait(for: [ready], timeout: 3) == .completed { return true }
+        }
+        return false
     }
 
     @MainActor private func attach(_ name: String) {
