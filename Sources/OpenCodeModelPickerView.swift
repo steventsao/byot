@@ -89,6 +89,10 @@ struct OpenCodeModelPickerView: View {
                             "No models", systemImage: "cpu",
                             description: Text("Connect a provider, then refresh.")
                         )
+                        Button("Reload models", systemImage: "arrow.clockwise") {
+                            Task { await store.reloadModels() }
+                        }
+                        .accessibilityIdentifier("opencode-reload-models")
                     }
                 } else if !normalizedSearchText.isEmpty,
                           filteredProviders.isEmpty,
@@ -113,6 +117,9 @@ struct OpenCodeModelPickerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "Search models")
             .refreshable { await store.reloadModels() }
+            .task {
+                if store.protocolCapabilities != nil { await store.reloadModels() }
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", action: dismiss.callAsFunction)

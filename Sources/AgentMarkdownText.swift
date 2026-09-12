@@ -205,6 +205,7 @@ enum AgentInlineMarkdown {
 
 struct AgentMarkdownText: View {
     let text: String
+    @State private var selection: AgentTextSelection?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -212,6 +213,18 @@ struct AgentMarkdownText: View {
                 AgentMarkdownBlockView(block: block)
             }
         }
+        .contextMenu {
+            Button("Select text", systemImage: "text.cursor") {
+                selection = AgentTextSelection(text: text)
+            }
+            Button("Copy response", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = text
+            }
+        }
+        .accessibilityAction(named: "Select text") {
+            selection = AgentTextSelection(text: text)
+        }
+        .sheet(item: $selection) { AgentTextSelectionSheet(selection: $0) }
     }
 
     private var blocks: [AgentMarkdownBlock] {
@@ -287,6 +300,7 @@ private struct AgentCodeBlockView: View {
     let language: String?
     let code: String
     @State private var showsCopied = false
+    @State private var selection: AgentTextSelection?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -295,10 +309,24 @@ private struct AgentCodeBlockView: View {
                     .font(.cleanCaption)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
-                Button(showsCopied ? "Copied" : "Copy", systemImage: showsCopied ? "checkmark" : "doc.on.doc") {
-                    copy()
+                Button {
+                    selection = AgentTextSelection(text: code, isCode: true)
+                } label: {
+                    Label("Select code", systemImage: "text.cursor")
+                        .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
-                .labelStyle(.iconOnly)
+                .font(.cleanCaptionBold)
+                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Select code")
+                Button {
+                    copy()
+                } label: {
+                    Label(showsCopied ? "Copied" : "Copy", systemImage: showsCopied ? "checkmark" : "doc.on.doc")
+                        .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
                 .font(.cleanCaptionBold)
                 .foregroundStyle(showsCopied ? BYOTBrand.accent : Color.secondary)
                 .buttonStyle(.plain)
@@ -326,6 +354,7 @@ private struct AgentCodeBlockView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(BYOTBrand.hairline, lineWidth: 1)
         }
+        .sheet(item: $selection) { AgentTextSelectionSheet(selection: $0) }
     }
 
     private func copy() {

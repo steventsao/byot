@@ -1,6 +1,7 @@
 import Foundation
 
 struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
+    var apiSchema: OpenCodeJSONValue? { contract.schema }
     let contract: OpenCodeV2Contract
     let transport: any OpenCodeHTTPTransport
     let profile: OpenCodeServerProfile
@@ -108,7 +109,8 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
                             providerName: provider.name,
                             modelID: model.id,
                             modelName: model.name,
-                            status: model.status
+                            status: model.status,
+                            variants: contract.schema.objectValue?["components"]?.objectValue?["schemas"]?.objectValue?["Model.Ref"]?.objectValue?["properties"]?.objectValue?["variant"] != nil ? (model.variants ?? []).map(\.id) : []
                         )
                     }
                     .sorted {
@@ -361,6 +363,7 @@ private struct OpenCodeV2Location: Decodable {
 }
 
 private struct OpenCodeV2Session: Decodable {
+    struct Fork: Decodable { let sessionID: String }
     struct Time: Decodable {
         let created: Double
         let updated: Double
@@ -369,6 +372,7 @@ private struct OpenCodeV2Session: Decodable {
 
     let id: String
     let parentID: String?
+    let fork: Fork?
     let projectID: String
     let agent: String?
     let model: OpenCodeV2ModelReference?
@@ -393,7 +397,8 @@ private struct OpenCodeV2Session: Decodable {
                 updated: time.updated,
                 compacting: nil,
                 archived: time.archived
-            )
+            ),
+            forkSourceID: fork?.sessionID
         )
     }
 }
@@ -406,6 +411,8 @@ private struct OpenCodeV2Provider: Decodable {
 }
 
 private struct OpenCodeV2Model: Decodable {
+    struct Variant: Decodable { let id: String }
+    let variants: [Variant]?
     let id: String
     let providerID: String
     let name: String

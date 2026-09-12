@@ -4,8 +4,14 @@ import UniformTypeIdentifiers
 
 struct OpenCodeSessionComposerView: View {
     @ObservedObject var store: OpenCodeSessionStore
+    private let onNewSession: (() -> Void)?
+    private let sessionActions: [OpenCodeComposerAction]
+    private let restoredMessage: OpenCodeMessageEnvelope?
+    private let onRestoreConsumed: (() -> Void)?
     private let screenshotAttachment: OpenCodePromptAttachment?
     @State private var text = ""
+    @State private var remoteReferences: [OpenCodePromptFileReference] = []
+    @State private var isShowingAgentPicker = false
     @State private var attachments: [OpenCodePromptAttachment] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isShowingPhotoPicker = false
@@ -19,14 +25,26 @@ struct OpenCodeSessionComposerView: View {
 
     init(
         store: OpenCodeSessionStore,
-        screenshotAttachment: OpenCodePromptAttachment? = nil
+        screenshotAttachment: OpenCodePromptAttachment? = nil,
+        onNewSession: (() -> Void)? = nil,
+        sessionActions: [OpenCodeComposerAction] = [],
+        restoredMessage: OpenCodeMessageEnvelope? = nil,
+        onRestoreConsumed: (() -> Void)? = nil
     ) {
         self.store = store
         self.screenshotAttachment = screenshotAttachment
+        self.onNewSession = onNewSession
+        self.sessionActions = sessionActions
+        self.restoredMessage = restoredMessage
+        self.onRestoreConsumed = onRestoreConsumed
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            slashSuggestions
+            if let files = store.remoteFiles {
+                OpenCodeRemoteContextView(text: $text, references: $remoteReferences, files: files)
+            }
             if !attachments.isEmpty {
                 ScrollView(dynamicTypeSize.isAccessibilitySize ? .vertical : .horizontal,
                            showsIndicators: dynamicTypeSize.isAccessibilitySize) {
@@ -53,6 +71,14 @@ struct OpenCodeSessionComposerView: View {
                 .accessibilityIdentifier("opencode-composer-message")
                 .submitLabel(.send)
                 .onSubmit(send)
+
+            if !store.composerCatalog.agents.isEmpty || !store.availableVariants.isEmpty {
+                HStack(spacing: 8) {
+                    if !store.composerCatalog.agents.isEmpty { agentButton }
+                    if !store.availableVariants.isEmpty { variantMenu }
+                    Spacer(minLength: 0)
+                }
+            }
 
             if dynamicTypeSize.isAccessibilitySize {
                 modelButton
@@ -87,6 +113,14 @@ struct OpenCodeSessionComposerView: View {
         }
         .sheet(isPresented: $isShowingModelPicker) {
             OpenCodeModelPickerView(store: store)
+        }
+        .sheet(isPresented: $isShowingAgentPicker) {
+            OpenCodeAgentPickerView(store: store)
+        }
+        .onChange(of: restoredMessage) { _, message in
+            guard let message else { return }
+            restore(message)
+            onRestoreConsumed?()
         }
         .photosPicker(
             isPresented: $isShowingPhotoPicker,
@@ -128,7 +162,7 @@ struct OpenCodeSessionComposerView: View {
 
     private var hasSendableContent: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !attachments.isEmpty
+            || !attachments.isEmpty || !remoteReferences.isEmpty
     }
 
     private var modelButton: some View {
@@ -263,7 +297,8 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private var showsStopControl: Bool {
-        Self.showsStopControl(canStop: store.canStopTurn, text: text, hasAttachments: !attachments.isEmpty)
+        Self.showsStopControl(canStop: store.canStopTurn, text: text,
+                              hasAttachments: !attachments.isEmpty || !remoteReferences.isEmpty)
     }
 
     // The stop control takes the send slot only while the composer is empty;
@@ -284,16 +319,162 @@ struct OpenCodeSessionComposerView: View {
 
     private func send() {
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (!prompt.isEmpty || !attachments.isEmpty), store.canSubmitPrompt else { return }
+        if attachments.isEmpty, remoteReferences.isEmpty,
+           !store.composerCatalog.commands.contains(where: { "/" + $0.name == prompt }),
+           runBuiltin(prompt) { return }
+        guard (!prompt.isEmpty || !attachments.isEmpty || !remoteReferences.isEmpty), store.canSubmitPrompt else { return }
         let promptAttachments = attachments
+        let promptReferences = remoteReferences
         text = ""
         attachments = []
-        if store.send(prompt, attachments: promptAttachments) == false,
-           text.isEmpty,
-           attachments.isEmpty {
+        remoteReferences = []
+        if store.send(prompt, attachments: promptAttachments, remoteReferences: promptReferences) == false,
+           text.isEmpty, attachments.isEmpty, remoteReferences.isEmpty {
             text = prompt
             attachments = promptAttachments
+            remoteReferences = promptReferences
         }
+    }
+
+    private var agentButton: some View {
+        Button {
+            isFocused = false
+            isShowingAgentPicker = true
+        } label: {
+            Label(store.selectedAgentName, systemImage: "person.crop.circle")
+                .font(.cleanCaptionBold)
+                .lineLimit(1)
+                .padding(.horizontal, 8)
+                .frame(minHeight: 44)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Choose agent")
+        .accessibilityValue(store.selectedAgentName)
+        .accessibilityIdentifier("opencode-agent-picker")
+    }
+
+    private var variantMenu: some View {
+        Menu {
+            Button { store.selectVariant(nil) } label: {
+                Label("Default", systemImage: store.selectedVariant == nil ? "checkmark" : "circle")
+            }
+            ForEach(store.availableVariants, id: \.self) { variant in
+                Button { store.selectVariant(variant) } label: {
+                    Label(variant, systemImage: store.selectedVariant == variant ? "checkmark" : "circle")
+                }
+            }
+        } label: {
+            Label(store.variantLabel, systemImage: "slider.horizontal.3")
+                .font(.cleanCaptionBold)
+                .lineLimit(1)
+                .padding(.horizontal, 8)
+                .frame(minHeight: 44)
+        }
+        .accessibilityLabel("Model variant")
+        .accessibilityValue(store.variantLabel)
+        .accessibilityIdentifier("opencode-variant-picker")
+    }
+
+    private var builtinActions: [OpenCodeComposerAction] {
+        var actions = [OpenCodeComposerAction(name: "model", title: "Choose model", unavailableReason: nil, run: showModelPicker)]
+        if let onNewSession {
+            actions.append(OpenCodeComposerAction(name: "new", title: "New session", unavailableReason: nil, run: onNewSession))
+        }
+        return actions + sessionActions
+    }
+
+    @ViewBuilder
+    private var slashSuggestions: some View {
+        if text.hasPrefix("/") {
+            let token = String(text.dropFirst().prefix(while: { !$0.isWhitespace }))
+            let isChoosing = !text.dropFirst().contains(where: \.isWhitespace)
+            if isChoosing {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(builtinActions.filter { token.isEmpty || $0.name.localizedCaseInsensitiveContains(token) }, id: \.name) { action in
+                            Button {
+                                guard action.unavailableReason == nil else { return }
+                                text = ""
+                                isFocused = false
+                                action.run()
+                            } label: {
+                                commandRow(name: action.name, detail: action.unavailableReason ?? action.title, kind: "App action")
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(action.unavailableReason != nil)
+                            .accessibilityIdentifier("opencode-command-app-\(action.name)")
+                        }
+                        ForEach(store.composerCatalog.commands.filter { token.isEmpty || $0.name.localizedCaseInsensitiveContains(token) }) { command in
+                            Button {
+                                text = "/\(command.name) "
+                                isFocused = true
+                            } label: {
+                                commandRow(name: command.name, detail: command.description ?? "Add arguments, then send",
+                                           kind: command.kind == .command ? "Server command" : "Server skill")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("opencode-command-\(command.id)")
+                        }
+                        if let error = store.composerErrorMessage {
+                            Text(error).font(.cleanCaption).foregroundStyle(.secondary)
+                            Button("Reload commands") { Task { await store.reloadComposerCatalog() } }
+                                .font(.cleanCaptionBold)
+                                .frame(minHeight: 44)
+                        }
+                    }
+                }
+                .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? 180 : 220)
+                .accessibilityIdentifier("opencode-slash-suggestions")
+            } else if let invocation = OpenCodeCommandInvocation.parse(text, catalog: store.composerCatalog.commands) {
+                Text("/\(invocation.name) · \(invocation.kind == .command ? "Server command" : "Server skill") · Add arguments below")
+                    .font(.cleanCaption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("opencode-command-arguments")
+            }
+        }
+    }
+
+    private func commandRow(name: String, detail: String, kind: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("/\(name) · \(kind)").font(.cleanCaptionBold)
+            Text(detail).font(.cleanCaption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    private func runBuiltin(_ prompt: String) -> Bool {
+        guard let action = builtinActions.first(where: { "/" + $0.name == prompt }) else { return false }
+        guard action.unavailableReason == nil else {
+            store.errorMessage = action.unavailableReason
+            return true
+        }
+        text = ""
+        isFocused = false
+        action.run()
+        return true
+    }
+
+    private func restore(_ message: OpenCodeMessageEnvelope) {
+        text = message.parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n")
+        attachments = message.parts.compactMap { part in
+            guard part.type == "file", let url = part.url, url.hasPrefix("data:"),
+                  let comma = url.firstIndex(of: ","), url[..<comma].hasSuffix(";base64"),
+                  let data = Data(base64Encoded: String(url[url.index(after: comma)...])) else { return nil }
+            return OpenCodePromptAttachment(filename: part.filename ?? "Attachment",
+                                            mimeType: part.mime ?? "application/octet-stream", data: data)
+        }
+        remoteReferences = OpenCodePromptFileReference.restored(from: message, serverID: store.serverID,
+            projectID: store.session.projectID, directory: store.directory, workspaceID: store.session.workspaceID)
+        if let providerID = message.info.providerID, let modelID = message.info.modelID,
+           let model = store.providerModels.flatMap(\.models).first(where: { $0.providerID == providerID && $0.modelID == modelID }) {
+            store.selectModel(model)
+            store.selectVariant(message.info.variant)
+        }
+        if let agent = message.info.agent { store.selectAgent(agent) }
+        isFocused = true
     }
 
     private func importPhotos(_ items: [PhotosPickerItem]) {

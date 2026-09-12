@@ -58,6 +58,21 @@ struct OpenCodeTransport: OpenCodeHTTPTransport {
         try await session.data(for: request, delegate: redirectDelegate)
     }
 
+    func boundedData(for request: URLRequest, maximumBytes: Int) async throws -> (Data, URLResponse) {
+        let (bytes, response) = try await session.bytes(for: request, delegate: redirectDelegate)
+        defer { bytes.task.cancel() }
+        guard response.expectedContentLength <= Int64(maximumBytes) else {
+            throw OpenCodeResponseSizeLimitError()
+        }
+        var data = Data()
+        for try await byte in bytes {
+            try Task.checkCancellation()
+            guard data.count < maximumBytes else { throw OpenCodeResponseSizeLimitError() }
+            data.append(byte)
+        }
+        return (data, response)
+    }
+
     func events(
         path: [String],
         query: [URLQueryItem]

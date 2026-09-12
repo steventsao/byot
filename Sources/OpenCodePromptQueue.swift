@@ -52,6 +52,10 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         text: String,
         model: OpenCodeModelOption?,
         attachments: [OpenCodePromptAttachment] = [],
+        agent: String? = nil,
+        variant: String? = nil,
+        command: OpenCodeCommandInvocation? = nil,
+        remoteReferences: [OpenCodePromptFileReference] = [],
         serverIsActive: Bool,
         id: UUID = UUID()
     ) -> OpenCodePromptSubmission {
@@ -59,7 +63,8 @@ struct OpenCodePromptQueue: Equatable, Sendable {
             id: id,
             text: text,
             model: model,
-            attachments: attachments
+            attachments: attachments, agent: agent, variant: variant,
+            command: command, remoteReferences: remoteReferences
         )
         if phase == .idle, serverIsActive {
             phase = .active
@@ -76,6 +81,10 @@ struct OpenCodePromptQueue: Equatable, Sendable {
         text: String,
         model: OpenCodeModelOption?,
         attachments: [OpenCodePromptAttachment] = [],
+        agent: String? = nil,
+        variant: String? = nil,
+        command: OpenCodeCommandInvocation? = nil,
+        remoteReferences: [OpenCodePromptFileReference] = [],
         id: UUID = UUID()
     ) -> OpenCodeQueuedPrompt? {
         guard phase == .idle || phase == .paused else { return nil }
@@ -83,7 +92,8 @@ struct OpenCodePromptQueue: Equatable, Sendable {
             id: id,
             text: text,
             model: model,
-            attachments: attachments
+            attachments: attachments, agent: agent, variant: variant,
+            command: command, remoteReferences: remoteReferences
         )
         pauseAfterCurrentTurn = phase == .paused && prompts.isEmpty == false
         phase = .submitting(observedActive: false, observedCompletion: false)

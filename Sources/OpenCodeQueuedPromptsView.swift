@@ -6,6 +6,8 @@ struct OpenCodeQueuedPromptsView: View {
     let retry: (UUID) -> Void
     let remove: (UUID) -> Void
 
+    @State private var commandToRetry: OpenCodeQueuedPrompt?
+
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -48,6 +50,17 @@ struct OpenCodeQueuedPromptsView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
+        .confirmationDialog("Run this command again?", isPresented: Binding(
+            get: { commandToRetry != nil }, set: { if !$0 { commandToRetry = nil } }
+        ), titleVisibility: .visible) {
+            Button("Run again") {
+                if let prompt = commandToRetry { retry(prompt.id) }
+                commandToRetry = nil
+            }
+            Button("Cancel", role: .cancel) { commandToRetry = nil }
+        } message: {
+            Text("The server may already have run this command. Review the session first to avoid repeating its effects.")
+        }
     }
 
     private func promptContent(index: Int, prompt: OpenCodeQueuedPrompt) -> some View {
@@ -81,14 +94,14 @@ struct OpenCodeQueuedPromptsView: View {
     @ViewBuilder
     private func retryButton(for prompt: OpenCodeQueuedPrompt, showsTitle: Bool) -> some View {
         if showsTitle {
-            Button("Retry", systemImage: "arrow.clockwise") {
-                retry(prompt.id)
+            Button(prompt.command?.kind == .command ? "Run again" : "Retry", systemImage: "arrow.clockwise") {
+                retryOrConfirm(prompt)
             }
             .frame(minWidth: 44, minHeight: 44)
             .accessibilityHint("Attempts to send this queued message again")
         } else {
-            Button("Retry", systemImage: "arrow.clockwise") {
-                retry(prompt.id)
+            Button(prompt.command?.kind == .command ? "Run again" : "Retry", systemImage: "arrow.clockwise") {
+                retryOrConfirm(prompt)
             }
             .labelStyle(.iconOnly)
             .frame(minWidth: 44, minHeight: 44)
@@ -118,8 +131,12 @@ struct OpenCodeQueuedPromptsView: View {
         let state = index == 0 && canRetryFirst
             ? "Waiting to retry"
             : "Queued \(index + 1)"
-        guard let model = prompt.model else { return state }
-        return "\(state) · \(model.modelName)"
+        return [state, prompt.agent, prompt.model?.modelName, prompt.variant].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private func retryOrConfirm(_ prompt: OpenCodeQueuedPrompt) {
+        if prompt.command?.kind == .command { commandToRetry = prompt }
+        else { retry(prompt.id) }
     }
 
     private func attachmentLabel(for prompt: OpenCodeQueuedPrompt) -> String {

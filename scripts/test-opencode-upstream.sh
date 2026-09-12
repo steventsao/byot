@@ -43,11 +43,12 @@ xcrun simctl boot "$simulator"
 xcrun simctl bootstatus "$simulator" -b >"$run_root/simulator.log" 2>&1
 xcrun simctl keychain "$simulator" add-root-cert "$run_root/tls.crt"
 xcrun simctl status_bar "$simulator" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
-xcrun simctl ui "$simulator" appearance light
+xcrun simctl ui "$simulator" appearance "${BYOT_E2E_APPEARANCE:-light}"
 cd "$repo"
 xcodegen generate >"$run_root/generate.log"
 # Keep signing enabled: the normal server editor saves passwords in Keychain.
 xcodebuild build-for-testing -project BYOT.xcodeproj -scheme BYOT \
+  -jobs "${BYOT_XCODE_JOBS:-2}" \
   -destination "platform=iOS Simulator,id=$simulator" -derivedDataPath "$derived_data" \
   >"$run_root/build.log" 2>&1
 python3 - "$run_root" "$derived_data" <<'PY'

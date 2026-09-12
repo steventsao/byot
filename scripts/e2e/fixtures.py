@@ -136,16 +136,30 @@ def main():
             options = {"baseURL": "http://127.0.0.1:4198/v1", "apiKey": "fixture-only"}
             model_config = {"name": "Local acceptance fixture", "limit": {"context": 1048576, "output": 4096}}
             if major == "v1":
+                model_config["variants"] = {"byot-careful": {"reasoningEffort": "high"}}
                 config = {"model": "fixture/test", "autoupdate": False, "snapshot": False, "provider": {"fixture": {
                     "name": "BYOT Fixture", "npm": "@ai-sdk/openai-compatible", "options": options, "models": {"test": model_config}}}}
             else:
                 env["OPENCODE_DB"] = str(runtime / "opencode.db")
+                model_config["variants"] = [{"id": "byot-careful", "body": {"reasoning_effort": "high"}}]
                 model_config["capabilities"] = {"tools": True, "input": ["text"], "output": ["text"]}
                 model_config["limit"]["input"] = 1000000
                 config = {"model": "fixture/test", "update": "disable", "share": "disabled", "providers": {"fixture": {
                     "name": "BYOT Fixture", "package": "aisdk:@ai-sdk/openai-compatible", "settings": options,
                     "models": {"test": model_config}}}, "permissions": [{"action": "byot_acceptance", "resource": "*", "effect": "ask"}]}
+            config["command" if major == "v1" else "commands"] = {
+                "byot-acceptance": {"template": "Reply with BYOT upstream compatibility verified. Arguments: $ARGUMENTS",
+                                    "description": "Verify custom command arguments"}}
             (project / "opencode.json").write_text(json.dumps(config, indent=2))
+            # A tracked change exercises server browse/search/read/status without touching a real checkout.
+            (project / "src").mkdir()
+            context_file = project / "src" / "acceptance #%.txt"
+            context_file.write_text("BYOT remote file fixture\nOriginal second line\nThird line\n")
+            subprocess.run(["git", "init", "-q", str(project)], check=True)
+            subprocess.run(["git", "-C", str(project), "add", "src"], check=True)
+            subprocess.run(["git", "-C", str(project), "-c", "user.name=BYOT Acceptance",
+                            "-c", "user.email=acceptance@example.invalid", "commit", "-qm", "Fixture file"], check=True)
+            context_file.write_text("BYOT remote file fixture\nSelected second line\nThird line\n")
             retired_project = runtime / "retired"
             retired_project.mkdir()
             retired_config = json.loads(json.dumps(config))

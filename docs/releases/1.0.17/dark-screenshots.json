@@ -1,0 +1,90 @@
+[
+  {
+    "path": "native-code-substring-copied-dark.png",
+    "original": "C56E0AD4-0D3F-491C-B115-832B043F8678.png",
+    "testIdentifier": "AgentTextSelectionUITests/testNativeCodeSelectionCopiesSubstring()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/AgentTextSelectionUITests/testNativeCodeSelectionCopiesSubstring",
+    "finding": "Clipboard shows only greeting after native code selection; original transcript remains readable.",
+    "evidenceKind": "component fixture",
+    "sha256": "069b9c67cbb042532639382047f892cac66cbe8a560bf5c18604e38ceec555fe",
+    "timestamp": 1789203180.345,
+    "isAssociatedWithFailure": false
+  },
+  {
+    "path": "native-response-accessibility-dark.png",
+    "original": "9EE5A114-005E-4DAB-AF76-768CA2B03D7B.png",
+    "testIdentifier": "AgentTextSelectionUITests/testResponseSelectionAtLargestTextSize()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/AgentTextSelectionUITests/testResponseSelectionAtLargestTextSize",
+    "finding": "Largest text selection sheet wraps and scrolls inside the screen; Copy All and Done remain visible.",
+    "evidenceKind": "component fixture",
+    "sha256": "3fc5d2a2ce7738e2eacd4d4e3c603f028ace7798b98944fd21ef9a3867642336",
+    "timestamp": 1789203197.919,
+    "isAssociatedWithFailure": false
+  },
+  {
+    "path": "server-file-context-composer-dark.png",
+    "original": "F3AF9317-3EC7-411C-9CD6-371FDF1E4879.png",
+    "testIdentifier": "OpenCodeRemoteFileUITests/testBrowseReadSelectLinesRemoveAndSendContext()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeRemoteFileUITests/testBrowseReadSelectLinesRemoveAndSendContext",
+    "finding": "Sources/App.swift context chip and remove control are visible above the draft without overlap.",
+    "evidenceKind": "component fixture",
+    "sha256": "a6d2885b003475d1b6adb716fd1996f80391b83c619f26093e63f7d788214503",
+    "timestamp": 1789203223.576,
+    "isAssociatedWithFailure": false
+  },
+  {
+    "path": "sessions-grouped-dark.png",
+    "original": "36F2CE3F-F607-4AD0-88EB-B852A59D7D5B.png",
+    "testIdentifier": "OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation",
+    "finding": "Project headings and nested sessions are distinct, with readable state labels and visible new-session controls.",
+    "evidenceKind": "component fixture",
+    "sha256": "85306506dd72a34f64bcd62df01150367a4e5fede98a41acdb8ef905a69e8722",
+    "timestamp": 1789203309.126,
+    "isAssociatedWithFailure": false
+  },
+  {
+    "path": "sessions-recent-dark.png",
+    "original": "4C5182C5-395C-440C-A1BD-804ED79A4A94.png",
+    "testIdentifier": "OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeSessionBrowserUITests/testFlatListGroupingSortingServerSwitchAndDirectNavigation",
+    "finding": "Recent session rows retain status and project subtitles; bottom Search control remains visible.",
+    "evidenceKind": "component fixture",
+    "sha256": "ebe6de60413c69206ee48f2a47628548733d7cbb02e1cffd5280bc5c0c78db15",
+    "timestamp": 1789203301.141,
+    "isAssociatedWithFailure": false
+  },
+  {
+    "path": "sessions-accessibility-dark.png",
+    "original": "6A1473A8-7DF8-4DBF-9E9E-4AA261FB8333.png",
+    "testIdentifier": "OpenCodeSessionBrowserUITests/testLargeTypeSearchAndServerBar()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeSessionBrowserUITests/testLargeTypeSearchAndServerBar",
+    "finding": "Largest text reflows metadata on separate lines; list scrolls while bottom Search and new-session controls remain visible.",
+    "evidenceKind": "component fixture",
+    "sha256": "3ad0476f95ecbe2b42d50bd2f919eaf6ee2ffea7cdd9d1f06f5873f6da9511c2",
+    "timestamp": 1789203338.374,
+    "isAssociatedWithFailure": false
+  },
+  {
+    "path": "sessions-search-accessibility-dark.png",
+    "original": "7867DFF0-1676-493F-B349-0383D72FCCE2.png",
+    "testIdentifier": "OpenCodeSessionBrowserUITests/testLargeTypeSearchAndServerBar()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeSessionBrowserUITests/testLargeTypeSearchAndServerBar",
+    "finding": "Largest text search displays its empty result state and an editable long query above the keyboard; clear and new-session controls remain visible.",
+    "evidenceKind": "component fixture",
+    "sha256": "e2dfb9a14271f516a5674980016320fc2e09ac67c035cc5a9f03fe7089b2dcc2",
+    "timestamp": 1789203345.754,
+    "isAssociatedWithFailure": false
+  },
+  {
+    "path": "v1-agent-variant-command-ready-dark.png",
+    "original": "D527FD6C-D2C0-4156-B98C-EFDA5C2DD1DF.png",
+    "testIdentifier": "OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers",
+    "finding": "Live v1 composer shows /byot-acceptance UI argument v1, plan, byot-careful and Local acceptance fixture model together above the keyboard.",
+    "evidenceKind": "live OpenCode v1 server",
+    "sha256": "e263ff8643993385da754c1444c0967f2f641eef2fc8046e57c97d55e3c549f4",
+    "timestamp": 1789203439.701,
+    "isAssociatedWithFailure": false
+  }
+]

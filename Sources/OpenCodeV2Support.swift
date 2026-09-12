@@ -51,7 +51,8 @@ enum OpenCodeV2Normalization {
                 updated: time?["updated"]?.numberValue ?? 0,
                 compacting: time?["compacting"]?.numberValue,
                 archived: time?["archived"]?.numberValue
-            )
+            ),
+            forkSourceID: object["fork"]?.objectValue?["sessionID"]?.stringValue
         )
     }
 
@@ -68,7 +69,9 @@ enum OpenCodeV2Normalization {
         switch type {
         case "user", "synthetic", "system", "skill":
             var parts: [OpenCodePart] = []
-            let text = object["text"]?.stringValue ?? ""
+            let metadata = object["metadata"]?.objectValue
+            let selectedModel = metadata?["model"]?.objectValue
+            let text = metadata?["displayText"]?.stringValue ?? object["text"]?.stringValue ?? ""
             if !text.isEmpty {
                 parts.append(
                     textPart(
@@ -83,7 +86,8 @@ enum OpenCodeV2Normalization {
             for (index, file) in (object["files"]?.arrayValue ?? []).enumerated() {
                 guard let file = file.objectValue else { continue }
                 let mime = file["mime"]?.stringValue ?? "application/octet-stream"
-                let uri = file["uri"]?.stringValue
+                let uri = file["source"]?.objectValue?["uri"]?.stringValue
+                    ?? file["uri"]?.stringValue
                     ?? file["data"]?.stringValue.map { "data:\(mime);base64,\($0)" }
                 parts.append(OpenCodePart(
                     id: "\(id):file:\(index)", sessionID: sessionID, messageID: id,
@@ -97,11 +101,12 @@ enum OpenCodeV2Normalization {
                     sessionID: sessionID,
                     role: type == "user" ? "user" : "assistant",
                     time: OpenCodeMessageTime(created: created, completed: nil),
-                    agent: nil,
-                    modelID: nil,
-                    providerID: nil,
+                    agent: metadata?["agent"]?.stringValue,
+                    modelID: selectedModel?["modelID"]?.stringValue ?? selectedModel?["id"]?.stringValue,
+                    providerID: selectedModel?["providerID"]?.stringValue,
                     finish: nil,
-                    error: nil
+                    error: nil,
+                    variant: selectedModel?["variant"]?.stringValue
                 ),
                 parts: parts
             )

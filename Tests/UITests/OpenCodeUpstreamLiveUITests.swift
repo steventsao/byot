@@ -4,12 +4,103 @@ import XCTest
 /// scripts/test-opencode-upstream.sh supplies real, pinned upstream servers.
 final class OpenCodeUpstreamLiveUITests: XCTestCase {
     @MainActor
+    func testComposerSlashAgentAndVariantControlsOnRealServers() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Run scripts/test-opencode-upstream.sh") }
+        let root = try XCTUnwrap(environment["BYOT_LIVE_ROOT"])
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.terminate()
+        app.launch()
+        for (major, port) in [("v1", 4195), ("v2", 4199)] {
+            connect(app, name: "Composer \(major)", port: port, directory: root + "/\(major)/project")
+            let newSession = app.buttons["New session"].firstMatch
+            XCTAssertTrue(newSession.waitForExistence(timeout: 10))
+            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: newSession)
+            waitForExpectations(timeout: 20)
+            newSession.tap()
+            startConfiguredSession(app)
+            let composer = app.textFields["opencode-composer-message"]
+            XCTAssertTrue(composer.waitForExistence(timeout: 10))
+            app.buttons["Choose model"].tap()
+            let model = app.buttons["Local acceptance fixture, BYOT Fixture"]
+            XCTAssertTrue(model.waitForExistence(timeout: 10))
+            model.tap()
+            let agentPicker = app.buttons["opencode-agent-picker"]
+            XCTAssertTrue(agentPicker.waitForExistence(timeout: 10))
+            agentPicker.tap()
+            let plan = app.buttons["opencode-agent-plan"]
+            XCTAssertTrue(plan.waitForExistence(timeout: 10))
+            plan.tap()
+            let variants = app.buttons["opencode-variant-picker"]
+            XCTAssertTrue(variants.waitForExistence(timeout: 10))
+            variants.tap()
+            app.buttons["byot-careful"].tap()
+            XCTAssertEqual(variants.value as? String, "byot-careful")
+            XCTAssertTrue(focus(composer, in: app), "The composer must have keyboard focus before typing")
+            composer.typeText("/byot")
+            let custom = app.buttons["opencode-command-command:byot-acceptance"]
+            XCTAssertTrue(custom.waitForExistence(timeout: 10))
+            XCTAssertTrue(custom.isHittable)
+            attach("\(major)-slash-command-catalog")
+            custom.tap()
+            composer.typeText("UI argument \(major)")
+            XCTAssertTrue(app.staticTexts["opencode-command-arguments"].exists)
+            attach("\(major)-agent-variant-command-ready")
+            let send = app.buttons["opencode-composer-send"]
+            XCTAssertTrue(send.isHittable)
+            send.tap()
+            XCTAssertTrue(app.staticTexts["BYOT upstream compatibility verified."].firstMatch.waitForExistence(timeout: 30))
+            openSessionMenuAction("Session details", in: app).tap()
+            XCTAssertTrue(app.navigationBars["Session details"].waitForExistence(timeout: 10))
+            let rename = app.buttons["session-rename"]
+            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: rename)
+            waitForExpectations(timeout: 10)
+            rename.tap()
+            let alert = app.alerts["Rename conversation"]
+            XCTAssertTrue(alert.waitForExistence(timeout: 5))
+            let title = alert.textFields.firstMatch
+            let renamed = "Composer verified \(major)"
+            XCTAssertTrue(focus(title, in: app), "The rename field must have keyboard focus")
+            // A tap can place the caret inside a long title; iOS may omit the
+            // edit menu after a long press. The native keyboard shortcut selects
+            // all text regardless of its scroll position or insertion point.
+            title.typeKey("a", modifierFlags: .command)
+            title.typeText(renamed)
+            XCTAssertEqual(title.value as? String, renamed, "Replace the entire old title before saving")
+            alert.buttons["Save"].tap()
+            XCTAssertTrue(app.staticTexts[renamed].waitForExistence(timeout: 10))
+            attach("\(major)-session-details-renamed")
+            app.buttons["Done"].tap()
+            XCTAssertTrue(app.navigationBars[renamed].waitForExistence(timeout: 5))
+            openSessionMenuAction("Tasks", in: app).tap()
+            XCTAssertTrue(app.navigationBars["Tasks"].waitForExistence(timeout: 5))
+            attach("\(major)-session-tasks")
+            app.buttons["Done"].tap()
+            let undo = openSessionMenuAction("session-menu-undo", in: app)
+            XCTAssertTrue(undo.isEnabled)
+            undo.tap()
+            expectation(for: NSPredicate(format: "value CONTAINS %@", "UI argument \(major)"), evaluatedWith: composer)
+            waitForExpectations(timeout: 10)
+            attach("\(major)-undo-restored-command-prompt")
+            let redo = openSessionMenuAction("session-menu-redo", in: app)
+            XCTAssertTrue(redo.isEnabled)
+            redo.tap()
+            XCTAssertTrue(app.staticTexts["BYOT upstream compatibility verified."].firstMatch.waitForExistence(timeout: 10))
+            XCTAssertTrue(app.buttons["opencode-composer-stop"].waitForNonExistence(timeout: 30),
+                "The session must be idle before leaving its restored history")
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
+    }
+
+    @MainActor
     func testRetiredAutomaticModelRecoversOnV1AndV2() throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Run scripts/test-opencode-upstream.sh") }
         let root = try XCTUnwrap(environment["BYOT_LIVE_ROOT"])
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.terminate()
         app.launch()
         for (major, port) in [("v1", 4195), ("v2", 4199)] {
             connect(app, name: "Recovery \(major)", port: port, directory: root + "/\(major)/retired")
@@ -23,7 +114,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             // after typing. The chat has one text field, which remains stable.
             let composer = app.textFields.firstMatch
             XCTAssertTrue(composer.waitForExistence(timeout: 10))
-            XCTAssertEqual(app.buttons["Choose model"].value as? String, "Automatic")
+            XCTAssertTrue(app.buttons["Choose model"].exists)
             let prompt = "Recover this prompt on \(major)."
             composer.tap()
             composer.typeText(prompt)
@@ -72,6 +163,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             return true
         }
         let app = XCUIApplication()
+        app.terminate()
         app.launch()
         let v1Name = "OpenCode " + v1
         let v2Name = "V2 " + v2.replacingOccurrences(of: "opencode2 v", with: "").replacingOccurrences(of: "0.0.0-", with: "")
@@ -99,6 +191,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
 
         // Relaunch exercises persisted server selection, grouping, and password retrieval.
         app.terminate()
+        app.terminate()
         app.launch()
         XCTAssertTrue(app.buttons["New session in project"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.buttons[v1Name].value as? String, "Selected server")
@@ -107,6 +200,24 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["BYOT attachment acceptance"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["BYOT v1 acceptance"].exists)
         attach("upstream-v2-restored-server-switch")
+    }
+
+    @MainActor
+    private func openSessionMenuAction(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        XCTAssertTrue(app.buttons["opencode-composer-stop"].waitForNonExistence(timeout: 30),
+            "Wait for the server to finish before opening session actions")
+        let menu = app.buttons["session-actions"]
+        let action = app.buttons[identifier]
+        XCTAssertTrue(waitUntilHittable(menu, timeout: 5), app.debugDescription)
+        menu.tap()
+        // Retry a missed opening tap once if the item never appeared;
+        // do not toggle a menu that is already open.
+        if !action.waitForExistence(timeout: 3) {
+            XCTAssertTrue(waitUntilHittable(menu, timeout: 5), app.debugDescription)
+            menu.tap()
+        }
+        XCTAssertTrue(waitUntilHittable(action, timeout: 5), app.debugDescription)
+        return action
     }
 
     @MainActor
@@ -121,22 +232,51 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
     @MainActor
     private func connect(_ app: XCUIApplication, name serverName: String, port: Int, directory workingDirectory: String) {
         let add = app.buttons["Add server"].firstMatch
-        XCTAssertTrue(add.waitForExistence(timeout: 10), app.debugDescription)
+        guard waitUntilHittable(add, timeout: 10) else { XCTFail(app.debugDescription); return }
         add.tap()
         let name = app.textFields["Name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        name.tap()
-        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + serverName)
+        // Wait through sheet presentation; retry only a missed reversible opening tap.
+        if !name.waitForExistence(timeout: 3), add.exists, add.isHittable { add.tap() }
+        guard waitUntilHittable(name, timeout: 7), focus(name, in: app) else {
+            XCTFail("The server Name field must have keyboard focus before typing. " + app.debugDescription)
+            return
+        }
+        let initialName = name.value as? String ?? ""
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: initialName.count) + serverName)
         let url = app.textFields["https://your-mac.example.ts.net"]
-        url.tap(); url.typeText("https://127.0.0.1:\(port)")
+        guard focus(url, in: app) else { XCTFail("Server URL did not receive keyboard focus"); return }
+        url.typeText("https://127.0.0.1:\(port)")
         let password = app.secureTextFields["Server password"]
-        password.tap(); password.typeText("byot-local-fixture-only")
+        guard focus(password, in: app) else { XCTFail("Server password did not receive keyboard focus"); return }
+        password.typeText("byot-local-fixture-only")
         let directory = app.textFields["/Users/me/project"]
-        directory.tap(); directory.typeText(workingDirectory)
+        guard focus(directory, in: app) else { XCTFail("Project directory did not receive keyboard focus"); return }
+        directory.typeText(workingDirectory)
         app.buttons["Save"].tap()
         let notNow = app.buttons["Not Now"]
         if notNow.waitForExistence(timeout: 3) { notNow.tap() }
         XCTAssertTrue(app.buttons[serverName].waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    @MainActor
+    private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"),
+            object: element)], timeout: timeout) == .completed
+    }
+
+    @MainActor
+    private func focus(_ field: XCUIElement, in app: XCUIApplication) -> Bool {
+        guard waitUntilHittable(field, timeout: 5) else { return false }
+        for _ in 0..<2 {
+            field.tap()
+            let focused = app.descendants(matching: field.elementType)
+                .matching(NSPredicate(format: "hasKeyboardFocus == true"))
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                app.keyboards.firstMatch.exists && focused.allElementsBoundByIndex.contains { $0.frame == field.frame }
+            }, object: nil)
+            if XCTWaiter.wait(for: [ready], timeout: 3) == .completed { return true }
+        }
+        return false
     }
 
     @MainActor

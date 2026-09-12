@@ -1,0 +1,56 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "82AA606A-483A-48E0-9AF0-10F49AFC838B",
+        "deviceName" : "BYOT Upstream E2E",
+        "modelName" : "iPhone 17 Pro",
+        "osBuildNumber" : "23D8133",
+        "osVersion" : "26.3.1",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 1,
+      "passedTests" : 251,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "BYOT · Built with macOS 15.7.9",
+  "expectedFailures" : 0,
+  "failedTests" : 1,
+  "finishTime" : 1789202673.687,
+  "passedTests" : 238,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1789201903.754,
+  "statistics" : [
+    {
+      "subtitle" : "19 test runs",
+      "title" : "6 tests ran with dynamic parameters"
+    }
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "XCTAssertTrue failed",
+      "targetName" : "BYOTUITests",
+      "testIdentifier" : 237,
+      "testIdentifierString" : "OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers()",
+      "testIdentifierURL" : "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers",
+      "testName" : "testComposerSlashAgentAndVariantControlsOnRealServers()"
+    }
+  ],
+  "title" : "Test - BYOT",
+  "topInsights" : [
+    {
+      "category" : "Longest Test Runs",
+      "impact" : "72% of duration",
+      "text" : "3 longest test runs with outlier durations exceeding 5.60s (three standard deviations)"
+    }
+  ],
+  "totalTestCount" : 239
+}
