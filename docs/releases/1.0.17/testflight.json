@@ -1,0 +1,61 @@
+{
+  "verified_at_utc": "2026-09-12T09:19:46.024372+00:00",
+  "app_id": "6782403920",
+  "bundle_id": "com.steventsao.byot",
+  "version": "1.0.17",
+  "build_number": "20260912020541",
+  "build_id": "53ff37cf-ae30-4739-a841-166b5c97e366",
+  "application_source_commit": "faf55b4070564244c67e5230d140e9fdfd49318e",
+  "uploaded_date": "2026-09-12T02:17:43-07:00",
+  "processing_state": "VALID",
+  "beta_detail": {
+    "autoNotifyEnabled": true,
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "READY_FOR_BETA_SUBMISSION"
+  },
+  "groups": {
+    "buildId": "53ff37cf-ae30-4739-a841-166b5c97e366",
+    "appId": "6782403920",
+    "complete": true,
+    "lookupMethod": "server_filter_with_inverse_all_builds",
+    "groupCount": 1,
+    "groups": [
+      {
+        "id": "a2c29c92-ddfd-4c22-9368-8563d9b756ea",
+        "name": "Internal Testers",
+        "type": "internal",
+        "membership": "explicit",
+        "hasAccessToAllBuilds": false
+      }
+    ]
+  },
+  "test_notes": {
+    "locale": "en-US",
+    "whatsNew": "byot 1.0.17 \u2014 everyday OpenCode controls\n\n- Find slash commands and choose a primary agent, model, or supported reasoning variant. Queued messages keep their chosen settings.\n- Browse and read project files on your server, search with @, and attach files or selected line ranges as context.\n- Undo and redo conversation turns, compact long conversations, and fork a session from its history when supported by your server.\n- Rename and delete sessions, inspect session details, and navigate child sessions.\n- Follow task progress when the server provides it.\n- Touch and hold a response to select and copy part of its text, or use Select code inside a code block.\n\nPlease try these controls with your OpenCode 1 or OpenCode 2 server. Check queued messages, file context, history recovery, and session management in both appearances and with larger text. Available controls follow the server's capabilities. OpenCode 2 conversation undo does not roll back workspace files."
+  },
+  "test_notes_match_repository": true,
+  "pre_release_version": {
+    "version": "1.0.17",
+    "platform": "IOS"
+  },
+  "ipa_sha256": "db2606b379a717517afb14348a622e41263fee79b47f88f66e2dcf685066a888",
+  "external_review_submitted": false,
+  "app_store_submission": {
+    "id": "54760f54-f527-4fd0-907d-30ffe1ff85a9",
+    "versionString": "1.0.15",
+    "platform": "IOS",
+    "state": "WAITING_FOR_REVIEW",
+    "downloadable": true,
+    "buildId": "7a47c651-b88f-4f32-b060-9e66925da25c",
+    "buildVersion": "20260911144503",
+    "submissionId": "54760f54-f527-4fd0-907d-30ffe1ff85a9"
+  },
+  "verification_commands": [
+    "asc builds info",
+    "asc builds build-beta-detail view",
+    "asc builds groups list",
+    "asc builds test-notes list",
+    "asc builds pre-release-version view",
+    "asc testflight distribution view"
+  ]
+}

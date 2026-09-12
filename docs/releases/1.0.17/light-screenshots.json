@@ -1,0 +1,37 @@
+[
+  {
+    "path": "native-code-substring-copied-light.png",
+    "original": "053F1EB1-6CB8-4CFD-831B-D0260ED1904D.png",
+    "testIdentifier": "AgentTextSelectionUITests/testNativeCodeSelectionCopiesSubstring()",
+    "finding": "Clipboard shows only greeting after native code selection.",
+    "sha256": "3a418f513a194f2a04fd12cd874547db96923497daacb8d1120e930861c5c11c"
+  },
+  {
+    "path": "native-response-accessibility-light.png",
+    "original": "A8E2B38B-1A5B-42F1-8E0F-CB777A33BA0B.png",
+    "testIdentifier": "AgentTextSelectionUITests/testResponseSelectionAtLargestTextSize()",
+    "finding": "Largest text selection sheet wraps and scrolls inside the screen; toolbar remains visible.",
+    "sha256": "bc54066ae6e9788f813067781d7227d6bf5f23671acc0583f3b0e69a16390900"
+  },
+  {
+    "path": "server-file-context-composer-light.png",
+    "original": "BBD856B9-5FAC-46FB-B0AE-ABC30620A92B.png",
+    "testIdentifier": "OpenCodeRemoteFileUITests/testBrowseReadSelectLinesRemoveAndSendContext()",
+    "finding": "Server file chip and remove control visible above the draft and enabled fixture send.",
+    "sha256": "312c1b863c5514cb7812e9b67a1401eb818d1234aea2663d064695c0b2622398"
+  },
+  {
+    "path": "server-file-lines-2-3-light.png",
+    "original": "2B162696-0C89-4A94-8B6A-4DE8D044D3B1.png",
+    "testIdentifier": "OpenCodeRemoteFileUITests/testBrowseReadSelectLinesRemoveAndSendContext()",
+    "finding": "Lines 2\u20133 visibly selected; range label, Clear, selected-lines and whole-file actions visible.",
+    "sha256": "a05ffe18d69c2a27ab714788d3b6f24c8fd87b988537b46b86187687ec1c1d96"
+  },
+  {
+    "path": "at-mention-context-light.png",
+    "original": "5C2650B1-C978-4D01-B60B-84934D1776AB.png",
+    "testIdentifier": "OpenCodeRemoteFileUITests/testExplicitAtMentionSearchAddsStructuredContextAndKeepsProse()",
+    "finding": "Explicit @App search has become structured context; draft retains Explain and remove control is visible above keyboard.",
+    "sha256": "c14af1156757e57e4f0cc60035e05a3f4b2f4201a80878f45536b1d11348f8e3"
+  }
+]

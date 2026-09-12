@@ -1,0 +1,37 @@
+{
+  "screenshot": "server-file-lines-2-3-dark.png",
+  "original": "2E440174-AF9B-4558-99CC-8B8A8F4D19A5.png",
+  "sha256": "12eda80baaf6b52e02ef92a342dbe80f8e6b258dabaf2b41b4179053c2f735af",
+  "sourceResult": "/tmp/byot-upstream-e2e.46qSU9/tests.xcresult",
+  "testIdentifier": "OpenCodeRemoteFileUITests/testBrowseReadSelectLinesRemoveAndSendContext()",
+  "appearance": "dark",
+  "imageDimensionsPixels": [
+    1206,
+    2622
+  ],
+  "sampleRectanglePixels": [
+    230,
+    2255,
+    980,
+    2335
+  ],
+  "method": "Read unchanged original PNG as sRGB; sample interior of selected-lines action. The most common flat color is the mint fill; second most common flat color is the fully opaque dark label. Compute contrast from standard sRGB relative luminance. No image editing or recoloring.",
+  "foregroundRGB": [
+    28,
+    28,
+    30
+  ],
+  "foregroundHex": "#1c1c1e",
+  "foregroundSamplePixels": 5160,
+  "backgroundRGB": [
+    138,
+    224,
+    179
+  ],
+  "backgroundHex": "#8ae0b3",
+  "backgroundSamplePixels": 50842,
+  "measuredContrastRatio": 10.852039591948067,
+  "minimumNormalTextContrastRatio": 4.5,
+  "passesNormalTextContrast": true,
+  "status": "Verified from the final screenshot; semantic systemBackground resolves to dark charcoal within this sheet."
+}

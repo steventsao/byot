@@ -1,0 +1,6 @@
+250: ◇ Test "Copy honors an arbitrary UTF-16 selection across paragraph and code boundaries" started.
+251: 2026-09-12 01:34:42.333095-0700 byot[75373:46822320] FontParser could not open filePath /Library/Developer/CoreSimulator/Volumes/iOS_23D8133/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.3.simruntime/Contents/Resources/RuntimeRoot/System/Library/Fonts/Core/AppleColorEmoji.ttc: [2: No such file or directory]
+252: 2026-09-12 01:34:42.335332-0700 byot[75373:46822320] Requested font not available from file:///Library/Developer/CoreSimulator/Volumes/iOS_23D8133/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2026.3.simruntime/Contents/Resources/RuntimeRoot/System/Library/Fonts/Core/AppleColorEmoji.ttc#postscript-name=.AppleColorEmojiUI (path:/Library/Developer/CoreSimulator/Volumes/iOS_23D8133/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.3.simruntime/Contents/Resources/RuntimeRoot/System/Library/Fonts/Core/AppleColorEmoji.ttc ps:.AppleColorEmojiUI), fallback to LastResort.
+253: ✔ Test "Copy honors an arbitrary UTF-16 selection across paragraph and code boundaries" passed after 0.554 seconds.
+254: ◇ Test "Code-only selection preserves whitespace and Unicode exactly" started.
+255: ✔ Test "Code-only selection preserves whitespace and Unicode exactly" passed after 0.066 seconds.

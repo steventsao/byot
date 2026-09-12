@@ -1,0 +1,54 @@
+[
+  {
+    "path": "server-file-lines-2-3-dark.png",
+    "original": "2E440174-AF9B-4558-99CC-8B8A8F4D19A5.png",
+    "sourceResult": "/tmp/byot-upstream-e2e.46qSU9/tests.xcresult",
+    "testIdentifier": "OpenCodeRemoteFileUITests/testBrowseReadSelectLinesRemoveAndSendContext()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeRemoteFileUITests/testBrowseReadSelectLinesRemoveAndSendContext",
+    "finding": "Selected lines 2–3 and context actions are visible. The corrected prominent action uses dark ink on mint, measured at 10.85:1 contrast.",
+    "evidenceKind": "component fixture",
+    "sha256": "12eda80baaf6b52e02ef92a342dbe80f8e6b258dabaf2b41b4179053c2f735af",
+    "timestamp": 1789204277.721,
+    "isAssociatedWithFailure": false,
+    "testRunResult": "Passed"
+  },
+  {
+    "path": "v2-agent-variant-command-ready-dark.png",
+    "original": "1A8223A5-800F-4DE8-AEC3-984282287C4E.png",
+    "sourceResult": "/tmp/byot-upstream-e2e.46qSU9/tests.xcresult",
+    "testIdentifier": "OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers",
+    "finding": "Live v2 composer shows /byot-acceptance UI argument v2, Plan, byot-careful and the fixture model together above the keyboard.",
+    "evidenceKind": "live OpenCode v2 server",
+    "sha256": "ba47621dcabaf5648ba1c3110bc6bd99c61b82363764ef816a7571eb1c12567a",
+    "timestamp": 1789204485.873,
+    "isAssociatedWithFailure": false,
+    "testRunResult": "Passed"
+  },
+  {
+    "path": "v2-session-details-renamed-dark.png",
+    "original": "8FA49253-25DD-469D-82D8-6E5A73413F53.png",
+    "sourceResult": "/tmp/byot-upstream-e2e.46qSU9/tests.xcresult",
+    "testIdentifier": "OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers",
+    "finding": "Live v2 session details show the saved Composer verified v2 name, project, session ID and plan agent; history actions are available.",
+    "evidenceKind": "live OpenCode v2 server",
+    "sha256": "84558d70de8b1865aacca813130c7ce0c5cbd40746917938345ce3cc3c13b7aa",
+    "timestamp": 1789204513.013,
+    "isAssociatedWithFailure": false,
+    "testRunResult": "Passed"
+  },
+  {
+    "path": "v2-undo-restored-command-prompt-dark.png",
+    "original": "58F60AA5-5B17-4655-A457-D9FA530D931A.png",
+    "sourceResult": "/tmp/byot-upstream-e2e.46qSU9/tests.xcresult",
+    "testIdentifier": "OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers()",
+    "testIdentifierURL": "test://com.apple.xcode/BYOT/BYOTUITests/OpenCodeUpstreamLiveUITests/testComposerSlashAgentAndVariantControlsOnRealServers",
+    "finding": "Undo restores the server-expanded command prompt and its UI argument v2, Plan agent, byot-careful variant and model into the composer.",
+    "evidenceKind": "live OpenCode v2 server",
+    "sha256": "fc3bb35f85d5eda17177d7296046585fc0ac0eb765befc73a6c9b74a9f73cafa",
+    "timestamp": 1789204536.462,
+    "isAssociatedWithFailure": false,
+    "testRunResult": "Passed"
+  }
+]
