@@ -4,7 +4,9 @@ The native session menu opens details, related conversations, task progress,
 and history controls. Details supports renaming and a confirmed delete (including
 child sessions); active work must be stopped before deletion or history changes.
 A child opens using its own server-provided directory and workspace. Its details
-can reopen the parent. Forking can copy the current visible history, or start
+can reopen the parent. V2 forks keep their source separately from subagent
+parentage, stay in the root conversation browser, and can reopen their source
+from details. Forking can copy the current visible history, or start
 before a selected user prompt using that prompt's context menu.
 
 ## Verified contracts
@@ -31,7 +33,7 @@ The service never guesses v1 routes on a v2 server.
 | Redo | Stage the next user boundary, or `POST .../revert/clear` |
 | Continue after undo | `POST .../revert/commit`, before dispatching revised prompt |
 | Compact | `POST .../compact` with `{}` (admission response, not completion) |
-| Fork | `POST .../fork` with `boundary:{type:"before",messageID}` or `{type:"through"}` |
+| Fork | `POST .../fork` with `boundary:{type:"before",messageID}` or `{type:"through"}`; source is `fork.sessionID`, not `parentID` |
 | Tasks | No HTTP snapshot in this beta; no request sent |
 
 V2 undo changes conversation history and explicitly leaves files unchanged.

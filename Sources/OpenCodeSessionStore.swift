@@ -609,7 +609,7 @@ final class OpenCodeSessionStore: ObservableObject {
             if sessionFeatures.children {
                 childSessions = try await featureService.childSessions(sessionID: session.id, directory: directory, workspace: workspace)
             }
-            if let parentID = session.parentID, sessionFeatures.details {
+            if let parentID = session.parentID ?? session.forkSourceID, sessionFeatures.details {
                 parentSession = try await featureService.sessionDetails(sessionID: parentID, directory: directory, workspace: workspace).session
             }
             sessionDetailsError = nil

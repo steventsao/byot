@@ -48,9 +48,15 @@ final class OpenCodeLiveSessionFeatureTests: XCTestCase {
         let beforeMessages = try await client.messages(sessionID: beforeFork.id, directory: directory)
         XCTAssertFalse(beforeMessages.contains { $0.info.role == "user" })
         let children = try await client.childSessions(sessionID: session.id, directory: directory, workspace: nil)
-        // V2 forks are children. V1 forks are independent sessions; verify its
-        // actual children response without imposing v2 parent semantics.
-        if major == "v2" { XCTAssertTrue(children.contains { $0.id == fullFork.id }) }
+        // Beta 19271 represents fork lineage in fork.sessionID, independently
+        // of the parentID used for actual subagent sessions. Forks stay roots.
+        if major == "v2" {
+            XCTAssertNil(fullFork.parentID)
+            XCTAssertEqual(fullFork.forkSourceID, session.id)
+            XCTAssertFalse(children.contains { $0.id == fullFork.id })
+            let roots = try await client.listSessions(directory: directory)
+            XCTAssertTrue(roots.contains { $0.id == fullFork.id && $0.forkSourceID == session.id })
+        }
         if major == "v2" {
             try await client.stageSessionRevert(sessionID: session.id, directory: directory, workspace: nil, messageID: user.id)
             let committed = try await client.commitSessionRevert(sessionID: session.id, directory: directory, workspace: nil)

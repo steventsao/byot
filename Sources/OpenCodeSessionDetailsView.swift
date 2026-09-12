@@ -28,7 +28,7 @@ struct OpenCodeSessionDetailsView: View {
                 Section("Related sessions") {
                     if let parent = store.parentSession {
                         Button { openSession(parent) } label: {
-                            Label("Parent: \(parent.title)", systemImage: "arrow.turn.up.left")
+                            Label("\(store.session.parentID == nil ? "Forked from" : "Parent"): \(parent.title)", systemImage: "arrow.turn.up.left")
                         }
                         .accessibilityIdentifier("session-parent")
                     }

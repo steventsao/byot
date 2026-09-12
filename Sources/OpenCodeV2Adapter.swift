@@ -363,6 +363,7 @@ private struct OpenCodeV2Location: Decodable {
 }
 
 private struct OpenCodeV2Session: Decodable {
+    struct Fork: Decodable { let sessionID: String }
     struct Time: Decodable {
         let created: Double
         let updated: Double
@@ -371,6 +372,7 @@ private struct OpenCodeV2Session: Decodable {
 
     let id: String
     let parentID: String?
+    let fork: Fork?
     let projectID: String
     let agent: String?
     let model: OpenCodeV2ModelReference?
@@ -395,7 +397,8 @@ private struct OpenCodeV2Session: Decodable {
                 updated: time.updated,
                 compacting: nil,
                 archived: time.archived
-            )
+            ),
+            forkSourceID: fork?.sessionID
         )
     }
 }

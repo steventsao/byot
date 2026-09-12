@@ -98,6 +98,8 @@ struct OpenCodeSession: Codable, Identifiable, Equatable, Sendable {
     let agent: String?
     let version: String
     let time: OpenCodeSessionTime
+    // Fork lineage differs from a subagent's parentID. Forks remain roots.
+    var forkSourceID: String? = nil
 }
 
 struct OpenCodeSessionSummary: Codable, Equatable, Sendable {

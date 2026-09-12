@@ -52,6 +52,23 @@ struct OpenCodeSessionFeatureTests {
         #expect(requests.filter { $0.url!.path != "/api/session" }.allSatisfy { $0.url!.query == nil })
     }
 
+    @Test("V2 fork lineage stays distinct from the parent used to filter subagent sessions")
+    func forkSourceRemainsRoot() throws {
+        let value: [String: OpenCodeJSONValue] = [
+            "id": .string("ses_fork"),
+            "fork": .object(["sessionID": .string("ses_source"), "boundary": .object(["type": .string("through"), "messageID": .string("msg_last")])]),
+            "location": .object(["directory": .string("/project")])
+        ]
+        let session = try #require(OpenCodeV2Normalization.session(value))
+        #expect(session.parentID == nil)
+        #expect(session.forkSourceID == "ses_source")
+        var childValue = value
+        childValue["parentID"] = .string("ses_agent_parent")
+        let child = try #require(OpenCodeV2Normalization.session(childValue))
+        #expect(child.parentID == "ses_agent_parent")
+        #expect(child.forkSourceID == "ses_source")
+    }
+
     @Test("Unsupported v2 features and task snapshots never probe guessed endpoints")
     func unsupportedDoesNotSend() async throws {
         let transport = SessionFeatureTransport(v2: true)

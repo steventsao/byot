@@ -51,7 +51,8 @@ enum OpenCodeV2Normalization {
                 updated: time?["updated"]?.numberValue ?? 0,
                 compacting: time?["compacting"]?.numberValue,
                 archived: time?["archived"]?.numberValue
-            )
+            ),
+            forkSourceID: object["fork"]?.objectValue?["sessionID"]?.stringValue
         )
     }
 
