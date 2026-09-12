@@ -23,6 +23,8 @@ struct BYOTApp: App {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--text-selection-fixture") {
             AgentTextSelectionHarness()
+        } else if ProcessInfo.processInfo.arguments.contains("--remote-files-fixture") {
+            OpenCodeRemoteFileHarness()
         } else if ProcessInfo.processInfo.arguments.contains("--session-browser-fixture") {
             OpenCodeSessionBrowserHarness()
         } else if ProcessInfo.processInfo.arguments.contains("--attachment-screenshot") {

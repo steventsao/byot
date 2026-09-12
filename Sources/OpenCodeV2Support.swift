@@ -83,7 +83,8 @@ enum OpenCodeV2Normalization {
             for (index, file) in (object["files"]?.arrayValue ?? []).enumerated() {
                 guard let file = file.objectValue else { continue }
                 let mime = file["mime"]?.stringValue ?? "application/octet-stream"
-                let uri = file["uri"]?.stringValue
+                let uri = file["source"]?.objectValue?["uri"]?.stringValue
+                    ?? file["uri"]?.stringValue
                     ?? file["data"]?.stringValue.map { "data:\(mime);base64,\($0)" }
                 parts.append(OpenCodePart(
                     id: "\(id):file:\(index)", sessionID: sessionID, messageID: id,

@@ -39,6 +39,7 @@ final class OpenCodeSessionStore: ObservableObject {
 
     let session: OpenCodeSession
     let directory: String
+    let remoteFiles: OpenCodeRemoteFileStore?
     private let workspace: String?
     private let service: any OpenCodeSessionServicing
     private let defaults: UserDefaults
@@ -79,12 +80,14 @@ final class OpenCodeSessionStore: ObservableObject {
         serverID: UUID,
         session: OpenCodeSession,
         directory: String,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        remoteFiles: OpenCodeRemoteFileStore? = nil
     ) {
         self.service = service
         self.session = session
         self.directory = directory
         self.defaults = defaults
+        self.remoteFiles = remoteFiles
         modelSelectionKey = "byot.opencode.model.\(serverID.uuidString).\(session.id)"
         serverDefaultModelKey = "byot.opencode.model.default.\(serverID.uuidString)"
         persistedModelID = defaults.string(forKey: modelSelectionKey)

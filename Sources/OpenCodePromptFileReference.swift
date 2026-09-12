@@ -77,3 +77,25 @@ struct OpenCodeFileLineRange: Equatable, Codable, Sendable {
         self = valid
     }
 }
+
+extension OpenCodePromptFileReference {
+    static func restored(from message: OpenCodeMessageEnvelope, serverID: UUID, projectID: String,
+                         directory: String, workspaceID: String?) -> [Self] {
+        let scope = OpenCodeRemoteFileScope(serverID: serverID, serverName: "", projectID: projectID,
+                                            directory: directory, workspaceID: workspaceID)
+        return message.parts.compactMap { part in
+            guard part.type == "file", let value = part.url, let uri = URLComponents(string: value),
+                  uri.scheme?.lowercased() == "file" else { return nil }
+            var path = uri.path
+            if let host = uri.host, !host.isEmpty, host != "localhost" { path = "//" + host + path }
+            if path.range(of: "^/[A-Za-z]:/", options: .regularExpression) != nil { path.removeFirst() }
+            guard let relative = try? scope.relativePath(path) else { return nil }
+            let start = uri.queryItems?.first { $0.name == "start" }?.value.flatMap(Int.init)
+            let end = uri.queryItems?.first { $0.name == "end" }?.value.flatMap(Int.init)
+            let selection: OpenCodeFileLineRange?
+            if let start, let end { selection = .init(startLine: start, endLine: end) }
+            else { selection = nil }
+            return scope.reference(path: relative, selection: selection)
+        }
+    }
+}
