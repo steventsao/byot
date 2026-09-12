@@ -267,6 +267,7 @@ struct OpenCodeSessionView: View {
                         Button(action.title, systemImage: action.symbol) {
                             Task { await store.performSessionAction(action) }
                         }.disabled(store.actionUnavailableReason(action) != nil)
+                            .accessibilityIdentifier("session-menu-\(action.rawValue)")
                     }
                 } label: { Image(systemName: "ellipsis.circle") }
                 .accessibilityLabel("Session actions")
