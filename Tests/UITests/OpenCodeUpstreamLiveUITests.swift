@@ -50,6 +50,44 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             XCTAssertTrue(send.isHittable)
             send.tap()
             XCTAssertTrue(app.staticTexts["BYOT upstream compatibility verified."].firstMatch.waitForExistence(timeout: 30))
+            app.buttons["session-actions"].tap()
+            app.buttons["Session details"].tap()
+            XCTAssertTrue(app.navigationBars["Session details"].waitForExistence(timeout: 10))
+            let rename = app.buttons["session-rename"]
+            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: rename)
+            waitForExpectations(timeout: 10)
+            rename.tap()
+            let alert = app.alerts["Rename conversation"]
+            XCTAssertTrue(alert.waitForExistence(timeout: 5))
+            let title = alert.textFields.firstMatch
+            let oldTitle = title.value as? String ?? ""
+            let renamed = "Composer verified \(major)"
+            title.tap()
+            title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldTitle.count) + renamed)
+            alert.buttons["Save"].tap()
+            XCTAssertTrue(app.staticTexts[renamed].waitForExistence(timeout: 10))
+            attach("\(major)-session-details-renamed")
+            app.buttons["Done"].tap()
+            XCTAssertTrue(app.navigationBars[renamed].waitForExistence(timeout: 5))
+            app.buttons["session-actions"].tap()
+            app.buttons["Tasks"].tap()
+            XCTAssertTrue(app.navigationBars["Tasks"].waitForExistence(timeout: 5))
+            attach("\(major)-session-tasks")
+            app.buttons["Done"].tap()
+            app.buttons["session-actions"].tap()
+            let undo = app.buttons["Undo last turn"]
+            XCTAssertTrue(undo.waitForExistence(timeout: 5))
+            XCTAssertTrue(undo.isEnabled)
+            undo.tap()
+            expectation(for: NSPredicate(format: "value CONTAINS %@", "UI argument \(major)"), evaluatedWith: composer)
+            waitForExpectations(timeout: 10)
+            attach("\(major)-undo-restored-command-prompt")
+            app.buttons["session-actions"].tap()
+            let redo = app.buttons["Redo turn"]
+            XCTAssertTrue(redo.waitForExistence(timeout: 5))
+            XCTAssertTrue(redo.isEnabled)
+            redo.tap()
+            XCTAssertTrue(app.staticTexts["BYOT upstream compatibility verified."].firstMatch.waitForExistence(timeout: 10))
             app.navigationBars.buttons.element(boundBy: 0).tap()
         }
     }
