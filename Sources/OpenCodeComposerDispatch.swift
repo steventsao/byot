@@ -111,7 +111,10 @@ struct OpenCodeComposerDispatch {
         let body = try v2Body(prompt)
         if prompt.agent != nil || prompt.model != nil {
             let active: OpenCodeJSONValue = try await context.transport.get(["api", "session", "active"], query: [])
-            guard active.objectValue?["data"]?.objectValue?[sessionID] == nil else {
+            guard let activeSessions = active.objectValue?["data"]?.objectValue else {
+                throw OpenCodeConnectionError.invalidResponse
+            }
+            guard activeSessions[sessionID] == nil else {
                 throw OpenCodeConnectionError.server("The session became active before this message was sent. Its selections are saved; retry when the current turn finishes.")
             }
         }

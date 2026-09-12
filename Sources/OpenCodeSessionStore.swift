@@ -5,6 +5,11 @@ private struct OpenCodeRecoverablePrompt: Sendable {
     let messageID: String
     let text: String
     let attachments: [OpenCodePromptAttachment]
+    let model: OpenCodeModelOption?
+    let agent: String?
+    let variant: String?
+    let command: OpenCodeCommandInvocation?
+    let remoteReferences: [OpenCodePromptFileReference]
 }
 
 @MainActor
@@ -165,7 +170,7 @@ final class OpenCodeSessionStore: ObservableObject {
                 part.type != "tool" && (part.text?.trimmedNonEmpty == nil)
             }
         }) else { return nil }
-        return Self.recoverablePrompt(in: [messages[userIndex]])
+        return recoverablePrompt(in: [messages[userIndex]])
     }
 
     var canRetryWithSelectedModel: Bool {
@@ -180,10 +185,8 @@ final class OpenCodeSessionStore: ObservableObject {
         guard canRetryWithSelectedModel, let original = modelFailurePrompt,
               let prompt = promptQueue.beginExplicitDispatch(
                 text: original.text, model: selectedModel, attachments: original.attachments,
-                agent: submittedPrompts[original.messageID]?.agent ?? selectedAgentID,
-                variant: selectedVariant,
-                command: submittedPrompts[original.messageID]?.command,
-                remoteReferences: submittedPrompts[original.messageID]?.remoteReferences ?? []
+                agent: original.agent, variant: selectedVariant,
+                command: original.command, remoteReferences: original.remoteReferences
               ) else { return false }
         dismissedUnansweredMessageID = original.messageID
         publishPromptQueue()
@@ -668,7 +671,7 @@ final class OpenCodeSessionStore: ObservableObject {
             text: trimmed,
             model: selectedModel,
             attachments: attachments,
-            agent: selectedAgentID, variant: selectedVariant,
+            agent: effectiveAgentID, variant: selectedVariant,
             command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands),
             remoteReferences: remoteReferences,
             serverIsActive: status.isActive || isSending
@@ -735,12 +738,10 @@ final class OpenCodeSessionStore: ObservableObject {
             }
             guard let dispatchPrompt = promptQueue.beginExplicitDispatch(
                 text: prompt.text,
-                model: selectedModel,
+                model: prompt.model,
                 attachments: prompt.attachments,
-                agent: submittedPrompts[prompt.messageID]?.agent ?? selectedAgentID,
-                variant: submittedPrompts[prompt.messageID]?.variant ?? selectedVariant,
-                command: submittedPrompts[prompt.messageID]?.command,
-                remoteReferences: submittedPrompts[prompt.messageID]?.remoteReferences ?? []
+                agent: prompt.agent, variant: prompt.variant,
+                command: prompt.command, remoteReferences: prompt.remoteReferences
             ) else {
                 dismissedUnansweredMessageID = nil
                 updateUnansweredPromptRecovery()
@@ -934,7 +935,8 @@ final class OpenCodeSessionStore: ObservableObject {
             if persistedModelID == nil, let inherited = catalog.inheritedModelID {
                 selectedModel = providerModels.flatMap(\.models).first { $0.qualifiedID == inherited }
             }
-            if let selectedAgentID, !catalog.agents.contains(where: { $0.id == selectedAgentID }) {
+            if catalog.unavailableReason == nil, let selectedAgentID,
+               !catalog.agents.contains(where: { $0.id == selectedAgentID }) {
                 self.selectedAgentID = nil
                 defaults.removeObject(forKey: agentSelectionKey)
             }
@@ -945,6 +947,8 @@ final class OpenCodeSessionStore: ObservableObject {
         } catch is CancellationError { return }
         catch { composerErrorMessage = error.localizedDescription }
     }
+
+    var effectiveAgentID: String? { selectedAgentID ?? composerCatalog.inheritedAgent ?? session.agent }
 
     var selectedAgentName: String {
         if let selectedAgentID {
@@ -1384,7 +1388,7 @@ final class OpenCodeSessionStore: ObservableObject {
               isStatusReady,
               status.isActive == false,
               isSending == false,
-              let prompt = Self.recoverablePrompt(in: messages),
+              let prompt = recoverablePrompt(in: messages),
               prompt.messageID == recoveryIdleUserMessageID,
               prompt.messageID != dismissedUnansweredMessageID
         else {
@@ -1397,7 +1401,7 @@ final class OpenCodeSessionStore: ObservableObject {
 
     private func dismissUnansweredPromptRecovery() {
         if let messageID = recoverableUnansweredPrompt?.messageID
-            ?? Self.recoverablePrompt(in: messages)?.messageID {
+            ?? recoverablePrompt(in: messages)?.messageID {
             dismissedUnansweredMessageID = messageID
         }
         clearUnansweredPromptRecovery()
@@ -1408,7 +1412,7 @@ final class OpenCodeSessionStore: ObservableObject {
         hasRecoverableUnansweredPrompt = false
     }
 
-    private static func recoverablePrompt(
+    private func recoverablePrompt(
         in messages: [OpenCodeMessageEnvelope]
     ) -> OpenCodeRecoverablePrompt? {
         guard let latestUserIndex = messages.lastIndex(where: { message in
@@ -1425,8 +1429,12 @@ final class OpenCodeSessionStore: ObservableObject {
 
         let userMessage = messages[latestUserIndex]
         let fileParts = userMessage.parts.filter { $0.type.lowercased() == "file" }
+        let remoteReferences = OpenCodePromptFileReference.restored(from: userMessage, serverID: serverID,
+            projectID: session.projectID, directory: directory, workspaceID: workspace)
+        let remoteParts = fileParts.filter { $0.url?.hasPrefix("file:") == true }
+        guard remoteParts.count == remoteReferences.count else { return nil }
         var attachments: [OpenCodePromptAttachment] = []
-        for part in fileParts {
+        for part in fileParts where part.url?.hasPrefix("file:") != true {
             guard let filename = part.filename,
                   let mimeType = part.mime,
                   let dataURL = part.url,
@@ -1446,12 +1454,20 @@ final class OpenCodeSessionStore: ObservableObject {
             .filter { $0.type.lowercased() == "text" }
             .compactMap(\.text)
             .joined(separator: "\n\n")
-        guard text.trimmedNonEmpty != nil || attachments.isEmpty == false else { return nil }
-
+        guard text.trimmedNonEmpty != nil || !attachments.isEmpty || !remoteReferences.isEmpty else { return nil }
+        let original = submittedPrompts[userMessage.id]
+        let restoredModel = providerModels.flatMap(\.models).first {
+            $0.providerID == userMessage.info.providerID && $0.modelID == userMessage.info.modelID
+        }
         return OpenCodeRecoverablePrompt(
             messageID: userMessage.id,
             text: text,
-            attachments: attachments
+            attachments: attachments,
+            model: original != nil ? original?.model : restoredModel,
+            agent: original != nil ? original?.agent : userMessage.info.agent,
+            variant: original != nil ? original?.variant : userMessage.info.variant,
+            command: original?.command,
+            remoteReferences: original?.remoteReferences ?? remoteReferences
         )
     }
 

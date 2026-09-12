@@ -137,6 +137,55 @@ final class OpenCodeComposerFeatureTests: XCTestCase {
             command: OpenCodeCommandInvocation(name: "review", arguments: "", kind: .command))))
     }
 
+    @MainActor
+    func testAgentAndVariantPreferencesPreserveSessionServerAndModelScope() async throws {
+        let suite = "composer-scope-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let transport = ComposerFeatureTransport()
+        let client = OpenCodeClient(profile: profile, transport: transport, serverProtocol: .v1)
+        func session(_ id: String) -> OpenCodeSession {
+            OpenCodeSession(id: id, slug: id, projectID: "pro", workspaceID: nil, directory: "/repo", parentID: nil,
+                summary: nil, title: id, agent: nil, version: "1.18.29",
+                time: OpenCodeSessionTime(created: 1, updated: 1, compacting: nil, archived: nil))
+        }
+        let first = OpenCodeSessionStore(client: client, session: session("ses_one"), directory: "/repo", defaults: defaults)
+        await first.reloadModels()
+        let m = try XCTUnwrap(first.providerModels.first?.models.first { $0.modelID == "m" })
+        let alternate = try XCTUnwrap(first.providerModels.first?.models.first { $0.modelID == "other" })
+        first.selectModel(m); first.selectAgent("plan"); first.selectVariant("careful")
+        first.selectVariant("not-advertised")
+        XCTAssertEqual(first.selectedVariant, "careful", "Invalid variants must never be persisted")
+        first.selectModel(alternate)
+        XCTAssertNil(first.selectedVariant)
+        first.selectModel(m)
+        XCTAssertEqual(first.selectedVariant, "careful")
+        let reopened = OpenCodeSessionStore(client: client, session: session("ses_one"), directory: "/repo", defaults: defaults)
+        await reopened.reloadModels()
+        XCTAssertEqual(reopened.selectedAgentID, "plan")
+        XCTAssertEqual(reopened.selectedVariant, "careful")
+        let second = OpenCodeSessionStore(client: client, session: session("ses_two"), directory: "/repo", defaults: defaults)
+        await second.reloadModels()
+        XCTAssertEqual(second.selectedAgentID, "plan")
+        XCTAssertEqual(second.selectedVariant, "careful")
+        second.selectVariant(nil)
+        second.selectAgent(nil)
+        let firstAgain = OpenCodeSessionStore(client: client, session: session("ses_one"), directory: "/repo", defaults: defaults)
+        await firstAgain.reloadModels()
+        XCTAssertEqual(firstAgain.selectedVariant, "careful", "Another session's Default cannot erase this session's preference")
+        let secondAgain = OpenCodeSessionStore(client: client, session: session("ses_two"), directory: "/repo", defaults: defaults)
+        await secondAgain.reloadModels()
+        XCTAssertNil(secondAgain.selectedVariant, "Explicit Default remains Default after reconnect")
+        XCTAssertNil(secondAgain.selectedAgentID)
+        let otherServer = OpenCodeClient(profile: OpenCodeServerProfile(name: "Other", baseURL: "https://fixture.test"),
+            transport: transport, serverProtocol: .v1)
+        let unrelated = OpenCodeSessionStore(client: otherServer, session: session("ses_one"), directory: "/repo", defaults: defaults)
+        await unrelated.reloadModels()
+        XCTAssertNil(unrelated.selectedModel)
+        XCTAssertNil(unrelated.selectedAgentID)
+        XCTAssertNil(unrelated.selectedVariant)
+    }
+
     func testMessageSelectionMetadataSurvivesV1AndV2Reload() throws {
         let v1: OpenCodeMessageInfo = try decode("""
         {"id":"msg_a","sessionID":"ses_test","role":"user","time":{"created":1},"agent":"plan",
@@ -188,7 +237,11 @@ private actor ComposerFeatureTransport: OpenCodeHTTPTransport {
         let path = request.url!.path
         if failCommands, path.hasSuffix("/command") { throw URLError(.timedOut) }
         let response: String
-        if path.hasSuffix("/active") { response = active ? #"{"data":{"ses_test":{}}}"# : #"{"data":{}}"# }
+        if path == "/provider" {
+            response = #"{"all":[{"id":"fixture","name":"Fixture","models":{"m":{"name":"M","variants":{"careful":{},"quick":{}}},"other":{"name":"Other","variants":{"quick":{}}}}}],"connected":["fixture"]}"#
+        } else if path == "/agent" { response = #"[{"name":"plan","mode":"primary"},{"name":"build","mode":"primary"}]"# }
+        else if path == "/command" { response = "[]" }
+        else if path.hasSuffix("/active") { response = active ? #"{"data":{"ses_test":{}}}"# : #"{"data":{}}"# }
         else { response = #"{"data":{"sessionID":"ses_test"}}"# }
         return (Data(response.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type":"application/json"])!)
     }
