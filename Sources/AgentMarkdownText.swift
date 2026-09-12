@@ -205,6 +205,7 @@ enum AgentInlineMarkdown {
 
 struct AgentMarkdownText: View {
     let text: String
+    @State private var selection: AgentTextSelection?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -212,6 +213,18 @@ struct AgentMarkdownText: View {
                 AgentMarkdownBlockView(block: block)
             }
         }
+        .contextMenu {
+            Button("Select text", systemImage: "text.cursor") {
+                selection = AgentTextSelection(text: text)
+            }
+            Button("Copy response", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = text
+            }
+        }
+        .accessibilityAction(named: "Select text") {
+            selection = AgentTextSelection(text: text)
+        }
+        .sheet(item: $selection) { AgentTextSelectionSheet(selection: $0) }
     }
 
     private var blocks: [AgentMarkdownBlock] {
@@ -287,6 +300,7 @@ private struct AgentCodeBlockView: View {
     let language: String?
     let code: String
     @State private var showsCopied = false
+    @State private var selection: AgentTextSelection?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -295,6 +309,14 @@ private struct AgentCodeBlockView: View {
                     .font(.cleanCaption)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
+                Button("Select code", systemImage: "text.cursor") {
+                    selection = AgentTextSelection(text: code, isCode: true)
+                }
+                .labelStyle(.iconOnly)
+                .font(.cleanCaptionBold)
+                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Select code")
                 Button(showsCopied ? "Copied" : "Copy", systemImage: showsCopied ? "checkmark" : "doc.on.doc") {
                     copy()
                 }
@@ -326,6 +348,7 @@ private struct AgentCodeBlockView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(BYOTBrand.hairline, lineWidth: 1)
         }
+        .sheet(item: $selection) { AgentTextSelectionSheet(selection: $0) }
     }
 
     private func copy() {
