@@ -950,6 +950,10 @@ final class OpenCodeSessionStore: ObservableObject {
                catalog.inheritedAgent == nil, session.agent == nil,
                let preferred = defaults.string(forKey: serverDefaultAgentKey),
                catalog.agents.contains(where: { $0.id == preferred }) { selectedAgentID = preferred }
+            // Commands and agent pickers can refresh this catalog directly.
+            // An inherited model change must also reconcile its variant, using
+            // the new model's saved preference or explicit Default.
+            restoreVariant()
         } catch is CancellationError { return }
         catch { composerErrorMessage = error.localizedDescription }
     }

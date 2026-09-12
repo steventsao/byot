@@ -193,6 +193,59 @@ final class OpenCodeComposerFeatureTests: XCTestCase {
         XCTAssertNil(unrelated.selectedVariant)
     }
 
+    @MainActor
+    func testDirectCatalogRefreshReconcilesVariantsAndPreservesPerModelDefaults() async throws {
+        let suite = "composer-catalog-refresh-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let transport = ComposerFeatureTransport(schema: try betaSchema())
+        let client = OpenCodeClient(profile: profile, transport: transport, serverProtocol: .v2)
+        let session = OpenCodeSession(id: "ses_test", slug: "test", projectID: "pro", workspaceID: nil,
+            directory: "/repo", parentID: nil, summary: nil, title: "Test", agent: nil, version: "2",
+            time: OpenCodeSessionTime(created: 1, updated: 1, compacting: nil, archived: nil))
+        await transport.setInheritedModel("m", variant: "careful")
+        let store = OpenCodeSessionStore(client: client, session: session, directory: "/repo", defaults: defaults)
+        await store.reloadModels()
+        XCTAssertEqual(store.selectedModel?.modelID, "m")
+        XCTAssertEqual(store.selectedVariant, "careful")
+        store.selectVariant("careful")
+
+        // A refresh from the agent picker/command list bypasses reloadModels.
+        // Model B does not advertise A's selected reasoning variant.
+        await transport.setInheritedModel("other", variant: "default")
+        await store.reloadComposerCatalog()
+        XCTAssertEqual(store.selectedModel?.modelID, "other")
+        XCTAssertEqual(store.availableVariants, ["quick"])
+        XCTAssertNil(store.selectedVariant)
+        store.selectVariant("quick")
+
+        // Per-model choices outrank the newly reported server default.
+        await transport.setInheritedModel("m", variant: "quick")
+        await store.reloadComposerCatalog()
+        XCTAssertEqual(store.selectedModel?.modelID, "m")
+        XCTAssertEqual(store.selectedVariant, "careful")
+        await transport.setInheritedModel("other", variant: "default")
+        await store.reloadComposerCatalog()
+        XCTAssertEqual(store.selectedVariant, "quick")
+        store.selectVariant(nil)
+        await transport.setInheritedModel("other", variant: "quick")
+        await store.reloadComposerCatalog()
+        XCTAssertNil(store.selectedVariant, "Explicit Default survives direct catalog refresh")
+
+        let reopened = OpenCodeSessionStore(client: client, session: session, directory: "/repo", defaults: defaults)
+        await reopened.reloadModels()
+        XCTAssertEqual(reopened.selectedModel?.modelID, "other")
+        XCTAssertNil(reopened.selectedVariant, "Explicit Default survives reconnect")
+        await transport.setInheritedModel("m", variant: "default")
+        await reopened.reloadComposerCatalog()
+        XCTAssertEqual(reopened.selectedVariant, "careful", "A different model's Default cannot erase this preference")
+        reopened.selectModel(try XCTUnwrap(reopened.selectedModel))
+        await transport.setInheritedModel("other", variant: "quick")
+        await reopened.reloadComposerCatalog()
+        XCTAssertEqual(reopened.selectedModel?.modelID, "m", "An explicit model selection remains authoritative")
+        XCTAssertEqual(reopened.selectedVariant, "careful")
+    }
+
     func testMessageSelectionMetadataSurvivesV1AndV2Reload() throws {
         let v1: OpenCodeMessageInfo = try decode("""
         {"id":"msg_a","sessionID":"ses_test","role":"user","time":{"created":1},"agent":"plan",
@@ -232,7 +285,15 @@ private actor ComposerFeatureTransport: OpenCodeHTTPTransport {
     var requests: [URLRequest] = []
     let active: Bool
     let failCommands: Bool
-    init(active: Bool = false, failCommands: Bool = false) { self.active = active; self.failCommands = failCommands }
+    let schema: OpenCodeJSONValue?
+    var inheritedModelID = "m"
+    var inheritedVariant = "default"
+    init(active: Bool = false, failCommands: Bool = false, schema: OpenCodeJSONValue? = nil) {
+        self.active = active; self.failCommands = failCommands; self.schema = schema
+    }
+    func setInheritedModel(_ id: String, variant: String) {
+        inheritedModelID = id; inheritedVariant = variant
+    }
     nonisolated func makeRequest(path: [String], query: [URLQueryItem], method: String, body: Data?) throws -> URLRequest {
         var components = URLComponents(string: "https://fixture.test/" + path.joined(separator: "/"))!
         components.queryItems = query.isEmpty ? nil : query
@@ -244,12 +305,24 @@ private actor ComposerFeatureTransport: OpenCodeHTTPTransport {
         let path = request.url!.path
         if failCommands, path.hasSuffix("/command") { throw URLError(.timedOut) }
         let response: String
-        if path == "/provider" {
+        if path == "/openapi.json", let schema {
+            response = String(decoding: try JSONEncoder().encode(schema), as: UTF8.self)
+        } else if path == "/api/provider" {
+            response = #"{"data":[{"id":"fixture","name":"Fixture"}]}"#
+        } else if path == "/api/model" {
+            response = #"{"data":[{"id":"m","providerID":"fixture","name":"M","enabled":true,"variants":[{"id":"careful"},{"id":"quick"}]},{"id":"other","providerID":"fixture","name":"Other","enabled":true,"variants":[{"id":"quick"}]}]}"#
+        } else if path == "/api/agent" || path == "/api/command" || path == "/api/skill" {
+            response = #"{"data":[]}"#
+        } else if path == "/provider" {
             response = #"{"all":[{"id":"fixture","name":"Fixture","models":{"m":{"name":"M","variants":{"careful":{},"quick":{}}},"other":{"name":"Other","variants":{"quick":{}}}}}],"connected":["fixture"]}"#
         } else if path == "/agent" { response = #"[{"name":"plan","mode":"primary"},{"name":"build","mode":"primary"}]"# }
         else if path == "/command" { response = "[]" }
         else if path == "/api/session/ses_test" {
-            response = #"{"data":{"id":"ses_test","model":{"id":"m","providerID":"fixture","variant":"default"}}}"#
+            let value: OpenCodeJSONValue = .object(["data": .object([
+                "id": .string("ses_test"),
+                "model": .object(["id": .string(inheritedModelID), "providerID": .string("fixture"), "variant": .string(inheritedVariant)])
+            ])])
+            response = String(decoding: try JSONEncoder().encode(value), as: UTF8.self)
         }
         else if path.hasSuffix("/active") { response = active ? #"{"data":{"ses_test":{}}}"# : #"{"data":{}}"# }
         else { response = #"{"data":{"sessionID":"ses_test"}}"# }
