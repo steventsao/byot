@@ -245,7 +245,17 @@ struct OpenCodeSessionView: View {
             .background(BYOTBrand.canvas)
         }
         .safeAreaInset(edge: .bottom) {
-            OpenCodeSessionComposerView(store: store)
+            OpenCodeSessionComposerView(
+                store: store,
+                onNewSession: { isShowingNewSession = true },
+                sessionActions: OpenCodeSessionAction.allCases.map { action in
+                    OpenCodeComposerAction(name: action.rawValue, title: action.title,
+                        unavailableReason: store.actionUnavailableReason(action),
+                        run: { Task { await store.performSessionAction(action) } })
+                },
+                restoredMessage: store.restoredPrompt?.message,
+                onRestoreConsumed: { store.consumeRestoredPrompt() }
+            )
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

@@ -309,18 +309,22 @@ private struct AgentCodeBlockView: View {
                     .font(.cleanCaption)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
-                Button("Select code", systemImage: "text.cursor") {
+                Button {
                     selection = AgentTextSelection(text: code, isCode: true)
+                } label: {
+                    Label("Select code", systemImage: "text.cursor")
+                        .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
                 }
-                .labelStyle(.iconOnly)
                 .font(.cleanCaptionBold)
                 .foregroundStyle(.secondary)
                 .buttonStyle(.plain)
                 .accessibilityLabel("Select code")
-                Button(showsCopied ? "Copied" : "Copy", systemImage: showsCopied ? "checkmark" : "doc.on.doc") {
+                Button {
                     copy()
+                } label: {
+                    Label(showsCopied ? "Copied" : "Copy", systemImage: showsCopied ? "checkmark" : "doc.on.doc")
+                        .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
                 }
-                .labelStyle(.iconOnly)
                 .font(.cleanCaptionBold)
                 .foregroundStyle(showsCopied ? BYOTBrand.accent : Color.secondary)
                 .buttonStyle(.plain)
