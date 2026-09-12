@@ -188,6 +188,34 @@ struct OpenCodeSessionFeatureTests {
         #expect(store.queuedPrompts.map(\.text) == ["Old queued prompt"])
     }
 
+    @Test("A details snapshot started during rename cannot overwrite its confirmed title")
+    @MainActor
+    func confirmedRenameWinsOverConcurrentDetails() async throws {
+        let service = FeatureStoreService()
+        let store = makeStore(service)
+        await store.start()
+        defer { store.stop() }
+        await service.pauseRenameAndDetails()
+        let rename = Task { await store.renameSession("Confirmed name") }
+        for _ in 0..<100 {
+            if await service.renameStarted { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await service.renameStarted)
+        let refresh = Task { await store.refreshSessionFeatures() }
+        for _ in 0..<100 {
+            if await service.detailsStarted { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await service.detailsStarted)
+        await service.resumeRename()
+        #expect(await rename.value)
+        #expect(store.session.title == "Confirmed name")
+        await service.resumeDetails()
+        await refresh.value
+        #expect(store.session.title == "Confirmed name")
+    }
+
     @Test("Running sessions disable recovery; rename and fork keep the correct session scope")
     @MainActor
     func lifecycleState() async throws {
@@ -279,12 +307,33 @@ private actor FeatureStoreService: OpenCodeSessionServicing, OpenCodeSessionFeat
     var stageContinuation: CheckedContinuation<Void, Never>?
     func setStagePaused(_ value: Bool) { stagePaused = value }
     func resumeStage() { stageContinuation?.resume(); stageContinuation = nil }
+    var renamePaused = false
+    var detailsPaused = false
+    var renameStarted = false
+    var detailsStarted = false
+    var renameContinuation: CheckedContinuation<Void, Never>?
+    var detailsContinuation: CheckedContinuation<Void, Never>?
+    func pauseRenameAndDetails() { renamePaused = true; detailsPaused = true }
+    func resumeRename() { renameContinuation?.resume(); renameContinuation = nil }
+    func resumeDetails() { detailsContinuation?.resume(); detailsContinuation = nil }
     func omitRevertedSnapshots() { omitRevertedMessages = true }
     func setTodoDelay(_ value: Bool) { todoDelay = value }
     func setTodos(_ value: [OpenCodeTodo]) { todoValues = value }
     func sessionFeatureSupport() async throws -> OpenCodeSessionFeatureSupport { OpenCodeSessionFeatureSupport(details: true, rename: true, delete: true, children: true, todoSnapshot: true, undo: true, redo: true, compact: true, fork: true) }
-    func sessionDetails(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSessionDetails { OpenCodeSessionDetails(session: currentSession, revertMessageID: revert) }
-    func renameSession(sessionID: String, directory: String, workspace: String?, title: String) async throws -> OpenCodeSessionDetails { currentSession = featureSession(title: title); return OpenCodeSessionDetails(session: currentSession, revertMessageID: revert) }
+    func sessionDetails(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSessionDetails {
+        let snapshot = OpenCodeSessionDetails(session: currentSession, revertMessageID: revert)
+        if detailsPaused {
+            detailsStarted = true
+            await withCheckedContinuation { detailsContinuation = $0 }
+        }
+        return snapshot
+    }
+    func renameSession(sessionID: String, directory: String, workspace: String?, title: String) async throws -> OpenCodeSessionDetails {
+        renameStarted = true
+        if renamePaused { await withCheckedContinuation { renameContinuation = $0 } }
+        currentSession = featureSession(title: title)
+        return OpenCodeSessionDetails(session: currentSession, revertMessageID: revert)
+    }
     func deleteSession(sessionID: String, directory: String, workspace: String?) async throws {}
     func childSessions(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeSession] { [featureSession(id: "ses_child", parentID: sessionID)] }
     func sessionTodos(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeTodo]? { let snapshot = todoValues; if todoDelay { try await Task.sleep(for: .milliseconds(75)) }; return snapshot }

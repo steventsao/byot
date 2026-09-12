@@ -623,6 +623,9 @@ final class OpenCodeSessionStore: ObservableObject {
         defer { isPerformingSessionAction = false }
         do {
             session = try await featureService.renameSession(sessionID: session.id, directory: directory, workspace: workspace, title: title).session
+            // Reject a stale details snapshot requested while rename awaited
+            // the server, even if it completes after the confirmed new title.
+            featureMutationGeneration &+= 1
             sessionDetailsError = nil
             return true
         } catch { sessionDetailsError = error.localizedDescription; return false }
