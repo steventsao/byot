@@ -5,10 +5,20 @@ import Foundation
 protocol OpenCodeHTTPTransport: Sendable {
     func makeRequest(path: [String], query: [URLQueryItem], method: String, body: Data?) throws -> URLRequest
     func data(for request: URLRequest) async throws -> (Data, URLResponse)
+    func boundedData(for request: URLRequest, maximumBytes: Int) async throws -> (Data, URLResponse)
     func events(path: [String], query: [URLQueryItem]) -> AsyncThrowingStream<OpenCodeEvent, Error>
 }
 
+struct OpenCodeResponseSizeLimitError: Error {}
+
 extension OpenCodeHTTPTransport {
+    /// Test/custom transports retain a bounded fallback; the production transport stops the download.
+    func boundedData(for request: URLRequest, maximumBytes: Int) async throws -> (Data, URLResponse) {
+        let result = try await data(for: request)
+        guard result.0.count <= maximumBytes else { throw OpenCodeResponseSizeLimitError() }
+        return result
+    }
+
     func probeJSON(_ path: [String]) async throws -> OpenCodeProbeOutcome {
         let request = try makeRequest(path: path, query: [], method: "GET", body: nil)
         let (data, response) = try await data(for: request)

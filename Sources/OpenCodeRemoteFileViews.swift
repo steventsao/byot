@@ -6,7 +6,6 @@ struct OpenCodeRemoteContextView: View {
     @ObservedObject var files: OpenCodeRemoteFileStore
     @State private var showingPicker = false
     @State private var preview: OpenCodePromptFileReference?
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -47,11 +46,17 @@ struct OpenCodeRemoteContextView: View {
                         Label(entry.path, systemImage: "doc.text")
                             .font(.cleanCaption).lineLimit(1).truncationMode(.middle)
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityIdentifier("remote-file-suggestion-\(entry.path)")
                     .disabled(files.capabilities?.context != true)
                 }
             }
+        }
+        .onChange(of: files.contextToAdd) { _, reference in
+            guard let reference else { return }
+            add(reference)
+            files.contextToAdd = nil
         }
         .task { await files.loadCapabilities() }
         .task(id: OpenCodeFileMention.query(in: text)) { await files.suggest(query: OpenCodeFileMention.query(in: text)) }
@@ -263,7 +268,10 @@ struct OpenCodeRemoteFileReader: View {
         }
         .navigationTitle(path.split(separator: "/").last.map(String.init) ?? path)
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: path) { await files.read(path: path) }
+        .task(id: path) {
+            if files.capabilities == nil { await files.loadCapabilities() }
+            await files.read(path: path)
+        }
     }
 
     private func select(line: Int) {

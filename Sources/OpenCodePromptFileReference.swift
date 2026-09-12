@@ -81,21 +81,30 @@ struct OpenCodeFileLineRange: Equatable, Codable, Sendable {
 extension OpenCodePromptFileReference {
     static func restored(from message: OpenCodeMessageEnvelope, serverID: UUID, projectID: String,
                          directory: String, workspaceID: String?) -> [Self] {
+        message.parts.compactMap { part in
+            guard part.type == "file", let value = part.url else { return nil }
+            return restored(fromURI: value, serverID: serverID, projectID: projectID,
+                            directory: directory, workspaceID: workspaceID)
+        }
+    }
+
+    static func restored(fromURI value: String, serverID: UUID, projectID: String,
+                         directory: String, workspaceID: String?) -> Self? {
         let scope = OpenCodeRemoteFileScope(serverID: serverID, serverName: "", projectID: projectID,
                                             directory: directory, workspaceID: workspaceID)
-        return message.parts.compactMap { part in
-            guard part.type == "file", let value = part.url, let uri = URLComponents(string: value),
-                  uri.scheme?.lowercased() == "file" else { return nil }
-            var path = uri.path
-            if let host = uri.host, !host.isEmpty, host != "localhost" { path = "//" + host + path }
-            if path.range(of: "^/[A-Za-z]:/", options: .regularExpression) != nil { path.removeFirst() }
-            guard let relative = try? scope.relativePath(path) else { return nil }
-            let start = uri.queryItems?.first { $0.name == "start" }?.value.flatMap(Int.init)
-            let end = uri.queryItems?.first { $0.name == "end" }?.value.flatMap(Int.init)
-            let selection: OpenCodeFileLineRange?
-            if let start, let end { selection = .init(startLine: start, endLine: end) }
-            else { selection = nil }
-            return scope.reference(path: relative, selection: selection)
-        }
+        guard let uri = URLComponents(string: value), uri.scheme?.lowercased() == "file" else { return nil }
+        var path = uri.path
+        if let host = uri.host, !host.isEmpty, host != "localhost" { path = "//" + host + path }
+        if path.range(of: "^/[A-Za-z]:/", options: .regularExpression) != nil { path.removeFirst() }
+        guard let relative = try? scope.relativePath(path) else { return nil }
+        let startValue = uri.queryItems?.first { $0.name == "start" }?.value
+        let endValue = uri.queryItems?.first { $0.name == "end" }?.value
+        let selection: OpenCodeFileLineRange?
+        if startValue != nil || endValue != nil {
+            guard let start = startValue.flatMap(Int.init), let end = endValue.flatMap(Int.init),
+                  let range = OpenCodeFileLineRange(startLine: start, endLine: end) else { return nil }
+            selection = range
+        } else { selection = nil }
+        return scope.reference(path: relative, selection: selection)
     }
 }

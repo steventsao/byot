@@ -49,7 +49,10 @@ struct OpenCodeRemoteFileContent: Equatable, Sendable {
     let text: String?
     let mimeType: String
     let byteCount: Int
-    var lines: [String] { text?.components(separatedBy: .newlines) ?? [] }
+    var lines: [String] {
+        text?.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n") ?? []
+    }
 }
 
 struct OpenCodeRemoteFileCapabilities: Equatable, Sendable {
@@ -170,8 +173,13 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
         let connection = try await checkedContext(v2Path: "/api/fs/read/*", operation: "file previews")
         if connection.serverProtocol == .v1 {
             struct Content: Decodable { let type: String; let content: String; let encoding: String?; let mimeType: String? }
-            let value: Content = try await connection.transport.get(["file", "content"],
-                query: locationQuery(connection) + [URLQueryItem(name: "path", value: relative)])
+            let request = try connection.transport.makeRequest(path: ["file", "content"],
+                query: locationQuery(connection) + [URLQueryItem(name: "path", value: relative)], method: "GET", body: nil)
+            // JSON can encode one decoded byte as a six-byte \uXXXX escape.
+            let (encoded, response) = try await boundedData(connection, request: request,
+                maximumBytes: Self.maximumPreviewBytes * 6 + 4_096)
+            try connection.transport.validateEmptyResponse(data: encoded, response: response)
+            let value = try JSONDecoder().decode(Content.self, from: encoded)
             let data = value.encoding == "base64" ? Data(base64Encoded: value.content) ?? Data() : Data(value.content.utf8)
             guard data.count <= Self.maximumPreviewBytes else { throw OpenCodeRemoteFileError.tooLarge }
             return .init(path: relative, text: value.type == "text" ? String(data: data, encoding: .utf8) : nil,
@@ -189,13 +197,19 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
         components.percentEncodedPath += "/" + encoded
         request.url = components.url
         request.setValue("*/*", forHTTPHeaderField: "Accept")
-        let (data, response) = try await connection.transport.data(for: request)
+        let (data, response) = try await boundedData(connection, request: request, maximumBytes: Self.maximumPreviewBytes)
         guard let http = response as? HTTPURLResponse else { throw OpenCodeConnectionError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else { throw OpenCodeConnectionError.httpStatus(http.statusCode, nil) }
         guard data.count <= Self.maximumPreviewBytes else { throw OpenCodeRemoteFileError.tooLarge }
         let mime = http.mimeType ?? "application/octet-stream"
         let text = data.contains(0) ? nil : String(data: data, encoding: .utf8)
         return .init(path: relative, text: text, mimeType: mime, byteCount: data.count)
+    }
+
+    private func boundedData(_ connection: OpenCodeFeatureContext, request: URLRequest,
+                             maximumBytes: Int) async throws -> (Data, URLResponse) {
+        do { return try await connection.transport.boundedData(for: request, maximumBytes: maximumBytes) }
+        catch is OpenCodeResponseSizeLimitError { throw OpenCodeRemoteFileError.tooLarge }
     }
 
     private func checkedContext(v2Path: String, operation: String) async throws -> OpenCodeFeatureContext {

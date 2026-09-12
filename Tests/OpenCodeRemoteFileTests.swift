@@ -33,6 +33,11 @@ final class OpenCodeRemoteFileTests: XCTestCase {
         XCTAssertEqual(restored.first?.workspaceID, "wrk_test")
     }
 
+    func testWindowsNewlinesPreserveServerLineNumbers() {
+        let content = OpenCodeRemoteFileContent(path: "file.txt", text: "one\r\ntwo\r\nthree", mimeType: "text/plain", byteCount: 15)
+        XCTAssertEqual(content.lines, ["one", "two", "three"])
+    }
+
     func testWindowsContextUsesRemoteDriveAndEscapesURI() {
         let reference = OpenCodePromptFileReference(serverID: profile.id, projectID: "p", directory: "C:\\work\\my app", path: "src\\a#b.swift")
         XCTAssertEqual(reference.fileURL, "file:///C:/work/my%20app/src/a%23b.swift")
@@ -115,6 +120,24 @@ final class OpenCodeRemoteFileTests: XCTestCase {
         catch { XCTAssertEqual(error as? OpenCodeRemoteFileError, .wrongLocation) }
     }
 
+    func testProductionTransportBoundsDeclaredAndStreamingResponses() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FileLimitProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let transport = OpenCodeTransport(profile: profile, password: "test", session: session)
+        for kind in ["declared-large", "streaming-large"] {
+            let request = try transport.makeRequest(path: [kind], query: [], method: "GET", body: nil)
+            do {
+                _ = try await transport.boundedData(for: request, maximumBytes: 4)
+                XCTFail("Oversize response should stop")
+            } catch { XCTAssertTrue(error is OpenCodeResponseSizeLimitError) }
+        }
+        let request = try transport.makeRequest(path: ["within-limit"], query: [], method: "GET", body: nil)
+        let response = try await transport.boundedData(for: request, maximumBytes: 4)
+        XCTAssertEqual(response.0, Data("ABCD".utf8))
+    }
+
     func testBinaryAndTooLargeFilesAreNotRenderedAsCode() async throws {
         let binary = FileTestTransport(profile: profile) { _ in .init(data: Data([0, 255, 4]), mime: "image/png") }
         let service = makeService(transport: binary, protocol: .v2, schema: try schema())
@@ -189,5 +212,20 @@ private struct DelayedFileService: OpenCodeRemoteFileServicing {
     func read(path: String) async throws -> OpenCodeRemoteFileContent {
         if path == "slow.swift" { try await Task.sleep(for: .milliseconds(150)) }
         return .init(path: path, text: path, mimeType: "text/plain", byteCount: path.utf8.count)
+    }
+}
+
+private final class FileLimitProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func stopLoading() {}
+    override func startLoading() {
+        guard let url = request.url else { return }
+        let kind = url.lastPathComponent
+        let header = kind == "declared-large" ? ["Content-Length": "1000000000"] : [:]
+        let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: header)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data((kind == "within-limit" ? "ABCD" : "ABCDEFGH").utf8))
+        client?.urlProtocolDidFinishLoading(self)
     }
 }

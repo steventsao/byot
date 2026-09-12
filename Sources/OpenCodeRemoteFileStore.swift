@@ -3,6 +3,7 @@ import Foundation
 
 @MainActor
 final class OpenCodeRemoteFileStore: ObservableObject {
+    @Published var contextToAdd: OpenCodePromptFileReference?
     @Published private(set) var capabilities: OpenCodeRemoteFileCapabilities?
     @Published private(set) var entries: [OpenCodeRemoteFileEntry] = []
     @Published private(set) var changedFiles: [OpenCodeRemoteFileChange] = []
