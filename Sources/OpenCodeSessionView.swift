@@ -1,11 +1,17 @@
 import SwiftUI
 
 struct OpenCodeSessionView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
     @State private var isShowingDiff = false
     @State private var isShowingRecoveryModelPicker = false
     @State private var isAtBottom = true
+    @State private var isShowingDetails = false
+    @State private var isShowingTasks = false
+    @State private var isShowingNewSession = false
+    @State private var nextSession: OpenCodeSessionRoute?
+    private let client: OpenCodeClient
     private let serverName: String
     private let attention: OpenCodeSessionAttentionStore?
 
@@ -17,6 +23,7 @@ struct OpenCodeSessionView: View {
         directory: String,
         attention: OpenCodeSessionAttentionStore? = nil
     ) {
+        self.client = client
         serverName = client.profile.name
         self.attention = attention
         _store = StateObject(
@@ -59,9 +66,36 @@ struct OpenCodeSessionView: View {
                         )
                     }
 
+                    if store.revertMessageID != nil {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Conversation rewound", systemImage: "arrow.uturn.backward")
+                                .font(.cleanBodySemibold)
+                            Text("Edit the restored prompt to take a different direction, or redo the turn. Queued prompts are paused for review.")
+                                .font(.cleanCaption).foregroundStyle(.secondary)
+                            Button("Redo turn") { Task { await store.performSessionAction(.redo) } }
+                                .disabled(store.actionUnavailableReason(.redo) != nil)
+                        }
+                        .padding(12)
+                        .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
+                    }
+
                     ForEach(store.messages) { message in
-                        OpenCodeMessageView(message: message)
-                            .id(message.id)
+                        messageRow(message).id(message.id)
+                    }
+
+                    if store.todoProgress.totalCount > 0 {
+                        Button { isShowingTasks = true } label: {
+                            HStack {
+                                Label(store.todoProgress.summary, systemImage: "checklist")
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                            }
+                            .font(.cleanCaptionBold)
+                            .padding(12)
+                            .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("session-task-progress")
                     }
 
                     if store.modelFailure != nil {
@@ -215,12 +249,50 @@ struct OpenCodeSessionView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Session details", systemImage: "info.circle") { isShowingDetails = true }
+                    Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
+                    ForEach(OpenCodeSessionAction.allCases) { action in
+                        Button(action.title, systemImage: action.symbol) {
+                            Task { await store.performSessionAction(action) }
+                        }.disabled(store.actionUnavailableReason(action) != nil)
+                    }
+                } label: { Image(systemName: "ellipsis.circle") }
+                .accessibilityLabel("Session actions")
+                .accessibilityIdentifier("session-actions")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button("Changes", systemImage: "doc.text.magnifyingglass") {
                     isShowingDiff = true
                 }
                 .labelStyle(.iconOnly)
                 .disabled(!store.diffPresentation.canPresent)
             }
+        }
+        .sheet(isPresented: $isShowingDetails) {
+            OpenCodeSessionDetailsView(store: store) { session in
+                isShowingDetails = false
+                nextSession = OpenCodeSessionRoute(session: session)
+            }
+        }
+        .sheet(isPresented: $isShowingTasks) {
+            OpenCodeTaskProgressView(progress: store.todoProgress, supportsSnapshot: store.sessionFeatures.todoSnapshot)
+        }
+        .navigationDestination(item: $nextSession) { route in
+            OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory, attention: attention)
+        }
+        .navigationDestination(isPresented: $isShowingNewSession) {
+            OpenCodeNewSessionView(profiles: [client.profile], initialProfile: client.profile, makeClient: { _ in client })
+        }
+        .onChange(of: store.forkedSession) { _, session in
+            if let session {
+                isShowingDetails = false
+                nextSession = OpenCodeSessionRoute(session: session)
+                store.consumeForkedSession()
+            }
+        }
+        .onChange(of: store.didDeleteSession) { _, deleted in
+            if deleted { isShowingDetails = false; dismiss() }
         }
         .sheet(isPresented: $isShowingDiff) {
             OpenCodeDiffView(diffs: store.diffs, unavailableReason: store.diffPresentation.unavailableReason)
@@ -234,6 +306,23 @@ struct OpenCodeSessionView: View {
         .onDisappear {
             rememberAttention()
             store.stop()
+        }
+    }
+
+    @ViewBuilder
+    private func messageRow(_ message: OpenCodeMessageEnvelope) -> some View {
+        if message.info.role == "user" {
+            OpenCodeMessageView(message: message)
+                .contextMenu {
+                    Button("Undo to this prompt", systemImage: "arrow.uturn.backward") {
+                        Task { await store.performSessionAction(.undo, messageID: message.id) }
+                    }.disabled(store.actionUnavailableReason(.undo) != nil)
+                    Button("Fork before this prompt", systemImage: "arrow.triangle.branch") {
+                        Task { await store.performSessionAction(.fork, messageID: message.id) }
+                    }.disabled(store.actionUnavailableReason(.fork) != nil)
+                }
+        } else {
+            OpenCodeMessageView(message: message)
         }
     }
 
@@ -422,7 +511,6 @@ private struct OpenCodePartView: View {
         case "text":
             if let text = part.text, !text.isEmpty {
                 AgentMarkdownText(text: text)
-                    .textSelection(.enabled)
             }
         case "reasoning":
             if let text = part.text, !text.isEmpty {

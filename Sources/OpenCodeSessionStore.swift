@@ -41,7 +41,23 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var hasRecoverableUnansweredPrompt = false
     @Published var errorMessage: String?
 
-    let session: OpenCodeSession
+    @Published private(set) var session: OpenCodeSession
+    @Published private(set) var sessionFeatures = OpenCodeSessionFeatureSupport()
+    @Published private(set) var todoProgress = OpenCodeTodoProgress()
+    @Published private(set) var revertMessageID: String?
+    @Published private(set) var restoredPrompt: OpenCodeRestoredPrompt?
+    @Published private(set) var forkedSession: OpenCodeSession?
+    @Published private(set) var childSessions: [OpenCodeSession] = []
+    @Published private(set) var parentSession: OpenCodeSession?
+    @Published private(set) var sessionDetailsError: String?
+    @Published private(set) var isPerformingSessionAction = false
+    @Published private(set) var isLoadingRelatedSessions = false
+    @Published private(set) var didDeleteSession = false
+    private let featureService: (any OpenCodeSessionFeatureServicing)?
+    private var featureRefreshGeneration = 0
+    private var featureMutationGeneration = 0
+    private var todoMutationGeneration = 0
+    private var revertedUserMessages: [OpenCodeMessageEnvelope] = []
     let directory: String
     let remoteFiles: OpenCodeRemoteFileStore?
     let serverID: UUID
@@ -93,6 +109,7 @@ final class OpenCodeSessionStore: ObservableObject {
     ) {
         self.service = service
         self.serverID = serverID
+        featureService = service as? any OpenCodeSessionFeatureServicing
         self.session = session
         self.directory = directory
         self.defaults = defaults
@@ -125,7 +142,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     var canSubmitPrompt: Bool {
-        isRunning && isStatusReady && isStoppingTurn == false
+        isRunning && isStatusReady && isStoppingTurn == false && !isPerformingSessionAction && !didDeleteSession
     }
 
     var modelFailure: OpenCodeMessageError? {
@@ -182,7 +199,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     var canStopTurn: Bool {
-        isRunning
+        isRunning && !isPerformingSessionAction
             && isStoppingTurn == false
             && (
                 status.isActive
@@ -194,7 +211,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     var canRetryUnansweredPrompt: Bool {
-        isRunning
+        isRunning && !isPerformingSessionAction && revertMessageID == nil
             && isStatusReady
             && status.isActive == false
             && isSending == false
@@ -220,6 +237,7 @@ final class OpenCodeSessionStore: ObservableObject {
 
     func stop() {
         lifecycleGeneration &+= 1
+        featureRefreshGeneration &+= 1
         isRunning = false
         isStatusReady = false
         didStatusProbeFailWithFreshTranscript = false
@@ -269,6 +287,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let actionBaseline = actionMutationGeneration
         let diffBaseline = diffMutationGeneration
         let statusBaseline = statusMutationGeneration
+        async let featureRefresh: Void = refreshSessionFeatures()
         if showLoading { isLoading = true }
         defer {
             if generation == refreshGeneration { isLoading = false }
@@ -385,6 +404,234 @@ final class OpenCodeSessionStore: ObservableObject {
             guard generation == refreshGeneration else { return }
             errorMessage = error.localizedDescription
         }
+        await featureRefresh
+    }
+
+    func refreshSessionFeatures() async {
+        guard let featureService else { return }
+        featureRefreshGeneration &+= 1
+        let generation = featureRefreshGeneration
+        let mutation = featureMutationGeneration
+        let todoMutation = todoMutationGeneration
+        do {
+            let support = try await featureService.sessionFeatureSupport()
+            try Task.checkCancellation()
+            guard generation == featureRefreshGeneration else { return }
+            sessionFeatures = support
+            let sessionID = session.id, directory = directory, workspace = workspace
+            async let detailsResult = Self.capture { () -> OpenCodeSessionDetails? in
+                guard support.details else { return nil }
+                return try await featureService.sessionDetails(sessionID: sessionID, directory: directory, workspace: workspace)
+            }
+            async let todosResult = Self.capture {
+                try await featureService.sessionTodos(sessionID: sessionID, directory: directory, workspace: workspace)
+            }
+            let (details, todos) = await (detailsResult, todosResult)
+            try Task.checkCancellation()
+            guard generation == featureRefreshGeneration else { return }
+            if mutation == featureMutationGeneration {
+                switch details {
+                case .success(let details):
+                    if let details {
+                        session = details.session
+                        revertMessageID = details.revertMessageID
+                        publishTranscript()
+                    }
+                    sessionDetailsError = nil
+                case .failure(let error): sessionDetailsError = error.localizedDescription
+                }
+            }
+            if todoMutation == todoMutationGeneration {
+                switch todos {
+                case .success(let snapshot):
+                    if let snapshot {
+                        todoProgress = OpenCodeTodoProgress(items: snapshot)
+                    }
+                case .failure(let error):
+                    todoProgress.error = error.localizedDescription
+                    todoProgress.isStale = todoProgress.items != nil
+                }
+            }
+        } catch is CancellationError {} catch {
+            guard generation == featureRefreshGeneration else { return }
+            sessionDetailsError = error.localizedDescription
+        }
+    }
+
+    private func markTasksStale() {
+        if todoProgress.items != nil { todoProgress.isStale = true }
+    }
+
+    private func handleSessionFeatureEvent(_ event: OpenCodeEvent) -> Bool {
+        if event.type == "todo.updated", event.sessionID == session.id {
+            if let todos: [OpenCodeTodo] = decode(event.properties["todos"]) {
+                todoMutationGeneration &+= 1
+                todoProgress = OpenCodeTodoProgress(items: todos)
+            }
+            return true
+        }
+        if event.type == "session.revert.staged", event.sessionID == session.id {
+            featureMutationGeneration &+= 1
+            revertMessageID = event.properties["revert"]?.objectValue?["messageID"]?.stringValue
+            promptQueue.pausePendingPrompts()
+            publishPromptQueue()
+            publishTranscript()
+            return true
+        }
+        if event.type == "session.revert.committed", event.sessionID == session.id {
+            if let boundary = event.properties["to"]?.stringValue ?? revertMessageID {
+                commitHistoryLocally(before: boundary)
+            }
+            scheduleReconciliation()
+            return true
+        }
+        if event.type == "session.revert.cleared", event.sessionID == session.id {
+            featureMutationGeneration &+= 1
+            revertMessageID = nil
+            publishTranscript()
+            scheduleReconciliation()
+            return true
+        }
+        if event.type == "session.updated", let info = event.properties["info"],
+           let updated: OpenCodeSession = decode(info), updated.id == session.id {
+            featureMutationGeneration &+= 1
+            session = updated
+            revertMessageID = info.objectValue?["revert"]?.objectValue?["messageID"]?.stringValue
+            if revertMessageID != nil { promptQueue.pausePendingPrompts(); publishPromptQueue() }
+            publishTranscript()
+            return true
+        }
+        if event.type == "session.renamed", event.sessionID == session.id {
+            scheduleReconciliation()
+            return true
+        }
+        return false
+    }
+
+    func actionUnavailableReason(_ action: OpenCodeSessionAction) -> String? {
+        let supported: Bool
+        switch action {
+        case .undo: supported = sessionFeatures.undo
+        case .redo: supported = sessionFeatures.redo
+        case .compact: supported = sessionFeatures.compact
+        case .fork: supported = sessionFeatures.fork
+        }
+        if !supported { return "This server does not support this action." }
+        if !isRunning || !isStatusReady { return "Wait for the session to connect." }
+        if isPerformingSessionAction || isSending || isStoppingTurn { return "Wait for the current request to finish." }
+        if status.isActive { return "Stop the current turn before changing its history." }
+        if action == .undo && !messages.contains(where: { $0.info.role == "user" }) { return "No turn to undo." }
+        if action == .redo && revertMessageID == nil { return "No undone turn to restore." }
+        if action == .compact && sessionFeatures.compactRequiresModel && selectedModel == nil { return "Choose a model before compacting." }
+        if action == .compact && revertMessageID != nil { return "Redo or send your revised prompt before compacting." }
+        return nil
+    }
+
+    func consumeRestoredPrompt() { restoredPrompt = nil }
+    func consumeForkedSession() { forkedSession = nil }
+
+    func performSessionAction(_ action: OpenCodeSessionAction, messageID: String? = nil) async {
+        guard let featureService else { return }
+        if let reason = actionUnavailableReason(action) { actionErrorMessage = reason; return }
+        let generation = lifecycleGeneration
+        isPerformingSessionAction = true
+        featureMutationGeneration &+= 1
+        // These prompts were composed against the old history. Preserve them
+        // for manual review; idle events must never send them automatically.
+        promptQueue.pausePendingPrompts()
+        publishPromptQueue()
+        cancelQueueRecovery()
+        defer { isPerformingSessionAction = false }
+        do {
+            switch action {
+            case .undo:
+                if revertedUserMessages.isEmpty {
+                    revertedUserMessages = transcript.messages.filter { $0.info.role == "user" }
+                }
+                guard let target = messages.last(where: { $0.info.role == "user" && (messageID == nil || $0.id == messageID) }) else { return }
+                try await featureService.stageSessionRevert(sessionID: session.id, directory: directory, workspace: workspace, messageID: target.id)
+                guard generation == lifecycleGeneration, isRunning else { return }
+                revertMessageID = target.id
+                restoredPrompt = OpenCodeRestoredPrompt(message: target)
+                dismissUnansweredPromptRecovery()
+            case .redo:
+                guard let boundary = revertMessageID else { return }
+                let fetchedUsers = transcript.messages.filter { $0.info.role == "user" }
+                let users = fetchedUsers.contains(where: { $0.id == boundary }) ? fetchedUsers : revertedUserMessages
+                let index = users.firstIndex { $0.id == boundary }
+                let next = index.flatMap { users.dropFirst($0 + 1).first }
+                if let next {
+                    try await featureService.stageSessionRevert(sessionID: session.id, directory: directory, workspace: workspace, messageID: next.id)
+                    guard generation == lifecycleGeneration, isRunning else { return }
+                    revertMessageID = next.id
+                    restoredPrompt = OpenCodeRestoredPrompt(message: next)
+                } else {
+                    try await featureService.clearSessionRevert(sessionID: session.id, directory: directory, workspace: workspace)
+                    guard generation == lifecycleGeneration, isRunning else { return }
+                    revertMessageID = nil
+                    if let previous = index.map({ users[$0] }) {
+                        restoredPrompt = OpenCodeRestoredPrompt(message: OpenCodeMessageEnvelope(info: previous.info, parts: []))
+                    }
+                }
+            case .compact:
+                try await featureService.compactSession(sessionID: session.id, directory: directory, workspace: workspace, model: selectedModel)
+                guard generation == lifecycleGeneration, isRunning else { return }
+            case .fork:
+                let fork = try await featureService.forkSession(sessionID: session.id, directory: directory, workspace: workspace, beforeMessageID: messageID ?? revertMessageID)
+                guard generation == lifecycleGeneration, isRunning else { return }
+                forkedSession = fork
+            }
+            guard generation == lifecycleGeneration, isRunning else { return }
+            actionErrorMessage = nil
+            featureMutationGeneration &+= 1
+            transcriptMutationGeneration &+= 1
+            publishTranscript()
+            await refresh()
+        } catch is CancellationError {} catch {
+            guard generation == lifecycleGeneration, isRunning else { return }
+            actionErrorMessage = error.localizedDescription
+        }
+    }
+
+    func loadRelatedSessions() async {
+        guard let featureService, !isLoadingRelatedSessions else { return }
+        isLoadingRelatedSessions = true
+        defer { isLoadingRelatedSessions = false }
+        do {
+            if sessionFeatures.children {
+                childSessions = try await featureService.childSessions(sessionID: session.id, directory: directory, workspace: workspace)
+            }
+            if let parentID = session.parentID, sessionFeatures.details {
+                parentSession = try await featureService.sessionDetails(sessionID: parentID, directory: directory, workspace: workspace).session
+            }
+            sessionDetailsError = nil
+        } catch { sessionDetailsError = error.localizedDescription }
+    }
+
+    func renameSession(_ title: String) async -> Bool {
+        guard let featureService, sessionFeatures.rename, !isPerformingSessionAction else { return false }
+        isPerformingSessionAction = true
+        featureMutationGeneration &+= 1
+        defer { isPerformingSessionAction = false }
+        do {
+            session = try await featureService.renameSession(sessionID: session.id, directory: directory, workspace: workspace, title: title).session
+            sessionDetailsError = nil
+            return true
+        } catch { sessionDetailsError = error.localizedDescription; return false }
+    }
+
+    func deleteSession() async -> Bool {
+        guard let featureService, sessionFeatures.delete, !isPerformingSessionAction, !status.isActive, !isSending else { return false }
+        isPerformingSessionAction = true
+        promptQueue.pausePendingPrompts()
+        publishPromptQueue()
+        defer { isPerformingSessionAction = false }
+        do {
+            try await featureService.deleteSession(sessionID: session.id, directory: directory, workspace: workspace)
+            didDeleteSession = true
+            stop()
+            return true
+        } catch { sessionDetailsError = error.localizedDescription; return false }
     }
 
     func send(
@@ -408,6 +655,15 @@ final class OpenCodeSessionStore: ObservableObject {
         didStatusProbeFailWithFreshTranscript = false
         recoveryIdleUserMessageID = nil
         dismissUnansweredPromptRecovery()
+        if revertMessageID != nil, !status.isActive, !isSending,
+           let prompt = promptQueue.beginExplicitDispatch(text: trimmed, model: selectedModel, attachments: attachments,
+               agent: selectedAgentID, variant: selectedVariant,
+               command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands),
+               remoteReferences: remoteReferences) {
+            publishPromptQueue()
+            schedulePromptDispatch(prompt)
+            return true
+        }
         let submission = promptQueue.accept(
             text: trimmed,
             model: selectedModel,
@@ -541,6 +797,27 @@ final class OpenCodeSessionStore: ObservableObject {
         }
     }
 
+    private func prepareHistoryForPromptDispatch() async throws {
+        guard let boundary = revertMessageID, let featureService else { return }
+        let generation = lifecycleGeneration
+        let didCommit = try await featureService.commitSessionRevert(sessionID: session.id, directory: directory, workspace: workspace)
+        try Task.checkCancellation()
+        guard generation == lifecycleGeneration, isRunning else { throw CancellationError() }
+        if didCommit { commitHistoryLocally(before: boundary) }
+    }
+
+    private func commitHistoryLocally(before boundary: String) {
+        if let index = transcript.messages.firstIndex(where: { $0.id == boundary }) {
+            transcript.replace(with: Array(transcript.messages.prefix(index)))
+        }
+        revertMessageID = nil
+        revertedUserMessages = []
+        featureMutationGeneration &+= 1
+        transcriptMutationGeneration &+= 1
+        messageRequestGeneration &+= 1
+        publishTranscript()
+    }
+
     private func runPromptDispatch(
         _ prompt: OpenCodeQueuedPrompt,
         dispatchID: UUID
@@ -551,6 +828,9 @@ final class OpenCodeSessionStore: ObservableObject {
                 projectID: session.projectID, directory: directory, workspaceID: workspace) }) else {
                 throw OpenCodeConnectionError.server("File context belongs to a different project. Remove this queued prompt and select the file again.")
             }
+            try await prepareHistoryForPromptDispatch()
+            try Task.checkCancellation()
+            guard isCurrentPromptDispatch(dispatchID) else { return }
             submittedPrompts[prompt.messageID] = prompt
             try await service.sendPrompt(sessionID: session.id, directory: directory,
                                          workspace: workspace, prompt: prompt)
@@ -796,6 +1076,7 @@ final class OpenCodeSessionStore: ObservableObject {
                     }
                     if !Task.isCancelled {
                         self?.isEventConnected = false
+                        self?.markTasksStale()
                         self?.eventErrorMessage =
                             "Live updates ended. Reconnecting automatically."
                         self?.scheduleQueueRecoveryIfNeeded()
@@ -805,11 +1086,13 @@ final class OpenCodeSessionStore: ObservableObject {
                 } catch let error as OpenCodeConnectionError
                     where Self.requiresEventReconciliation(error) {
                     self?.isEventConnected = false
+                    self?.markTasksStale()
                     self?.eventErrorMessage = Self.eventReconciliationMessage(for: error)
                     self?.scheduleReconciliation()
                     self?.scheduleQueueRecoveryIfNeeded()
                 } catch {
                     self?.isEventConnected = false
+                    self?.markTasksStale()
                     self?.eventErrorMessage = Self.eventConnectionMessage(for: error)
                     self?.scheduleQueueRecoveryIfNeeded()
                 }
@@ -909,6 +1192,7 @@ final class OpenCodeSessionStore: ObservableObject {
         if let eventSessionID = event.sessionID, eventSessionID != session.id {
             return
         }
+        if handleSessionFeatureEvent(event) { return }
         if event.isV2 && event.type.hasPrefix("session.") {
             handleV2(event)
             return
@@ -986,7 +1270,12 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func publishTranscript() {
-        messages = transcript.messages
+        if revertMessageID == nil { revertedUserMessages = [] }
+        if let revertMessageID, let boundary = transcript.messages.firstIndex(where: { $0.id == revertMessageID }) {
+            messages = Array(transcript.messages.prefix(boundary))
+        } else {
+            messages = transcript.messages
+        }
         updateCurrentTurnActivityTracking()
         updateUnansweredPromptRecovery()
         transcriptRevision &+= 1
@@ -1008,6 +1297,7 @@ final class OpenCodeSessionStore: ObservableObject {
         }
         finishCurrentTurnActivityTracking()
         recoveryIdleUserMessageID = Self.latestUserMessageID(in: messages)
+        if isPerformingSessionAction { promptQueue.pausePendingPrompts() }
         let nextPrompt = promptQueue.reconciledServerIdle()
         publishPromptQueue()
         if let nextPrompt {
@@ -1032,6 +1322,7 @@ final class OpenCodeSessionStore: ObservableObject {
         }
         finishCurrentTurnActivityTracking()
         recoveryIdleUserMessageID = Self.latestUserMessageID(in: messages)
+        if isPerformingSessionAction { promptQueue.pausePendingPrompts() }
         let nextPrompt = promptQueue.serverBecameIdle()
         publishPromptQueue()
         if let nextPrompt {
@@ -1356,6 +1647,7 @@ final class OpenCodeSessionStore: ObservableObject {
                     return
                 } else {
                     recoveryIdleUserMessageID = Self.latestUserMessageID(in: messages)
+                    if isPerformingSessionAction { promptQueue.pausePendingPrompts() }
                     let nextPrompt = promptQueue.reconciledServerIdle()
                     publishPromptQueue()
                     if let nextPrompt {
