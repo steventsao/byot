@@ -314,6 +314,7 @@ private struct AgentCodeBlockView: View {
                 } label: {
                     Label("Select code", systemImage: "text.cursor")
                         .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .font(.cleanCaptionBold)
                 .foregroundStyle(.secondary)
@@ -324,6 +325,7 @@ private struct AgentCodeBlockView: View {
                 } label: {
                     Label(showsCopied ? "Copied" : "Copy", systemImage: showsCopied ? "checkmark" : "doc.on.doc")
                         .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .font(.cleanCaptionBold)
                 .foregroundStyle(showsCopied ? BYOTBrand.accent : Color.secondary)
