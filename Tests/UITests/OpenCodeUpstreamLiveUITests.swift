@@ -62,11 +62,11 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             XCTAssertTrue(alert.waitForExistence(timeout: 5))
             let title = alert.textFields.firstMatch
             let renamed = "Composer verified \(major)"
-            title.tap()
-            title.press(forDuration: 1.1)
-            let selectAll = app.menuItems["Select All"].firstMatch
-            XCTAssertTrue(selectAll.waitForExistence(timeout: 5), app.debugDescription)
-            selectAll.tap()
+            XCTAssertTrue(focus(title, in: app), "The rename field must have keyboard focus")
+            // A tap can place the caret inside a long title; iOS may omit the
+            // edit menu after a long press. The native keyboard shortcut selects
+            // all text regardless of its scroll position or insertion point.
+            title.typeKey("a", modifierFlags: .command)
             title.typeText(renamed)
             XCTAssertEqual(title.value as? String, renamed, "Replace the entire old title before saving")
             alert.buttons["Save"].tap()
