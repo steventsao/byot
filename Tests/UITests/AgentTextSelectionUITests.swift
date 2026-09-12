@@ -35,7 +35,7 @@ final class AgentTextSelectionUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--text-selection-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
-        let prose = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "precise selection")).firstMatch
+        let prose = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "precise selection")).firstMatch
         XCTAssertTrue(prose.waitForExistence(timeout: 10))
         prose.press(forDuration: 1.2)
         app.buttons["Select text"].tap()
