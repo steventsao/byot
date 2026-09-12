@@ -61,10 +61,14 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             let alert = app.alerts["Rename conversation"]
             XCTAssertTrue(alert.waitForExistence(timeout: 5))
             let title = alert.textFields.firstMatch
-            let oldTitle = title.value as? String ?? ""
             let renamed = "Composer verified \(major)"
             title.tap()
-            title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldTitle.count) + renamed)
+            title.press(forDuration: 1.1)
+            let selectAll = app.menuItems["Select All"].firstMatch
+            XCTAssertTrue(selectAll.waitForExistence(timeout: 5), app.debugDescription)
+            selectAll.tap()
+            title.typeText(renamed)
+            XCTAssertEqual(title.value as? String, renamed, "Replace the entire old title before saving")
             alert.buttons["Save"].tap()
             XCTAssertTrue(app.staticTexts[renamed].waitForExistence(timeout: 10))
             attach("\(major)-session-details-renamed")
