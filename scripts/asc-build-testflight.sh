@@ -105,7 +105,7 @@ if [[ "$SWIFTPM_ISOLATION" == "1" ||
   export CLANG_MODULE_CACHE_PATH="$RELEASE_CACHE_ROOT/ClangModuleCache"
   archive_flags+=(
     --xcodebuild-flag=-derivedDataPath
-    --xcodebuild-flag="$RELEASE_CACHE_ROOT/DerivedData"
+    --xcodebuild-flag="${BYOT_DERIVED_DATA_PATH:-$RELEASE_CACHE_ROOT/DerivedData}"
     --xcodebuild-flag=-clonedSourcePackagesDirPath
     --xcodebuild-flag="$RELEASE_CACHE_ROOT/SourcePackages"
     --xcodebuild-flag=-packageCachePath
@@ -114,6 +114,9 @@ if [[ "$SWIFTPM_ISOLATION" == "1" ||
     --xcodebuild-flag=-onlyUsePackageVersionsFromResolvedFile
     --xcodebuild-flag=-skipPackageUpdates
   )
+elif [[ -n "${BYOT_DERIVED_DATA_PATH:-}" ]]; then
+  # Move build products without changing CoreSimulator's normal support home.
+  archive_flags+=(--xcodebuild-flag=-derivedDataPath --xcodebuild-flag="$BYOT_DERIVED_DATA_PATH")
 fi
 
 if [[ "$ALLOW_PROVISIONING_UPDATES" == "1" ]]; then
