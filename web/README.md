@@ -1,8 +1,32 @@
 # BYOT landing page
 
 Source for [byot.app](https://byot.app/), packaged separately from the iOS app.
-`src/landing.ts` renders the page with inline styles and the official App Store
-badge. It has no client-side JavaScript or external asset requests.
+`src/landing.ts` renders the page with the iOS app's Open Runde typography, Dark
+appearance, and rounded controls. The preview switches between a session, diff,
+and permission request using a small inline script. All preview interactions stay
+in the browser; the page has no external asset requests or tracking.
+
+`src/styles.ts` holds the styles and `src/preview.ts` holds the illustrative app
+preview and its keyboard-accessible tabs. The real iOS app remains the source of
+truth for product behavior.
+
+## Preview
+
+Run `npm run dev` from `web/` and open `http://127.0.0.1:4173`. The development
+server watches source changes. Reload the browser to see updates. Support and
+privacy links open the existing production pages.
+
+## Typography
+
+The generated `src/fonts.ts` embeds Latin WOFF2 subsets of the app's Open Runde
+Regular and Semibold fonts, with the complete SIL Open Font License. Regenerate
+from the repository's original fonts with:
+
+```sh
+uv run --with fonttools --with brotli scripts/build-fonts.py
+```
+
+The official App Store badge artwork is preserved in `src/app-store-badge.ts`.
 
 ## Validate
 
