@@ -43,7 +43,7 @@ xcrun simctl boot "$simulator"
 xcrun simctl bootstatus "$simulator" -b >"$run_root/simulator.log" 2>&1
 xcrun simctl keychain "$simulator" add-root-cert "$run_root/tls.crt"
 xcrun simctl status_bar "$simulator" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
-xcrun simctl ui "$simulator" appearance light
+xcrun simctl ui "$simulator" appearance "${BYOT_E2E_APPEARANCE:-light}"
 cd "$repo"
 xcodegen generate >"$run_root/generate.log"
 # Keep signing enabled: the normal server editor saves passwords in Keychain.
