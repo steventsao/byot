@@ -10,6 +10,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         let root = try XCTUnwrap(environment["BYOT_LIVE_ROOT"])
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.terminate()
         app.launch()
         for (major, port) in [("v1", 4195), ("v2", 4199)] {
             connect(app, name: "Composer \(major)", port: port, directory: root + "/\(major)/project")
@@ -99,6 +100,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         let root = try XCTUnwrap(environment["BYOT_LIVE_ROOT"])
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.terminate()
         app.launch()
         for (major, port) in [("v1", 4195), ("v2", 4199)] {
             connect(app, name: "Recovery \(major)", port: port, directory: root + "/\(major)/retired")
@@ -161,6 +163,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             return true
         }
         let app = XCUIApplication()
+        app.terminate()
         app.launch()
         let v1Name = "OpenCode " + v1
         let v2Name = "V2 " + v2.replacingOccurrences(of: "opencode2 v", with: "").replacingOccurrences(of: "0.0.0-", with: "")
@@ -188,6 +191,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
 
         // Relaunch exercises persisted server selection, grouping, and password retrieval.
         app.terminate()
+        app.terminate()
         app.launch()
         XCTAssertTrue(app.buttons["New session in project"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.buttons[v1Name].value as? String, "Selected server")
@@ -210,22 +214,51 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
     @MainActor
     private func connect(_ app: XCUIApplication, name serverName: String, port: Int, directory workingDirectory: String) {
         let add = app.buttons["Add server"].firstMatch
-        XCTAssertTrue(add.waitForExistence(timeout: 10), app.debugDescription)
+        guard waitUntilHittable(add, timeout: 10) else { XCTFail(app.debugDescription); return }
         add.tap()
         let name = app.textFields["Name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        name.tap()
-        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + serverName)
+        // Wait through sheet presentation; retry only a missed reversible opening tap.
+        if !name.waitForExistence(timeout: 3), add.exists, add.isHittable { add.tap() }
+        guard waitUntilHittable(name, timeout: 7), focus(name, in: app) else {
+            XCTFail("The server Name field must have keyboard focus before typing. " + app.debugDescription)
+            return
+        }
+        let initialName = name.value as? String ?? ""
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: initialName.count) + serverName)
         let url = app.textFields["https://your-mac.example.ts.net"]
-        url.tap(); url.typeText("https://127.0.0.1:\(port)")
+        guard focus(url, in: app) else { XCTFail("Server URL did not receive keyboard focus"); return }
+        url.typeText("https://127.0.0.1:\(port)")
         let password = app.secureTextFields["Server password"]
-        password.tap(); password.typeText("byot-local-fixture-only")
+        guard focus(password, in: app) else { XCTFail("Server password did not receive keyboard focus"); return }
+        password.typeText("byot-local-fixture-only")
         let directory = app.textFields["/Users/me/project"]
-        directory.tap(); directory.typeText(workingDirectory)
+        guard focus(directory, in: app) else { XCTFail("Project directory did not receive keyboard focus"); return }
+        directory.typeText(workingDirectory)
         app.buttons["Save"].tap()
         let notNow = app.buttons["Not Now"]
         if notNow.waitForExistence(timeout: 3) { notNow.tap() }
         XCTAssertTrue(app.buttons[serverName].waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    @MainActor
+    private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"),
+            object: element)], timeout: timeout) == .completed
+    }
+
+    @MainActor
+    private func focus(_ field: XCUIElement, in app: XCUIApplication) -> Bool {
+        guard waitUntilHittable(field, timeout: 5) else { return false }
+        for _ in 0..<2 {
+            field.tap()
+            let focused = app.descendants(matching: field.elementType)
+                .matching(NSPredicate(format: "hasKeyboardFocus == true"))
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                app.keyboards.firstMatch.exists && focused.allElementsBoundByIndex.contains { $0.frame == field.frame }
+            }, object: nil)
+            if XCTWaiter.wait(for: [ready], timeout: 3) == .completed { return true }
+        }
+        return false
     }
 
     @MainActor
