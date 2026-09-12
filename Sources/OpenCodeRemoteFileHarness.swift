@@ -4,6 +4,7 @@ import SwiftUI
 struct OpenCodeRemoteFileHarness: View {
     @State private var text = ""
     @State private var references: [OpenCodePromptFileReference] = []
+    @State private var showingPicker = false
     @StateObject private var files = OpenCodeRemoteFileStore(service: OpenCodeRemoteFileFixtureService())
     @State private var sent = ""
 
@@ -12,9 +13,11 @@ struct OpenCodeRemoteFileHarness: View {
             VStack {
                 Text(sent).accessibilityIdentifier("remote-file-sent")
                 Spacer()
-                OpenCodeRemoteContextView(text: $text, references: $references, files: files)
+                OpenCodeRemoteContextView(text: $text, references: $references, files: files,
+                                          showingPicker: $showingPicker)
                 TextField("Message", text: $text).textFieldStyle(.roundedBorder)
                     .accessibilityIdentifier("remote-file-draft")
+                OpenCodeRemoteFileButton { showingPicker = true }
                 Button("Send fixture context") {
                     sent = references.map(\.fileURL).joined(separator: "\n")
                     references = []; text = ""

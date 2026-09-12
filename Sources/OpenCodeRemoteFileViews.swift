@@ -1,10 +1,28 @@
 import SwiftUI
 
+struct OpenCodeRemoteFileButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label("Files", systemImage: "doc")
+                .font(.cleanCaptionBold)
+                .lineLimit(1)
+                .padding(.horizontal, 8)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("remote-file-picker")
+        .accessibilityHint("Browse files on this session’s server")
+    }
+}
+
 struct OpenCodeRemoteContextView: View {
     @Binding var text: String
     @Binding var references: [OpenCodePromptFileReference]
     @ObservedObject var files: OpenCodeRemoteFileStore
-    @State private var showingPicker = false
+    @Binding var showingPicker: Bool
     @State private var preview: OpenCodePromptFileReference?
 
     var body: some View {
@@ -32,11 +50,6 @@ struct OpenCodeRemoteContextView: View {
                 }
                 .accessibilityIdentifier("remote-file-context")
             }
-            Button { showingPicker = true } label: {
-                Label("Server files", systemImage: "at")
-                    .font(.cleanCaptionBold).frame(minHeight: 44)
-            }
-            .accessibilityIdentifier("remote-file-picker")
             if OpenCodeFileMention.query(in: text) != nil {
                 if let error = files.suggestionErrorMessage {
                     Text(error).font(.cleanCaption).foregroundStyle(.secondary)
