@@ -89,7 +89,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             XCTAssertTrue(app.staticTexts["BYOT upstream compatibility verified."].firstMatch.waitForExistence(timeout: 10))
             XCTAssertTrue(app.buttons["opencode-composer-stop"].waitForNonExistence(timeout: 30),
                 "The session must be idle before leaving its restored history")
-            app.navigationBars.buttons.element(boundBy: 0).tap()
+            leaveComposer(app, title: renamed)
         }
     }
 
@@ -200,6 +200,33 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["BYOT attachment acceptance"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["BYOT v1 acceptance"].exists)
         attach("upstream-v2-restored-server-switch")
+    }
+
+    @MainActor
+    private func leaveComposer(_ app: XCUIApplication, title: String) {
+        let origin = app.navigationBars[title]
+        let back = origin.buttons["BackButton"]
+        let browser = app.navigationBars["byot"]
+        let addServer = app.buttons["Add server"].firstMatch
+        let destinationReady = NSPredicate { _, _ in
+            browser.exists && addServer.exists && addServer.isHittable
+        }
+        func waitForDestination(timeout: TimeInterval) -> Bool {
+            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: destinationReady, object: nil)],
+                          timeout: timeout) == .completed
+        }
+        guard waitUntilHittable(back, timeout: 5) else {
+            XCTFail("The conversation Back button must be available. " + app.debugDescription)
+            return
+        }
+        back.tap()
+        // Retry a missed tap only while the same conversation is still visible;
+        // never navigate again after reaching the server browser.
+        if !waitForDestination(timeout: 3), !browser.exists,
+           origin.exists, origin.isHittable, back.exists, back.isHittable {
+            back.tap()
+        }
+        XCTAssertTrue(waitForDestination(timeout: 7), "Back must reach the byot server browser. " + app.debugDescription)
     }
 
     @MainActor
