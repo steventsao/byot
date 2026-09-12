@@ -13,8 +13,16 @@ final class OpenCodeComposerLiveTests: XCTestCase {
             let client = OpenCodeClient(profile: OpenCodeServerProfile(name: "Composer \(major)",
                 baseURL: "https://127.0.0.1:\(port)", directory: directory), password: "byot-local-fixture-only")
             let session = try await client.createSession(directory: directory, title: "Composer acceptance \(major)")
-            let providers = try await client.connectedProviderModels(directory: directory)
-            let model = try XCTUnwrap(providers.first { $0.providerID == "fixture" }?.models.first { $0.modelID == "test" })
+            // Beta catalogs are snapshots and can precede provider plugin settlement.
+            // Wait for this fixture's advertised model rather than relying on startup timing.
+            var readyModel: OpenCodeModelOption?
+            for _ in 0..<50 {
+                let providers = try await client.connectedProviderModels(directory: directory)
+                readyModel = providers.first { $0.providerID == "fixture" }?.models.first { $0.modelID == "test" }
+                if readyModel != nil { break }
+                try await Task.sleep(for: .milliseconds(200))
+            }
+            let model = try XCTUnwrap(readyModel, "The real server must advertise fixture/test after plugin settlement")
             XCTAssertTrue(model.variants.contains("byot-careful"), "Fixture variant must come from actual server catalog")
             let catalog = try await client.composerCatalog(sessionID: session.id, directory: directory, workspace: nil)
             XCTAssertTrue(catalog.supportsVariants)

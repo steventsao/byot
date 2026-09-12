@@ -891,10 +891,8 @@ final class OpenCodeSessionStore: ObservableObject {
             let availableModels = providers.flatMap(\.models)
             if let persistedModelID {
                 selectedModel = availableModels.first { $0.qualifiedID == persistedModelID }
-                if selectedModel == nil {
-                    self.persistedModelID = nil
-                    defaults.removeObject(forKey: modelSelectionKey)
-                }
+                // A beta catalog may precede plugin settlement. Preserve this session's
+                // saved identity across incomplete snapshots; an explicit choice replaces it.
             } else if let selectedModel,
                       !availableModels.contains(where: { $0.id == selectedModel.id }) {
                 self.selectedModel = nil
