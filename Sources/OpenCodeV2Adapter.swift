@@ -1,6 +1,7 @@
 import Foundation
 
 struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
+    var apiSchema: OpenCodeJSONValue? { contract.schema }
     let contract: OpenCodeV2Contract
     let transport: any OpenCodeHTTPTransport
     let profile: OpenCodeServerProfile

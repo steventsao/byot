@@ -82,6 +82,13 @@ struct OpenCodeClient: Sendable {
         try await connection.adapter().capabilities
     }
 
+    func featureContext() async throws -> OpenCodeFeatureContext {
+        let adapter = try await connection.adapter()
+        return OpenCodeFeatureContext(
+            serverProtocol: adapter.serverProtocol, schema: adapter.apiSchema,
+            transport: transport, profile: profile)
+    }
+
     func listProjects() async throws -> [OpenCodeProject] {
         try await connection.adapter().listProjects()
     }

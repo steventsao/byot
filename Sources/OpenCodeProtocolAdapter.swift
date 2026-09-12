@@ -6,6 +6,7 @@ struct OpenCodeEventRoute: Equatable, Sendable {
 }
 
 protocol OpenCodeProtocolAdapting: Sendable {
+    var apiSchema: OpenCodeJSONValue? { get }
     var serverProtocol: OpenCodeServerProtocol { get }
     var usesForms: Bool { get }
     var capabilities: OpenCodeProtocolCapabilities { get }
@@ -60,4 +61,8 @@ protocol OpenCodeProtocolAdapting: Sendable {
     ) async throws -> Bool
 
     func eventRoute(directory: String, workspace: String?) -> OpenCodeEventRoute
+}
+
+extension OpenCodeProtocolAdapting {
+    var apiSchema: OpenCodeJSONValue? { nil }
 }
