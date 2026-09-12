@@ -124,7 +124,9 @@ extension OpenCodeClient {
             if let model = session?["model"]?.objectValue,
                let provider = model["providerID"]?.stringValue, let id = model["id"]?.stringValue {
                 catalog.inheritedModelID = "\(provider)/\(id)"
-                catalog.inheritedVariant = model["variant"]?.stringValue
+                // Shipped v2 betas serialize an omitted switch-model variant as
+                // the reserved "default" reference, not an advertised effort choice.
+                catalog.inheritedVariant = model["variant"]?.stringValue.flatMap { $0 == "default" ? nil : $0 }
             }
         }
         catalog.agents.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }

@@ -114,6 +114,13 @@ final class OpenCodeComposerFeatureTests: XCTestCase {
         XCTAssertEqual(requests.count, 1)
     }
 
+    func testBetaDefaultModelReferenceRestoresAsExplicitDefault() async throws {
+        let context = try makeBetaContext(transport: ComposerFeatureTransport())
+        let catalog = try await OpenCodeClient.loadComposerCatalog(context, sessionID: "ses_test", directory: "/repo", workspace: nil)
+        XCTAssertEqual(catalog.inheritedModelID, "fixture/m")
+        XCTAssertNil(catalog.inheritedVariant)
+    }
+
     func testBetaMissingMetadataIsOmittedAndMissingCommandRouteRejected() throws {
         var schema = try betaSchema().objectValue!
         var paths = schema["paths"]!.objectValue!
@@ -241,6 +248,9 @@ private actor ComposerFeatureTransport: OpenCodeHTTPTransport {
             response = #"{"all":[{"id":"fixture","name":"Fixture","models":{"m":{"name":"M","variants":{"careful":{},"quick":{}}},"other":{"name":"Other","variants":{"quick":{}}}}}],"connected":["fixture"]}"#
         } else if path == "/agent" { response = #"[{"name":"plan","mode":"primary"},{"name":"build","mode":"primary"}]"# }
         else if path == "/command" { response = "[]" }
+        else if path == "/api/session/ses_test" {
+            response = #"{"data":{"id":"ses_test","model":{"id":"m","providerID":"fixture","variant":"default"}}}"#
+        }
         else if path.hasSuffix("/active") { response = active ? #"{"data":{"ses_test":{}}}"# : #"{"data":{}}"# }
         else { response = #"{"data":{"sessionID":"ses_test"}}"# }
         return (Data(response.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type":"application/json"])!)
