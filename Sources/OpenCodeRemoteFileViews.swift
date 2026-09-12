@@ -289,7 +289,8 @@ struct OpenCodeRemoteFileReader: View {
                     Button("Clear") { firstLine = nil; lastLine = nil }
                 }
                 Button("Add selected lines as context") { add(files.reference(path: path, selection: selection)) }
-                    .buttonStyle(.borderedProminent).accessibilityIdentifier("remote-file-add-lines")
+                    .buttonStyle(.borderedProminent).foregroundStyle(BYOTBrand.accentInk)
+                    .accessibilityIdentifier("remote-file-add-lines")
             }
             Button("Add whole file as context", systemImage: "plus") { add(files.reference(path: path)) }
                 .buttonStyle(.bordered).accessibilityIdentifier("remote-file-add-whole")
