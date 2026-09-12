@@ -75,7 +75,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             attach("\(major)-session-tasks")
             app.buttons["Done"].tap()
             app.buttons["session-actions"].tap()
-            let undo = app.buttons["Undo last turn"]
+            let undo = app.buttons["session-menu-undo"]
             XCTAssertTrue(undo.waitForExistence(timeout: 5))
             XCTAssertTrue(undo.isEnabled)
             undo.tap()
@@ -83,7 +83,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             waitForExpectations(timeout: 10)
             attach("\(major)-undo-restored-command-prompt")
             app.buttons["session-actions"].tap()
-            let redo = app.buttons["Redo turn"]
+            let redo = app.buttons["session-menu-redo"]
             XCTAssertTrue(redo.waitForExistence(timeout: 5))
             XCTAssertTrue(redo.isEnabled)
             redo.tap()
