@@ -109,7 +109,8 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
                             providerName: provider.name,
                             modelID: model.id,
                             modelName: model.name,
-                            status: model.status
+                            status: model.status,
+                            variants: contract.schema.objectValue?["components"]?.objectValue?["schemas"]?.objectValue?["Model.Ref"]?.objectValue?["properties"]?.objectValue?["variant"] != nil ? (model.variants ?? []).map(\.id) : []
                         )
                     }
                     .sorted {
@@ -407,6 +408,8 @@ private struct OpenCodeV2Provider: Decodable {
 }
 
 private struct OpenCodeV2Model: Decodable {
+    struct Variant: Decodable { let id: String }
+    let variants: [Variant]?
     let id: String
     let providerID: String
     let name: String

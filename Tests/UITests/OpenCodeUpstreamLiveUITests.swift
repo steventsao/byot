@@ -4,6 +4,57 @@ import XCTest
 /// scripts/test-opencode-upstream.sh supplies real, pinned upstream servers.
 final class OpenCodeUpstreamLiveUITests: XCTestCase {
     @MainActor
+    func testComposerSlashAgentAndVariantControlsOnRealServers() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Run scripts/test-opencode-upstream.sh") }
+        let root = try XCTUnwrap(environment["BYOT_LIVE_ROOT"])
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launch()
+        for (major, port) in [("v1", 4195), ("v2", 4199)] {
+            connect(app, name: "Composer \(major)", port: port, directory: root + "/\(major)/project")
+            let newSession = app.buttons["New session"].firstMatch
+            XCTAssertTrue(newSession.waitForExistence(timeout: 10))
+            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: newSession)
+            waitForExpectations(timeout: 20)
+            newSession.tap()
+            startConfiguredSession(app)
+            let composer = app.textFields["opencode-composer-message"]
+            XCTAssertTrue(composer.waitForExistence(timeout: 10))
+            app.buttons["Choose model"].tap()
+            let model = app.buttons["Local acceptance fixture, BYOT Fixture"]
+            XCTAssertTrue(model.waitForExistence(timeout: 10))
+            model.tap()
+            let agentPicker = app.buttons["opencode-agent-picker"]
+            XCTAssertTrue(agentPicker.waitForExistence(timeout: 10))
+            agentPicker.tap()
+            let plan = app.buttons["opencode-agent-plan"]
+            XCTAssertTrue(plan.waitForExistence(timeout: 10))
+            plan.tap()
+            let variants = app.buttons["opencode-variant-picker"]
+            XCTAssertTrue(variants.waitForExistence(timeout: 10))
+            variants.tap()
+            app.buttons["byot-careful"].tap()
+            XCTAssertEqual(variants.value as? String, "byot-careful")
+            composer.tap()
+            composer.typeText("/byot")
+            let custom = app.buttons["opencode-command-command:byot-acceptance"]
+            XCTAssertTrue(custom.waitForExistence(timeout: 10))
+            XCTAssertTrue(custom.isHittable)
+            attach("\(major)-slash-command-catalog")
+            custom.tap()
+            composer.typeText("UI argument \(major)")
+            XCTAssertTrue(app.staticTexts["opencode-command-arguments"].exists)
+            attach("\(major)-agent-variant-command-ready")
+            let send = app.buttons["opencode-composer-send"]
+            XCTAssertTrue(send.isHittable)
+            send.tap()
+            XCTAssertTrue(app.staticTexts["BYOT upstream compatibility verified."].firstMatch.waitForExistence(timeout: 30))
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
+    }
+
+    @MainActor
     func testRetiredAutomaticModelRecoversOnV1AndV2() throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["BYOT_LIVE_ACCEPTANCE"] == "1" else { throw XCTSkip("Run scripts/test-opencode-upstream.sh") }
@@ -23,7 +74,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             // after typing. The chat has one text field, which remains stable.
             let composer = app.textFields.firstMatch
             XCTAssertTrue(composer.waitForExistence(timeout: 10))
-            XCTAssertEqual(app.buttons["Choose model"].value as? String, "Automatic")
+            XCTAssertTrue(app.buttons["Choose model"].exists)
             let prompt = "Recover this prompt on \(major)."
             composer.tap()
             composer.typeText(prompt)

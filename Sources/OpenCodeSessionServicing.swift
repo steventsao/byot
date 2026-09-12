@@ -13,6 +13,8 @@ protocol OpenCodeProjectServicing: OpenCodeSessionBrowsing {
 /// The session store consumes normalized domain operations. It needs neither
 /// credentials nor knowledge of the selected protocol's routes and wire DTOs.
 protocol OpenCodeSessionServicing: Sendable {
+    func composerCatalog(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeComposerCatalog
+    func sendPrompt(sessionID: String, directory: String, workspace: String?, prompt: OpenCodeQueuedPrompt) async throws
     func capabilities() async throws -> OpenCodeProtocolCapabilities
     func connectedProviderModels(directory: String, workspace: String?) async throws
         -> [OpenCodeProviderModels]
@@ -40,3 +42,14 @@ protocol OpenCodeSessionServicing: Sendable {
 }
 
 extension OpenCodeClient: OpenCodeProjectServicing, OpenCodeSessionServicing {}
+
+// Lightweight test/harness services can retain their existing basic prompt implementation.
+extension OpenCodeSessionServicing {
+    func composerCatalog(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeComposerCatalog {
+        OpenCodeComposerCatalog()
+    }
+    func sendPrompt(sessionID: String, directory: String, workspace: String?, prompt: OpenCodeQueuedPrompt) async throws {
+        try await sendMessage(sessionID: sessionID, directory: directory, workspace: workspace,
+                              model: prompt.model, text: prompt.text, attachments: prompt.attachments, promptID: prompt.id)
+    }
+}

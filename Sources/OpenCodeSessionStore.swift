@@ -28,6 +28,10 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var transcriptRevision = 0
     @Published private(set) var providerModels: [OpenCodeProviderModels] = []
     @Published private(set) var selectedModel: OpenCodeModelOption?
+    @Published private(set) var composerCatalog = OpenCodeComposerCatalog()
+    @Published private(set) var selectedAgentID: String?
+    @Published private(set) var selectedVariant: String?
+    @Published private(set) var composerErrorMessage: String?
     @Published private(set) var queuedPrompts: [OpenCodeQueuedPrompt] = []
     @Published private(set) var queueAnnouncementRevision = 0
     @Published private(set) var isAwaitingFirstVisibleOutput = false
@@ -40,11 +44,15 @@ final class OpenCodeSessionStore: ObservableObject {
     let session: OpenCodeSession
     let directory: String
     let remoteFiles: OpenCodeRemoteFileStore?
+    let serverID: UUID
     private let workspace: String?
     private let service: any OpenCodeSessionServicing
     private let defaults: UserDefaults
     private let modelSelectionKey: String
     private let serverDefaultModelKey: String
+    private let agentSelectionKey: String
+    private let serverDefaultAgentKey: String
+    private var submittedPrompts: [String: OpenCodeQueuedPrompt] = [:]
     private var persistedModelID: String?
     private var transcript = OpenCodeTranscriptReducer()
     private var promptQueue = OpenCodePromptQueue()
@@ -84,6 +92,7 @@ final class OpenCodeSessionStore: ObservableObject {
         remoteFiles: OpenCodeRemoteFileStore? = nil
     ) {
         self.service = service
+        self.serverID = serverID
         self.session = session
         self.directory = directory
         self.defaults = defaults
@@ -92,6 +101,9 @@ final class OpenCodeSessionStore: ObservableObject {
         serverDefaultModelKey = "byot.opencode.model.default.\(serverID.uuidString)"
         persistedModelID = defaults.string(forKey: modelSelectionKey)
         workspace = session.workspaceID
+        agentSelectionKey = "byot.opencode.agent.\(serverID.uuidString).\(session.id)"
+        serverDefaultAgentKey = "byot.opencode.agent.default.\(serverID.uuidString)"
+        selectedAgentID = defaults.string(forKey: agentSelectionKey)?.trimmedNonEmpty
     }
 
     deinit {
@@ -150,7 +162,11 @@ final class OpenCodeSessionStore: ObservableObject {
     func retryWithSelectedModel() -> Bool {
         guard canRetryWithSelectedModel, let original = modelFailurePrompt,
               let prompt = promptQueue.beginExplicitDispatch(
-                text: original.text, model: selectedModel, attachments: original.attachments
+                text: original.text, model: selectedModel, attachments: original.attachments,
+                agent: submittedPrompts[original.messageID]?.agent ?? selectedAgentID,
+                variant: selectedVariant,
+                command: submittedPrompts[original.messageID]?.command,
+                remoteReferences: submittedPrompts[original.messageID]?.remoteReferences ?? []
               ) else { return false }
         dismissedUnansweredMessageID = original.messageID
         publishPromptQueue()
@@ -373,10 +389,16 @@ final class OpenCodeSessionStore: ObservableObject {
 
     func send(
         _ text: String,
-        attachments: [OpenCodePromptAttachment] = []
+        attachments: [OpenCodePromptAttachment] = [],
+        remoteReferences: [OpenCodePromptFileReference] = []
     ) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (!trimmed.isEmpty || !attachments.isEmpty), canSubmitPrompt else { return false }
+        guard (!trimmed.isEmpty || !attachments.isEmpty || !remoteReferences.isEmpty), canSubmitPrompt else { return false }
+        guard remoteReferences.allSatisfy({ $0.matches(serverID: serverID, projectID: session.projectID,
+            directory: directory, workspaceID: workspace) }) else {
+            errorMessage = "File context belongs to a different project. Select the file again."
+            return false
+        }
         do {
             try OpenCodePromptAttachment.validate(attachments)
         } catch {
@@ -390,6 +412,9 @@ final class OpenCodeSessionStore: ObservableObject {
             text: trimmed,
             model: selectedModel,
             attachments: attachments,
+            agent: selectedAgentID, variant: selectedVariant,
+            command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands),
+            remoteReferences: remoteReferences,
             serverIsActive: status.isActive || isSending
         )
         publishPromptQueue()
@@ -455,7 +480,11 @@ final class OpenCodeSessionStore: ObservableObject {
             guard let dispatchPrompt = promptQueue.beginExplicitDispatch(
                 text: prompt.text,
                 model: selectedModel,
-                attachments: prompt.attachments
+                attachments: prompt.attachments,
+                agent: submittedPrompts[prompt.messageID]?.agent ?? selectedAgentID,
+                variant: submittedPrompts[prompt.messageID]?.variant ?? selectedVariant,
+                command: submittedPrompts[prompt.messageID]?.command,
+                remoteReferences: submittedPrompts[prompt.messageID]?.remoteReferences ?? []
             ) else {
                 dismissedUnansweredMessageID = nil
                 updateUnansweredPromptRecovery()
@@ -518,15 +547,13 @@ final class OpenCodeSessionStore: ObservableObject {
     ) async {
         guard isCurrentPromptDispatch(dispatchID), !Task.isCancelled else { return }
         do {
-            try await service.sendMessage(
-                sessionID: session.id,
-                directory: directory,
-                workspace: workspace,
-                model: prompt.model,
-                text: prompt.text,
-                attachments: prompt.attachments,
-                promptID: prompt.id
-            )
+            guard prompt.remoteReferences.allSatisfy({ $0.matches(serverID: serverID,
+                projectID: session.projectID, directory: directory, workspaceID: workspace) }) else {
+                throw OpenCodeConnectionError.server("File context belongs to a different project. Remove this queued prompt and select the file again.")
+            }
+            submittedPrompts[prompt.messageID] = prompt
+            try await service.sendPrompt(sessionID: session.id, directory: directory,
+                                         workspace: workspace, prompt: prompt)
             try Task.checkCancellation()
             guard isCurrentPromptDispatch(dispatchID) else { return }
             let observedServerActivity = promptQueue.hasObservedServerActivity
@@ -558,7 +585,9 @@ final class OpenCodeSessionStore: ObservableObject {
             if serverConfirmedActivity == false {
                 clearOptimisticBusy()
             }
-            errorMessage = error.localizedDescription
+            errorMessage = prompt.command?.kind == .command
+                ? "The command may have run before the connection failed. Review the session before choosing Run again. " + error.localizedDescription
+                : error.localizedDescription
         }
     }
 
@@ -593,6 +622,8 @@ final class OpenCodeSessionStore: ObservableObject {
                 selectedModel = availableModels.first { $0.qualifiedID == serverDefaultID }
             }
             modelErrorMessage = nil
+            await reloadComposerCatalog()
+            restoreVariant()
         } catch is CancellationError {
             return
         } catch {
@@ -610,6 +641,78 @@ final class OpenCodeSessionStore: ObservableObject {
             defaults.removeObject(forKey: modelSelectionKey)
             defaults.removeObject(forKey: serverDefaultModelKey)
         }
+        restoreVariant()
+    }
+
+    func reloadComposerCatalog() async {
+        do {
+            let catalog = try await service.composerCatalog(sessionID: session.id, directory: directory, workspace: workspace)
+            try Task.checkCancellation()
+            composerCatalog = catalog
+            composerErrorMessage = catalog.unavailableReason
+            // Existing sessions keep their actual server choices unless this session has a saved override.
+            if persistedModelID == nil, let inherited = catalog.inheritedModelID {
+                selectedModel = providerModels.flatMap(\.models).first { $0.qualifiedID == inherited }
+            }
+            if let selectedAgentID, !catalog.agents.contains(where: { $0.id == selectedAgentID }) {
+                self.selectedAgentID = nil
+                defaults.removeObject(forKey: agentSelectionKey)
+            }
+            if selectedAgentID == nil, defaults.object(forKey: agentSelectionKey) == nil,
+               catalog.inheritedAgent == nil, session.agent == nil,
+               let preferred = defaults.string(forKey: serverDefaultAgentKey),
+               catalog.agents.contains(where: { $0.id == preferred }) { selectedAgentID = preferred }
+        } catch is CancellationError { return }
+        catch { composerErrorMessage = error.localizedDescription }
+    }
+
+    var selectedAgentName: String {
+        if let selectedAgentID {
+            return composerCatalog.agents.first { $0.id == selectedAgentID }?.name ?? selectedAgentID
+        }
+        let inherited = composerCatalog.inheritedAgent ?? session.agent
+        return inherited.map { "Default (\($0))" } ?? "Default agent"
+    }
+
+    func selectAgent(_ id: String?) {
+        guard id == nil || composerCatalog.agents.contains(where: { $0.id == id }) else { return }
+        selectedAgentID = id
+        defaults.set(id ?? "", forKey: agentSelectionKey)
+        if let id { defaults.set(id, forKey: serverDefaultAgentKey) }
+        else { defaults.removeObject(forKey: serverDefaultAgentKey) }
+    }
+
+    var availableVariants: [String] { selectedModel?.variants ?? [] }
+
+    var variantLabel: String {
+        if let selectedVariant { return selectedVariant }
+        return "Default"
+    }
+
+    private var variantSelectionKey: String? {
+        selectedModel.map { "byot.opencode.variant.\(serverID.uuidString).\(session.id).\($0.qualifiedID)" }
+    }
+
+    private var defaultVariantKey: String? {
+        selectedModel.map { "byot.opencode.variant.default.\(serverID.uuidString).\($0.qualifiedID)" }
+    }
+
+    func selectVariant(_ variant: String?) {
+        guard variant == nil || availableVariants.contains(variant!) else { return }
+        selectedVariant = variant
+        if let key = variantSelectionKey { defaults.set(variant ?? "", forKey: key) }
+        if let key = defaultVariantKey { defaults.set(variant ?? "", forKey: key) }
+    }
+
+    private func restoreVariant() {
+        guard let key = variantSelectionKey else { selectedVariant = nil; return }
+        // An empty saved value is an explicit Default, distinct from no preference.
+        let preferred: String?
+        if let saved = defaults.string(forKey: key) { preferred = saved.trimmedNonEmpty }
+        else if selectedModel?.qualifiedID == composerCatalog.inheritedModelID {
+            preferred = composerCatalog.inheritedVariant
+        } else { preferred = defaultVariantKey.flatMap { defaults.string(forKey: $0)?.trimmedNonEmpty } }
+        selectedVariant = preferred.flatMap { availableVariants.contains($0) ? $0 : nil }
     }
 
     func reply(

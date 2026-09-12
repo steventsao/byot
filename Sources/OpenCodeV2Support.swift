@@ -68,7 +68,9 @@ enum OpenCodeV2Normalization {
         switch type {
         case "user", "synthetic", "system", "skill":
             var parts: [OpenCodePart] = []
-            let text = object["text"]?.stringValue ?? ""
+            let metadata = object["metadata"]?.objectValue
+            let selectedModel = metadata?["model"]?.objectValue
+            let text = metadata?["displayText"]?.stringValue ?? object["text"]?.stringValue ?? ""
             if !text.isEmpty {
                 parts.append(
                     textPart(
@@ -98,11 +100,12 @@ enum OpenCodeV2Normalization {
                     sessionID: sessionID,
                     role: type == "user" ? "user" : "assistant",
                     time: OpenCodeMessageTime(created: created, completed: nil),
-                    agent: nil,
-                    modelID: nil,
-                    providerID: nil,
+                    agent: metadata?["agent"]?.stringValue,
+                    modelID: selectedModel?["modelID"]?.stringValue ?? selectedModel?["id"]?.stringValue,
+                    providerID: selectedModel?["providerID"]?.stringValue,
                     finish: nil,
-                    error: nil
+                    error: nil,
+                    variant: selectedModel?["variant"]?.stringValue
                 ),
                 parts: parts
             )

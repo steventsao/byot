@@ -7,6 +7,8 @@ struct OpenCodeModelOption: Identifiable, Equatable, Hashable, Sendable {
     let modelName: String
     let status: String?
 
+    var variants: [String] = []
+
     var id: String { qualifiedID }
 
     var qualifiedID: String {

@@ -130,6 +130,7 @@ struct OpenCodeMessageInfo: Codable, Identifiable, Equatable, Sendable {
     let providerID: String?
     let finish: String?
     let error: OpenCodeMessageError?
+    var variant: String? = nil
 }
 
 struct OpenCodeMessageTime: Codable, Equatable, Sendable {
@@ -429,5 +430,24 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
         try container.encode(type, forKey: .type)
         try container.encodeIfPresent(created, forKey: .created)
         try container.encode(properties, forKey: isV2 ? .data : .properties)
+    }
+}
+
+// v1 user messages carry model identity in `model`; assistant messages flatten it.
+extension OpenCodeMessageInfo {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        sessionID = try c.decode(String.self, forKey: .sessionID)
+        role = try c.decode(String.self, forKey: .role)
+        time = try c.decode(OpenCodeMessageTime.self, forKey: .time)
+        agent = try c.decodeIfPresent(String.self, forKey: .agent)
+        finish = try c.decodeIfPresent(String.self, forKey: .finish)
+        error = try c.decodeIfPresent(OpenCodeMessageError.self, forKey: .error)
+        variant = try c.decodeIfPresent(String.self, forKey: .variant)
+        let raw = try OpenCodeJSONValue(from: decoder).objectValue
+        let model = raw?["model"]?.objectValue
+        modelID = try c.decodeIfPresent(String.self, forKey: .modelID) ?? model?["modelID"]?.stringValue
+        providerID = try c.decodeIfPresent(String.self, forKey: .providerID) ?? model?["providerID"]?.stringValue
     }
 }
