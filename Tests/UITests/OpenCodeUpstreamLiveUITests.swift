@@ -51,8 +51,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             XCTAssertTrue(send.isHittable)
             send.tap()
             XCTAssertTrue(app.staticTexts["BYOT upstream compatibility verified."].firstMatch.waitForExistence(timeout: 30))
-            app.buttons["session-actions"].tap()
-            app.buttons["Session details"].tap()
+            openSessionMenuAction("Session details", in: app).tap()
             XCTAssertTrue(app.navigationBars["Session details"].waitForExistence(timeout: 10))
             let rename = app.buttons["session-rename"]
             expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: rename)
@@ -74,25 +73,22 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             attach("\(major)-session-details-renamed")
             app.buttons["Done"].tap()
             XCTAssertTrue(app.navigationBars[renamed].waitForExistence(timeout: 5))
-            app.buttons["session-actions"].tap()
-            app.buttons["Tasks"].tap()
+            openSessionMenuAction("Tasks", in: app).tap()
             XCTAssertTrue(app.navigationBars["Tasks"].waitForExistence(timeout: 5))
             attach("\(major)-session-tasks")
             app.buttons["Done"].tap()
-            app.buttons["session-actions"].tap()
-            let undo = app.buttons["session-menu-undo"]
-            XCTAssertTrue(undo.waitForExistence(timeout: 5))
+            let undo = openSessionMenuAction("session-menu-undo", in: app)
             XCTAssertTrue(undo.isEnabled)
             undo.tap()
             expectation(for: NSPredicate(format: "value CONTAINS %@", "UI argument \(major)"), evaluatedWith: composer)
             waitForExpectations(timeout: 10)
             attach("\(major)-undo-restored-command-prompt")
-            app.buttons["session-actions"].tap()
-            let redo = app.buttons["session-menu-redo"]
-            XCTAssertTrue(redo.waitForExistence(timeout: 5))
+            let redo = openSessionMenuAction("session-menu-redo", in: app)
             XCTAssertTrue(redo.isEnabled)
             redo.tap()
             XCTAssertTrue(app.staticTexts["BYOT upstream compatibility verified."].firstMatch.waitForExistence(timeout: 10))
+            XCTAssertTrue(app.buttons["opencode-composer-stop"].waitForNonExistence(timeout: 30),
+                "The session must be idle before leaving its restored history")
             app.navigationBars.buttons.element(boundBy: 0).tap()
         }
     }
@@ -204,6 +200,24 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["BYOT attachment acceptance"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["BYOT v1 acceptance"].exists)
         attach("upstream-v2-restored-server-switch")
+    }
+
+    @MainActor
+    private func openSessionMenuAction(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        XCTAssertTrue(app.buttons["opencode-composer-stop"].waitForNonExistence(timeout: 30),
+            "Wait for the server to finish before opening session actions")
+        let menu = app.buttons["session-actions"]
+        let action = app.buttons[identifier]
+        XCTAssertTrue(waitUntilHittable(menu, timeout: 5), app.debugDescription)
+        menu.tap()
+        // Retry a missed opening tap once if the item never appeared;
+        // do not toggle a menu that is already open.
+        if !action.waitForExistence(timeout: 3) {
+            XCTAssertTrue(waitUntilHittable(menu, timeout: 5), app.debugDescription)
+            menu.tap()
+        }
+        XCTAssertTrue(waitUntilHittable(action, timeout: 5), app.debugDescription)
+        return action
     }
 
     @MainActor
