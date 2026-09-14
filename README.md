@@ -5,10 +5,14 @@ BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source
 [**Download on the App Store**](https://apps.apple.com/us/app/byot/id6782403920) · [byot.app](https://byot.app)
 
 <p align="center">
-  <img src="docs/screenshots/02-live-turn-streaming.png" alt="A live turn: reasoning, completed write and edit tool calls, a queued follow-up, and OpenCode working" width="24%">
-  <img src="docs/screenshots/03-turn-complete-tests-pass.png" alt="The finished turn: all tests pass, with a summary of the files the agent changed" width="24%">
-  <img src="docs/screenshots/06-review-session-diff.png" alt="Reviewing the session diff on the phone" width="24%">
-  <img src="docs/screenshots/01-connect-your-opencode-server.png" alt="Connect screen: add the HTTPS address of your OpenCode server" width="24%">
+  <img src="docs/screenshots/01-connect-your-opencode-server.png" alt="Connect screen: add the HTTPS address of your OpenCode server, or try the demo session" width="32%">
+  <img src="docs/screenshots/02-add-server-details.png" alt="Server details: name, HTTPS address, username, password, and an optional working directory" width="32%">
+  <img src="docs/screenshots/03-streaming-session-with-tools.png" alt="A streaming session: reasoning, a completed shell command, and OpenCode working" width="32%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/04-approve-tool-permissions.png" alt="A permission request for a bash command: allow once, always allow, or reject" width="32%">
+  <img src="docs/screenshots/05-answer-opencode-questions.png" alt="OpenCode asks which rate limiter to use, with choices or a custom answer" width="32%">
+  <img src="docs/screenshots/06-review-session-diff.png" alt="Reviewing the session diff on the phone" width="32%">
 </p>
 
 ## What it does
