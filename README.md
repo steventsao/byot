@@ -5,14 +5,14 @@ BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source
 [**Download on the App Store**](https://apps.apple.com/us/app/byot/id6782403920) · [byot.app](https://byot.app)
 
 <p align="center">
-  <img src="docs/screenshots/01-connect-your-opencode-server.png" alt="Connect screen: add the HTTPS address of your OpenCode server, or try the demo session" width="32%">
-  <img src="docs/screenshots/02-add-server-details.png" alt="Server details: name, HTTPS address, username, password, and an optional working directory" width="32%">
-  <img src="docs/screenshots/03-streaming-session-with-tools.png" alt="A streaming session: reasoning, a completed shell command, and OpenCode working" width="32%">
+  <img src="docs/app-store/screenshots/en-US/iphone-6.9/01-sessions.png" alt="Sessions across projects on a Mac mini server, with live Working and Idle status" width="32%">
+  <img src="docs/app-store/screenshots/en-US/iphone-6.9/02-live-turn.png" alt="A live turn: reasoning, search, read, write, and edit tool calls with task progress" width="32%">
+  <img src="docs/app-store/screenshots/en-US/iphone-6.9/03-answer-questions.png" alt="OpenCode asks which rate limiter to use, with choices or a custom answer" width="32%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/04-approve-tool-permissions.png" alt="A permission request for a bash command: allow once, always allow, or reject" width="32%">
-  <img src="docs/screenshots/05-answer-opencode-questions.png" alt="OpenCode asks which rate limiter to use, with choices or a custom answer" width="32%">
-  <img src="docs/screenshots/06-review-session-diff.png" alt="Reviewing the session diff on the phone" width="32%">
+  <img src="docs/app-store/screenshots/en-US/iphone-6.9/04-approve-permissions.png" alt="A bash permission request: allow once, always allow, or reject" width="32%">
+  <img src="docs/app-store/screenshots/en-US/iphone-6.9/05-turn-complete.png" alt="The finished turn: all upload tests pass, with a summary of the changed files" width="32%">
+  <img src="docs/app-store/screenshots/en-US/iphone-6.9/06-review-changes.png" alt="Reviewing the session diff on the phone" width="32%">
 </p>
 
 ## What it does
