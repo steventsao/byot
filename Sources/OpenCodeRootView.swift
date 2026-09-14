@@ -77,12 +77,14 @@ struct OpenCodeRootView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("About byot", systemImage: "info.circle", action: openAppNavigation)
                         .labelStyle(.iconOnly)
+                        .tint(BYOTBrand.chromeTint)
                         .accessibilityIdentifier("about-byot")
                 }
                 ToolbarItem(placement: .principal) { BYOTWordmark() }
                 if profileStore.activeProfile != nil {
                     ToolbarItem(placement: .topBarTrailing) {
                         profileMenu
+                            .tint(BYOTBrand.chromeTint)
                     }
                 }
             }

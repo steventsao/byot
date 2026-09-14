@@ -90,6 +90,7 @@ struct OpenCodeProjectSessionsView: View {
                 Button("New session", systemImage: "plus") {
                     isCreatingSession = true
                 }
+                .tint(BYOTBrand.chromeTint)
                 .disabled(store.isCreating)
             }
         }
@@ -103,7 +104,8 @@ struct OpenCodeProjectSessionsView: View {
                 OpenCodeSessionView(
                     client: client,
                     session: createdSession,
-                    directory: createdSession.directory
+                    directory: createdSession.directory,
+                    startsWithComposerFocused: true
                 )
             }
         }

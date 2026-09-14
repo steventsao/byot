@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct OpenCodeSessionComposerView: View {
     @ObservedObject var store: OpenCodeSessionStore
+    private let startsFocused: Bool
     private let onNewSession: (() -> Void)?
     private let sessionActions: [OpenCodeComposerAction]
     private let restoredMessage: OpenCodeMessageEnvelope?
@@ -21,11 +22,13 @@ struct OpenCodeSessionComposerView: View {
     @State private var attachmentErrorMessage: String?
     @State private var isShowingModelPicker = false
     @State private var previewAttachment: OpenCodePromptAttachment?
+    @State private var didRequestInitialFocus = false
     @FocusState private var isFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(
         store: OpenCodeSessionStore,
+        startsFocused: Bool = false,
         screenshotAttachment: OpenCodePromptAttachment? = nil,
         onNewSession: (() -> Void)? = nil,
         sessionActions: [OpenCodeComposerAction] = [],
@@ -33,6 +36,7 @@ struct OpenCodeSessionComposerView: View {
         onRestoreConsumed: (() -> Void)? = nil
     ) {
         self.store = store
+        self.startsFocused = startsFocused
         self.screenshotAttachment = screenshotAttachment
         self.onNewSession = onNewSession
         self.sessionActions = sessionActions
@@ -67,6 +71,7 @@ struct OpenCodeSessionComposerView: View {
 
             TextField("Message", text: $text, axis: .vertical)
                 .focused($isFocused)
+                .tint(BYOTBrand.interactionTint)
                 .lineLimit(1...(dynamicTypeSize.isAccessibilitySize ? 2 : 6))
                 .padding(.horizontal, 8)
                 .padding(.top, 6)
@@ -119,6 +124,13 @@ struct OpenCodeSessionComposerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(BYOTBrand.canvas)
+        .task {
+            guard startsFocused, !didRequestInitialFocus else { return }
+            didRequestInitialFocus = true
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            isFocused = true
+        }
         .sheet(item: $previewAttachment) { attachment in
             OpenCodeAttachmentPreview(attachment: attachment)
         }

@@ -37,25 +37,54 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         compose.tap()
         let server = app.buttons["new-session-server"]
         XCTAssertTrue(server.waitForExistence(timeout: 5), app.debugDescription)
-        server.tap()
-        app.buttons["Windows"].firstMatch.tap()
+        let windows = app.buttons["Windows"].firstMatch
+        guard selectMenuItem(windows, opening: server) else {
+            XCTFail("The server menu did not present", file: #filePath, line: #line)
+            return
+        }
         let project = app.buttons["new-session-project"]
         XCTAssertTrue(project.waitForExistence(timeout: 10))
-        project.tap()
-        app.buttons["docs"].firstMatch.tap()
+        let docs = app.buttons["docs"].firstMatch
+        guard selectMenuItem(docs, opening: project) else {
+            XCTFail("The project menu did not present", file: #filePath, line: #line)
+            return
+        }
         XCTAssertTrue(app.staticTexts["C:/work/docs"].waitForExistence(timeout: 5))
         attach("new-session-inline-context")
-        project.tap()
-        app.buttons["Other directory…"].tap()
+        guard selectMenuItem(app.buttons["Other directory…"], opening: project) else {
+            XCTFail("The custom-directory menu item did not present", file: #filePath, line: #line)
+            return
+        }
         let directory = app.textFields["new-session-directory"]
         XCTAssertTrue(directory.waitForExistence(timeout: 5))
         directory.tap()
         directory.typeText("C:/work/new-project")
         app.swipeUp()
         app.buttons["start-session"].tap()
-        XCTAssertTrue(app.textFields["opencode-composer-message"].waitForExistence(timeout: 10))
+        let composer = app.textFields["opencode-composer-message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
+                      "A newly created session should activate its composer keyboard")
+        let focusedComposer = app.textFields
+            .matching(NSPredicate(format: "hasKeyboardFocus == true"))
+            .matching(identifier: "opencode-composer-message")
+            .firstMatch
+        XCTAssertTrue(focusedComposer.waitForExistence(timeout: 5),
+                      "The new session composer should receive keyboard focus")
         XCTAssertTrue(app.staticTexts["Server Windows, project C:/work/new-project"].exists, app.debugDescription)
         attach("new-session-custom-directory")
+    }
+
+    @MainActor
+    private func selectMenuItem(_ item: XCUIElement, opening menu: XCUIElement) -> Bool {
+        for _ in 0..<3 {
+            menu.tap()
+            if item.waitForExistence(timeout: 2) {
+                item.tap()
+                return true
+            }
+        }
+        return false
     }
 
     @MainActor

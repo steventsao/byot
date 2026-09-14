@@ -187,6 +187,7 @@ struct OpenCodeConnectedView: View {
                         }
                     }
                 }
+                .tint(BYOTBrand.chromeTint)
             }
         }
         .refreshable { await reload() }
@@ -209,7 +210,7 @@ struct OpenCodeConnectedView: View {
             sessionView(route)
         }
         .navigationDestination(item: $createdRoute) { route in
-            sessionView(route)
+            sessionView(route, startsWithComposerFocused: true)
         }
     }
 
@@ -315,9 +316,13 @@ struct OpenCodeConnectedView: View {
         .accessibilityIdentifier("session-\(session.id)")
     }
 
-    private func sessionView(_ route: OpenCodeSessionRoute) -> some View {
+    private func sessionView(
+        _ route: OpenCodeSessionRoute,
+        startsWithComposerFocused: Bool = false
+    ) -> some View {
         OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory,
-                            attention: attention)
+                            attention: attention,
+                            startsWithComposerFocused: startsWithComposerFocused)
     }
 
     private func projectName(for session: OpenCodeSession) -> String {

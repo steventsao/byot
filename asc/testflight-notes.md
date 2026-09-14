@@ -1,6 +1,7 @@
-byot 1.0.18 — compact composer controls
+byot 1.0.20 — neutral controls and focused new sessions
 
-- Files now uses a document icon and sits beside the agent and model-variant controls below the message input.
-- The controls stay in one scrollable row when larger text needs more space.
+- The info, server, and menu icons now use neutral Liquid Glass chrome instead of mint green.
+- Server and project choices plus the Start session action are neutral in both Light and Dark Mode.
+- A newly created session focuses Message automatically and opens the keyboard with the standard blue insertion point.
 
-Please check the composer in Light and Dark Mode, with the keyboard open and with larger text. Try Files, adding file context, @ search, and switching between Build and Plan.
+Please check the home toolbar and New session in Light and Dark Mode. Start a session and confirm Message has focus and the keyboard opens without another tap.
