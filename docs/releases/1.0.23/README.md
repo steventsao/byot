@@ -26,3 +26,9 @@ Two earlier attempts did not ship. System swipe actions rendered a blue, round b
 Not covered: physical devices, iOS 27, the pill in Dark Mode, and archiving through the app against a live server (the API was checked directly, the UI against the fixture).
 
 This build also includes commit `1862d23`, a test-only change that asserts sent prompts stay visible on real OpenCode servers. TestFlight report `ASC-AKKKHLpgDKdbfusZeotHt7Y` (empty prompt bubble on 1.0.22) did not reproduce on either real server under iOS 26.5 and is not addressed in this build.
+
+## Distribution
+
+Uploaded as 1.0.23 (20260915103231), build `14e25346-cfae-4ffa-8435-774414c5dbfe`, from commit `c7a475d`. The archive and export succeeded, release metadata verified, and App Store Connect committed the upload and finished processing it as `VALID`. The release script then stopped with `context deadline exceeded` before distributing the build, so it was in no group.
+
+A manual `asc builds add-groups` added the build to **Internal Testers**, and the group lookup confirms explicit membership. The What to Test notes from `asc/testflight-notes.md` were sent with `asc publish testflight --build-id` for en-US, which returned without error. `asc` has no command to read TestFlight notes back, so they are not independently confirmed. Beta review was not submitted.
