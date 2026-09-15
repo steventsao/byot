@@ -1,8 +1,8 @@
-byot 1.0.22 — OpenCode type and spacing
+byot 1.0.23 — swipe to archive a session
 
-- The app now uses OpenCode's type: the system sans for prose and controls, and monospace for tools, inline code, and code blocks. The byot wordmark keeps its rounded font.
-- Tool calls are quiet one-line rows (› Write file · path) instead of cards; tap a row to see its input and output. Only running or failed calls show a status.
-- Replies run full width with no "You" or agent headers; your prompt sits in a trailing pill.
-- Inline code is dim monospace instead of a green chip, and the transcript has wider margins and more room between turns.
+- Swipe a session left in the session list to reveal a red Archive pill, then tap it to archive the session.
+- The archived session leaves the list right away and stays hidden after a refresh. If the server rejects it, the row comes back with an error.
+- Only one row stays open at a time, and tapping an open row closes it. VoiceOver offers Archive as a row action.
+- Archiving works on OpenCode 1 servers. OpenCode 2 beta servers have no archive API yet, so their sessions don't offer the swipe.
 
-Please open a finished session and compare it with OpenCode: read a reply with a bulleted list, expand and collapse a tool row and Reasoning, and check Light and Dark Mode at a larger text size.
+Please swipe a session on an OpenCode 1 server, archive it, pull to refresh, and confirm it stays gone. Also check that scrolling the list and opening a session still feel normal.
