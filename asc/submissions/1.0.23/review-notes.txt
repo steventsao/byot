@@ -1,0 +1,24 @@
+BYOT 1.0.23 (20260915103231) is a native iPhone and iPad client for OpenCode, an open-source coding agent running on the user's own computer. It uses OpenCode's public HTTP/SSE API. Commands execute on the configured server; the app renders responses and does not download or execute code on iOS. BYOT is an independent client, not affiliated with OpenCode.
+
+The app has no BYOT account, analytics, tracking, or in-app purchases. Users configure their own HTTPS server; the password is stored in the iOS Keychain. The dedicated review server below contains a scratch workspace and requires no Tailscale, VPN, browser sign-in, MFA, or invitation.
+
+REVIEW SERVER
+Name: App Review
+URL: https://testflight.byot.app
+Username: opencode
+Server password: use the secure demo-account password field in App Review Information.
+Working directory: /workspace
+
+REVIEW STEPS
+1. Launch BYOT and tap Add server (the plus button is also available in the server bar).
+2. Enter Name, URL, Username, and Server password. Paste the provided password into the row labeled "Server password". This is required. Enter /workspace under "Working directory (optional)".
+3. Tap Test connection. Expect "Connected to 1 project" and a Compatible status. Tap Save.
+4. Select App Review in the server bar. Tap the compose/New session button. On the New session page, select App Review as the server and /workspace as the project. If /workspace is not listed, select "Other directory..." and enter /workspace in Working directory. Tap "Start session".
+5. Tap Message, choose the connected OpenCode provider's Big Pickle model in the control row, and send "Reply exactly: BYOT App Review connection verified." Watch the response stream. To try tools, send "List the files in this scratch project and summarize the README without changing files." Tool calls appear as rows you can tap to expand. Answer any permission request with Allow once.
+6. Tap the composer plus button to attach a photo or document, or choose Files to browse project files and add file or selected-line context. Tap an attachment preview before sending; closing the preview preserves the draft. While a turn runs, Stop is available and follow-up messages can be queued.
+7. Return to the session browser to search, sort, group sessions, or switch servers. Swipe a session left and tap Archive to archive it. Appearance offers System, Light, and Dark. Changes shows a session diff when the session has file changes and the server supports it.
+
+CHANGES SINCE APP STORE 1.0.18
+OpenCode-style typography with monospace tool rows and a prompt pill; swipe to archive a session on OpenCode 1 servers; a composer that folds to one row after sending, with model, agent, and reasoning effort in one row and Files in the + menu; neutral control colors; new sessions open ready to type.
+
+OpenCode 1 and OpenCode 2 beta remain supported with automatic protocol detection. Controls follow server capabilities. OpenCode 2 conversation undo does not roll back workspace files; servers without per-session diffs show an explanation on Changes. There is no built-in offline demo session; please use the live server above.
