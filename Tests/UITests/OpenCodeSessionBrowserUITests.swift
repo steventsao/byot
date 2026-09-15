@@ -27,6 +27,30 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
     }
 
     @MainActor
+    func testSwipeLeftArchivesASession() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--session-browser-fixture", "--reset-browser"]
+        app.launch()
+        let idle = app.buttons["session-idle"]
+        XCTAssertTrue(idle.waitForExistence(timeout: 10), app.debugDescription)
+        idle.swipeLeft()
+        let archive = app.buttons["Archive"]
+        XCTAssertTrue(archive.waitForExistence(timeout: 5), app.debugDescription)
+        // A horizontal pill with the icon beside the title, not the round system action.
+        XCTAssertGreaterThan(archive.frame.width, archive.frame.height * 1.5, archive.debugDescription)
+        attach("session-swipe-archive")
+        archive.tap()
+        XCTAssertTrue(idle.waitForNonExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.buttons["session-active"].exists)
+        // The fixture still lists the session with time.archived, as OpenCode 1.18 does.
+        app.collectionViews.firstMatch.swipeDown()
+        XCTAssertTrue(app.buttons["session-active"].waitForExistence(timeout: 5))
+        XCTAssertFalse(idle.waitForExistence(timeout: 3), app.debugDescription)
+        attach("session-archived")
+    }
+
+    @MainActor
     func testNewSessionUsesInlineServerAndProjectSelection() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

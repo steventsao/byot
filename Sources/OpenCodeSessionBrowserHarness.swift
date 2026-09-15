@@ -37,6 +37,11 @@ struct OpenCodeSessionBrowserHarness: View {
 }
 
 private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Sendable {
+    // Archived during this launch. Like OpenCode 1.18, the list keeps returning
+    // archived sessions with time.archived set.
+    private static let archiveLock = NSLock()
+    nonisolated(unsafe) private static var archived: Set<String> = []
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() { }
@@ -48,14 +53,22 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
         let base = windows ? "C:/work" : "/repo"
         let now = Date().timeIntervalSince1970 * 1_000
         func session(_ id: String, _ title: String, _ directory: String, _ minutes: Double) -> [String: Any] {
-            ["id": id, "slug": id, "projectID": directory, "directory": directory,
-             "title": title, "version": "1.18.10", "time": ["created": now - minutes * 60_000, "updated": now - minutes * 60_000]]
+            var time: [String: Any] = ["created": now - minutes * 60_000, "updated": now - minutes * 60_000]
+            if Self.archiveLock.withLock({ Self.archived.contains(id) }) { time["archived"] = now }
+            return ["id": id, "slug": id, "projectID": directory, "directory": directory,
+                    "title": title, "version": "1.18.10", "time": time]
         }
         let sessions = [
             session("active", windows ? "Windows build" : "Fix checkout", base + "/byot", 2),
             session("retry", "Review billing", base + "/byot", 8),
             session("idle", "Update documentation", base + "/docs", 25)
         ]
+        if request.httpMethod == "PATCH", url.path.hasPrefix("/session/") {
+            let id = url.lastPathComponent
+            Self.archiveLock.withLock { _ = Self.archived.insert(id) }
+            respond(url, body: sessions.first { $0["id"] as? String == id } ?? ["id": id], status: 200)
+            return
+        }
         let body: Any
         switch url.path {
         case "/event":

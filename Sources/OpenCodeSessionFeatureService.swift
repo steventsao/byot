@@ -33,6 +33,18 @@ struct OpenCodeSessionFeatureService: Sendable {
         try await context.transport.performExpectingEmptyResponse(request)
     }
 
+    /// V1 archives by stamping `time.archived`, as OpenCode's own app does. The
+    /// server keeps the session and still lists it; the session browser hides it.
+    /// Beta 19271 stores `archived` but has no route to set it.
+    func archive(_ id: String, directory: String, workspace: String?, at date: Date = Date()) async throws {
+        try require(support.archive, "Archive")
+        struct Body: Encodable { struct Time: Encodable { let archived: Int64 }; let time: Time }
+        let archived = Int64((date.timeIntervalSince1970 * 1_000).rounded())
+        let body = try JSONEncoder().encode(Body(time: .init(archived: archived)))
+        let request = try context.transport.makeRequest(path: path(id), query: query(directory, workspace), method: "PATCH", body: body)
+        let _: OpenCodeJSONValue = try await context.transport.perform(request)
+    }
+
     func children(_ id: String, directory: String, workspace: String?) async throws -> [OpenCodeSession] {
         try require(support.children, "Child sessions")
         if !v2 {
@@ -177,6 +189,9 @@ extension OpenCodeClient: OpenCodeSessionFeatureServicing {
     }
     func deleteSession(sessionID: String, directory: String, workspace: String?) async throws {
         try await sessionFeatureService().delete(sessionID, directory: directory, workspace: workspace)
+    }
+    func archiveSession(sessionID: String, directory: String, workspace: String?) async throws {
+        try await sessionFeatureService().archive(sessionID, directory: directory, workspace: workspace)
     }
     func childSessions(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeSession] {
         try await sessionFeatureService().children(sessionID, directory: directory, workspace: workspace)
