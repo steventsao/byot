@@ -41,7 +41,7 @@ struct OpenCodeSessionView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
+                LazyVStack(alignment: .leading, spacing: 20) {
                     if let errorMessage = store.errorMessage, hasConversationContent {
                         ErrorBanner(
                             message: errorMessage,
@@ -190,7 +190,7 @@ struct OpenCodeSessionView: View {
                         .onDisappear { isAtBottom = false }
                 }
                 .frame(maxWidth: BYOTBrand.conversationMaxWidth)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 20)
                 .padding(.top, 14)
                 .padding(.bottom, 24)
                 .frame(maxWidth: .infinity)
@@ -243,7 +243,7 @@ struct OpenCodeSessionView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
             .padding(.vertical, 8)
             .background(BYOTBrand.canvas)
         }
@@ -470,53 +470,36 @@ struct OpenCodeSessionView: View {
 
 }
 
+/// OpenCode's turn layout: the prompt is a trailing pill and the reply runs
+/// full width beneath it, with no role headers.
 private struct OpenCodeMessageView: View {
     let message: OpenCodeMessageEnvelope
 
+    private var isUser: Bool { message.info.role == "user" }
+
     var body: some View {
-        VStack(alignment: message.info.role == "user" ? .trailing : .leading, spacing: 8) {
-            if showsMessageHeader {
-                HStack(spacing: 7) {
-                    if message.info.role == "assistant" {
-                        Image(systemName: "terminal")
-                            .foregroundStyle(BYOTBrand.accent)
-                        Text(message.info.agent ?? "OpenCode")
-                    } else {
-                        Text("You")
-                    }
-                }
-                .font(.cleanCaptionBold)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(message.parts) { part in
+                OpenCodePartView(part: part, isUser: isUser)
             }
-
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(message.parts) { part in
-                    OpenCodePartView(part: part, isUser: message.info.role == "user")
-                }
-                if let error = message.info.error {
-                    Label(error.displayMessage, systemImage: "exclamationmark.triangle.fill")
-                        .font(.cleanCaption)
-                        .foregroundStyle(.red)
-                }
-            }
-            .padding(message.info.role == "user" ? 14 : 0)
-            .background {
-                if message.info.role == "user" {
-                    RoundedRectangle(cornerRadius: BYOTBrand.panelRadius)
-                        .fill(BYOTBrand.surface)
-                }
+            if let error = message.info.error {
+                Label(error.displayMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.cleanCaption)
+                    .foregroundStyle(.red)
             }
         }
-        .frame(maxWidth: .infinity, alignment: message.info.role == "user" ? .trailing : .leading)
+        .padding(.horizontal, isUser ? 16 : 0)
+        .padding(.vertical, isUser ? 10 : 0)
+        .background {
+            if isUser {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(BYOTBrand.surface)
+            }
+        }
+        .padding(.leading, isUser ? 48 : 0)
+        .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
         .accessibilityElement(children: .contain)
-    }
-
-    private var showsMessageHeader: Bool {
-        guard message.info.role == "assistant" else { return true }
-        return message.parts.contains { part in
-            part.type == "text"
-                && part.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        }
+        .accessibilityLabel(isUser ? "You" : message.info.agent ?? "OpenCode")
     }
 }
 
@@ -532,14 +515,17 @@ private struct OpenCodePartView: View {
             }
         case "reasoning":
             if let text = part.text, !text.isEmpty {
-                DisclosureGroup("Reasoning") {
+                DisclosureGroup {
                     AgentMarkdownText(text: text)
                         .foregroundStyle(.secondary)
-                        .padding(.top, 8)
+                        .padding(.top, 4)
                         .textSelection(.enabled)
+                } label: {
+                    Text("Reasoning")
+                        .font(.cleanMono)
+                        .foregroundStyle(.secondary)
                 }
-                .font(.cleanCaptionBold)
-                .tint(.secondary)
+                .disclosureGroupStyle(OpenCodeInlineDisclosureStyle())
             }
         case "tool":
             if let state = part.state {
@@ -549,9 +535,17 @@ private struct OpenCodePartView: View {
             OpenCodeRemoteFilePartView(part: part)
         case "patch":
             if let files = part.files, !files.isEmpty {
-                Label("Changed \(files.count) file\(files.count == 1 ? "" : "s")", systemImage: "plusminus")
-                    .font(.cleanCaption)
-                    .foregroundStyle(.secondary)
+                // Same glyph column as the tool rows' disclosure chevrons.
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "plusminus")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                    Text("Changed \(files.count) file\(files.count == 1 ? "" : "s")")
+                        .font(.cleanMono)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 3)
             }
         case "subtask":
             VStack(alignment: .leading, spacing: 4) {

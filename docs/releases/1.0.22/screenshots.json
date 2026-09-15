@@ -1,0 +1,18 @@
+[
+  {
+    "file": "before-1.0.21-turn-complete.png",
+    "sha256": "674c9e2d70dd13cc24439358b1817751dc4495712db3931dd37e6b691208d0d9"
+  },
+  {
+    "file": "transcript-live-turn.png",
+    "sha256": "227ffe50dfdad9e4bd07cb07e0ce5da29ec6261827c6152164027615638c0044"
+  },
+  {
+    "file": "transcript-question.png",
+    "sha256": "8f0c89fd1fccb7b79ced4ffe0d5698345a19c266b5cc7a468552608c48f32870"
+  },
+  {
+    "file": "transcript-turn-complete.png",
+    "sha256": "230db3d13e27376a1cde52a1fcc044fde45471090daec9e5c4584256ca54a58e"
+  }
+]

@@ -1,5 +1,8 @@
 import SwiftUI
 
+/// One tool call as a quiet monospace row, as in OpenCode's transcript:
+/// `› Write file · src/middleware/rateLimit.ts`. Input and output stay behind
+/// the disclosure; only unfinished or failed calls show a status.
 struct OpenCodeToolView: View {
     let name: String
     let state: OpenCodeToolState
@@ -23,67 +26,25 @@ struct OpenCodeToolView: View {
                     OpenCodeToolDetailBlock(title: "Error", text: error, isError: true)
                 }
             }
-            .padding(.top, BYOTBrand.Space.sm)
+            .padding(10)
+            .background(BYOTBrand.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.top, BYOTBrand.Space.xs)
         } label: {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: BYOTBrand.Space.sm) {
+                Text([presentation.title, presentation.summary].compactMap { $0 }.joined(separator: " · "))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 statusIndicator
-
-                VStack(alignment: .leading, spacing: BYOTBrand.Space.xs) {
-                    Group {
-                        if dynamicTypeSize.isAccessibilitySize {
-                            VStack(alignment: .leading, spacing: BYOTBrand.Space.xs) {
-                                toolTitle
-                                statusLabel
-                            }
-                        } else {
-                            HStack(alignment: .firstTextBaseline, spacing: BYOTBrand.Space.sm) {
-                                toolTitle
-                                    .lineLimit(1)
-                                Spacer(minLength: BYOTBrand.Space.sm)
-                                statusLabel
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
-
-                    if let summary = presentation.summary {
-                        Text(summary)
-                            .font(.cleanCaption.monospaced())
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.leading)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                            .truncationMode(.tail)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .contentShape(Rectangle())
+            .font(.cleanMono)
         }
-        .tint(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(BYOTBrand.surface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: BYOTBrand.controlRadius)
-                .stroke(BYOTBrand.hairline, lineWidth: 1)
-        }
+        .disclosureGroupStyle(OpenCodeInlineDisclosureStyle())
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
-    }
-
-    private var toolTitle: some View {
-        Text(presentation.title)
-            .font(.cleanCaptionBold)
-            .foregroundStyle(.primary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var statusLabel: some View {
-        Text(presentation.statusLabel)
-            .font(.cleanCaption)
-            .foregroundStyle(statusColor)
-            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var accessibilityLabel: String {
@@ -94,37 +55,62 @@ struct OpenCodeToolView: View {
 
     @ViewBuilder
     private var statusIndicator: some View {
-        if normalizedStatus == "running" {
-            BYOTActivityGlyph(phase: .working, size: 20, tint: statusColor)
-                .frame(width: 20, height: 20)
-        } else {
-            Image(systemName: statusIcon)
-                .font(.cleanCaptionBold)
-                .foregroundStyle(statusColor)
-                .frame(width: 20, height: 20)
-                .accessibilityHidden(true)
+        switch normalizedStatus {
+        case "completed":
+            EmptyView()
+        case "running":
+            BYOTActivityGlyph(phase: .working, size: 14, tint: .secondary)
+                .frame(width: 14, height: 14)
+        default:
+            Text(presentation.statusLabel)
+                .foregroundStyle(normalizedStatus == "error" ? Color.red : Color.secondary)
+                .fixedSize()
         }
     }
 
     private var normalizedStatus: String {
         state.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
+}
 
-    private var statusIcon: String {
-        switch normalizedStatus {
-        case "completed": "checkmark.circle.fill"
-        case "error": "xmark.circle.fill"
-        case "running": "gearshape.2.fill"
-        default: "clock.fill"
-        }
+/// OpenCode's transcript disclosure: a leading chevron that turns down when
+/// open, with the content indented beneath the label.
+struct OpenCodeInlineDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        OpenCodeInlineDisclosure(configuration: configuration)
     }
+}
 
-    private var statusColor: Color {
-        switch normalizedStatus {
-        case "completed": BYOTBrand.accent
-        case "error": .red
-        case "running": .orange
-        default: .secondary
+private struct OpenCodeInlineDisclosure: View {
+    let configuration: DisclosureGroupStyleConfiguration
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick)) {
+                    configuration.isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
+                        .accessibilityHidden(true)
+                    configuration.label
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
+
+            if configuration.isExpanded {
+                configuration.content
+                    .padding(.leading, 15)
+            }
         }
     }
 }

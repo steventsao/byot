@@ -182,8 +182,8 @@ enum AgentMarkdownParser {
 }
 
 /// Renders inline markdown (bold, italic, inline code, links) as a single
-/// `AttributedString` so styled segments wrap naturally mid-sentence, matching
-/// the inline code chips modern agent apps use for file and symbol references.
+/// `AttributedString` so styled segments wrap naturally mid-sentence. Inline
+/// code renders as dim monospace without a chip, as in OpenCode's transcript.
 enum AgentInlineMarkdown {
     static func attributedString(from source: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(
@@ -194,10 +194,8 @@ enum AgentInlineMarkdown {
         attributed.font = Font.cleanBody
         for run in attributed.runs {
             guard run.inlinePresentationIntent?.contains(.code) == true else { continue }
-            attributed[run.range].font = .system(size: 15, design: .monospaced)
-            attributed[run.range].backgroundColor = UIColor(
-                red: 0.54, green: 0.88, blue: 0.70, alpha: 0.12
-            )
+            attributed[run.range].font = Font.cleanMono
+            attributed[run.range].foregroundColor = Color.secondary
         }
         return attributed
     }
@@ -208,11 +206,12 @@ struct AgentMarkdownText: View {
     @State private var selection: AgentTextSelection?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 AgentMarkdownBlockView(block: block)
             }
         }
+        .lineSpacing(2)
         .contextMenu {
             Button("Select text", systemImage: "text.cursor") {
                 selection = AgentTextSelection(text: text)
@@ -250,11 +249,11 @@ private struct AgentMarkdownBlockView: View {
                 .padding(.top, level <= 2 ? 4 : 2)
 
         case .list(let items, let ordered):
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(ordered ? "\(index + 1)." : "•")
-                            .font(ordered ? .cleanBody : .cleanBodyBold)
+                            .font(.cleanBody)
                             .foregroundStyle(.secondary)
                             .frame(minWidth: 14, alignment: .trailing)
                         Text(AgentInlineMarkdown.attributedString(from: item))
@@ -287,9 +286,9 @@ private struct AgentMarkdownBlockView: View {
     private func headingFont(for level: Int) -> Font {
         switch level {
         case 1:
-            Font.custom("OpenRunde-Bold", size: 22, relativeTo: .title3)
+            Font.system(.title3, weight: .semibold)
         case 2:
-            Font.custom("OpenRunde-Bold", size: 19, relativeTo: .headline)
+            Font.system(.headline)
         default:
             .cleanBodySemibold
         }
@@ -306,7 +305,7 @@ private struct AgentCodeBlockView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text(language?.lowercased() ?? "code")
-                    .font(.cleanCaption)
+                    .font(.cleanMono)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 Button {
@@ -342,7 +341,7 @@ private struct AgentCodeBlockView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(code)
-                    .font(.system(size: 14, design: .monospaced))
+                    .font(.cleanMono)
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)

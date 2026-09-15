@@ -1,8 +1,8 @@
-byot 1.0.21 — one composer row that minimizes on send
+byot 1.0.22 — OpenCode type and spacing
 
-- Sending a message folds the composer back to a single row with a smooth native animation; tapping Message expands it again.
-- Model, agent, and effort now share one row with add and send, so the input container is one row and the knobs are one row.
-- Files moved into the + menu beside Choose Photo and Choose File.
-- The effort control is neutral instead of green.
+- The app now uses OpenCode's type: the system sans for prose and controls, and monospace for tools, inline code, and code blocks. The byot wordmark keeps its rounded font.
+- Tool calls are quiet one-line rows (› Write file · path) instead of cards; tap a row to see its input and output. Only running or failed calls show a status.
+- Replies run full width with no "You" or agent headers; your prompt sits in a trailing pill.
+- Inline code is dim monospace instead of a green chip, and the transcript has wider margins and more room between turns.
 
-Please send a message and watch the input minimize, then tap Message to bring the knobs back. Check the + menu for Server Files and confirm the knob row reads as one row in Light and Dark Mode.
+Please open a finished session and compare it with OpenCode: read a reply with a bulleted list, expand and collapse a tool row and Reasoning, and check Light and Dark Mode at a larger text size.
