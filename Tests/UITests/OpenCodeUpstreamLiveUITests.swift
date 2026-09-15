@@ -318,12 +318,24 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         let composer = app.textFields["Message"]
         XCTAssertTrue(composer.waitForExistence(timeout: 10), "Creating a session must open its chat immediately")
         XCTAssertFalse(app.buttons["Navigation"].exists)
-        composer.tap(); composer.typeText("Verify OpenCode \(major) compatibility.")
+        let promptText = "Verify OpenCode \(major) compatibility."
+        composer.tap(); composer.typeText(promptText)
         app.buttons["Send message"].tap()
         let reply = app.staticTexts["BYOT upstream compatibility verified."].firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout: 30), app.debugDescription)
+        // ASC-AKKKHLpgDKdbfusZeotHt7Y: the sent prompt keeps its text in the bubble
+        // through the reply and the reconciliation that follows it.
+        let sentPrompt = app.staticTexts[promptText].firstMatch
+        XCTAssertTrue(sentPrompt.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertGreaterThan(sentPrompt.frame.width, 0, "The prompt bubble must not render empty")
+        Thread.sleep(forTimeInterval: 3)
+        XCTAssertTrue(sentPrompt.exists, app.debugDescription)
+        XCTAssertGreaterThan(sentPrompt.frame.width, 0, "The prompt bubble must still show its text after the turn settles")
         app.swipeDown()
         attach("upstream-\(major)-live-transcript")
+        // Sending folds the composer to one row; focus brings the knob row back.
+        composer.tap()
+        XCTAssertTrue(app.buttons["Choose model"].waitForExistence(timeout: 10), app.debugDescription)
         app.buttons["Choose model"].tap()
         XCTAssertTrue(app.navigationBars["Choose model"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Local acceptance fixture, BYOT Fixture"].waitForExistence(timeout: 5))
