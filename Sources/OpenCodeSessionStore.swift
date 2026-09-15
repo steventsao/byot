@@ -1884,11 +1884,26 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
 #if DEBUG
-    func prepareForAttachmentScreenshot() {
+    /// Seeds the screenshot harness. `withCatalog` adds the agent and effort
+    /// options a real server supplies, so the composer's single control row can
+    /// be checked with every knob present.
+    func prepareForAttachmentScreenshot(withCatalog: Bool = false) {
         isRunning = true
         isStatusReady = true
         status = .idle
         errorMessage = nil
+        guard withCatalog else { return }
+        let model = OpenCodeModelOption(
+            providerID: "byot", providerName: "BYOT Fixture", modelID: "muse-spark",
+            modelName: "Muse Spark 1.3", status: nil, variants: ["byot-careful"])
+        providerModels = [OpenCodeProviderModels(
+            providerID: model.providerID, providerName: model.providerName, models: [model])]
+        composerCatalog = OpenCodeComposerCatalog(
+            agents: [OpenCodeAgentOption(id: "build", name: "build", description: nil),
+                     OpenCodeAgentOption(id: "plan", name: "plan", description: nil)],
+            inheritedAgent: "build", supportsVariants: true)
+        selectModel(model)
+        selectVariant("byot-careful")
     }
 #endif
 }

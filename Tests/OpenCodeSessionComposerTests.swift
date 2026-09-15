@@ -19,4 +19,20 @@ struct OpenCodeSessionComposerTests {
             OpenCodeSessionComposerView.showsStopControl(canStop: false, text: "") == false
         )
     }
+
+    @Test(
+        "The composer only carries its knobs while it holds focus or a draft",
+        .bug(id: "ASC-AOZmN-SID8Bh11kUI4sRAT0")
+    )
+    func expandedControlVisibility() {
+        #expect(OpenCodeSessionComposerView.showsExpandedControls(isFocused: true, text: ""))
+        #expect(OpenCodeSessionComposerView.showsExpandedControls(isFocused: false, text: "draft"))
+        #expect(OpenCodeSessionComposerView.showsExpandedControls(
+            isFocused: false, text: "", hasAttachments: true))
+        // Sending clears the draft and releases focus, which is what folds the
+        // container back to a single row.
+        #expect(OpenCodeSessionComposerView.showsExpandedControls(isFocused: false, text: "") == false)
+        #expect(OpenCodeSessionComposerView.showsExpandedControls(
+            isFocused: false, text: "  \n ") == false)
+    }
 }

@@ -29,7 +29,8 @@ struct OpenCodeNewSessionView: View {
         Group {
             if let createdSession, let client {
                 OpenCodeSessionView(client: client, session: createdSession,
-                                    directory: createdSession.directory, attention: attention)
+                                    directory: createdSession.directory, attention: attention,
+                                    startsWithComposerFocused: true)
             } else {
                 ScrollView {
                     VStack(spacing: 24) {
@@ -69,6 +70,7 @@ struct OpenCodeNewSessionView: View {
                             }
                         }
                         .pickerStyle(.menu)
+                        .tint(BYOTBrand.chromeTint)
                         .disabled(isCreating)
                         if let error {
                             ErrorBanner(message: error, actionTitle: "Refresh") {
@@ -87,7 +89,8 @@ struct OpenCodeNewSessionView: View {
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
-                        .foregroundStyle(BYOTBrand.accentInk)
+                        .tint(BYOTBrand.primaryAction)
+                        .foregroundStyle(BYOTBrand.primaryActionInk)
                         .disabled(isLoading || isCreating || !canCreate || targetDirectory.isEmpty)
                         .accessibilityIdentifier("start-session")
                     }

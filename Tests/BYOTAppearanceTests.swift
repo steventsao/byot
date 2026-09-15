@@ -30,6 +30,19 @@ struct BYOTAppearanceTests {
         #expect(contrast(BYOTBrand.accentInk, BYOTBrand.accent, environment) >= 4.5)
     }
 
+    @Test("Navigation chrome stays neutral while focused controls use system blue", arguments: [false, true])
+    func neutralInteractionColors(dark: Bool) {
+        var environment = EnvironmentValues()
+        environment.colorScheme = dark ? .dark : .light
+        let chrome = BYOTBrand.chromeTint.resolve(in: environment)
+        #expect(abs(chrome.red - chrome.green) < 0.01)
+        #expect(abs(chrome.green - chrome.blue) < 0.01)
+
+        let focus = BYOTBrand.interactionTint.resolve(in: environment)
+        #expect(focus.blue > focus.green)
+        #expect(focus.green > focus.red)
+    }
+
     private func contrast(_ foreground: Color, _ background: Color, _ environment: EnvironmentValues) -> Double {
         func luminance(_ color: Color) -> Double {
             let resolved = color.resolve(in: environment)

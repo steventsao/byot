@@ -1,0 +1,38 @@
+[
+  {
+    "name": "composer-add-menu.png",
+    "originalName": "composer-add-menu_0_E37ABE6F-AEDB-4EF0-857A-09A6E37E4EEA.png",
+    "test": "OpenCodeAttachmentUITests/testComposerCollapsesToOneRowAndKeepsFilesInTheAddMenu()",
+    "sha256": "0be67bb6831ca603d4b12abf28f7f4fd855ed999a688f94bdef9cb8d3719951b"
+  },
+  {
+    "name": "composer-collapsed-after-send.png",
+    "originalName": "composer-collapsed-after-send_0_3A77FF13-E908-4597-A8D5-69A7426383E2.png",
+    "test": "OpenCodeAttachmentUITests/testComposerCollapsesToOneRowAndKeepsFilesInTheAddMenu()",
+    "sha256": "2fddb05e9f692aad1c13183b75ec496189747c83453c33691c5b6bf9f49d7ec1"
+  },
+  {
+    "name": "composer-collapsed.png",
+    "originalName": "composer-collapsed_0_F2C32A4A-F973-423A-AB9A-1F25D38C1C30.png",
+    "test": "OpenCodeAttachmentUITests/testComposerCollapsesToOneRowAndKeepsFilesInTheAddMenu()",
+    "sha256": "2fddb05e9f692aad1c13183b75ec496189747c83453c33691c5b6bf9f49d7ec1"
+  },
+  {
+    "name": "composer-controls-largest-text.png",
+    "originalName": "composer-controls-largest-text_0_AAC0FC24-AA28-4CDC-9BE5-F22BB1C0A28A.png",
+    "test": "OpenCodeAttachmentUITests/testComposerKnobsStayReachableAtLargestTextSize()",
+    "sha256": "841d851764dc7a6208ab379e4f2a4ec76353cf57e399613f661d94f52519075d"
+  },
+  {
+    "name": "composer-expanded.png",
+    "originalName": "composer-expanded_0_2FBFE337-5825-4BA1-B12F-7DF2512EDBFC.png",
+    "test": "OpenCodeAttachmentUITests/testComposerCollapsesToOneRowAndKeepsFilesInTheAddMenu()",
+    "sha256": "def6e1fdfd2fe52c273aad9a642e86b57be149697bac17c26394c41fd52c761d"
+  },
+  {
+    "name": "composer-one-control-row.png",
+    "originalName": "composer-one-control-row_0_9A226195-BBB8-4797-A512-6870EE5561F8.png",
+    "test": "OpenCodeAttachmentUITests/testEveryComposerKnobSharesTheRowWithSend()",
+    "sha256": "8f59b29d6abe9ea23168b69c367a435f9a5079c851d04794329ab84ba7488446"
+  }
+]

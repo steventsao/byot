@@ -23,6 +23,9 @@ enum BYOTBrand {
         static let quick = 0.18
         static let activityStep = 0.24
         static let shimmer = 1.45
+        /// The composer grows into its knobs and folds back to one row after a
+        /// send. Long enough to read as one motion, short enough to keep typing.
+        static let composerResize = 0.28
     }
 
     static var background: Color { canvas }
@@ -33,6 +36,14 @@ enum BYOTBrand {
     static var elevatedSurface: Color { Color(uiColor: .tertiarySystemBackground) }
     static var controlSurface: Color { Color(uiColor: .secondarySystemBackground) }
     static var selectedSurface: Color { Color.primary.opacity(0.08) }
+    /// Native interaction color for insertion points, selection, and focused
+    /// controls. Keep it separate from the mint brand color so typing follows
+    /// the platform convention instead of coloring the keyboard flow green.
+    static var interactionTint: Color { Color(uiColor: .systemBlue) }
+    /// Navigation chrome should recede into Liquid Glass rather than carrying
+    /// a brand color. Semantic primary resolves to white in Dark Mode and black
+    /// in Light Mode.
+    static var chromeTint: Color { .primary }
     static var accent: Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark

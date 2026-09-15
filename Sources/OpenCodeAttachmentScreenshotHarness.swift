@@ -56,7 +56,10 @@ struct OpenCodeAttachmentScreenshotHarness: View {
                 )
             }
         }
-        .onAppear { store.prepareForAttachmentScreenshot() }
+        .onAppear {
+            store.prepareForAttachmentScreenshot(
+                withCatalog: ProcessInfo.processInfo.arguments.contains("--composer-catalog"))
+        }
     }
 
     private static var previewImage: Data {

@@ -7,7 +7,7 @@ struct BYOTApp: App {
     var body: some Scene {
         WindowGroup {
             appRoot
-                .tint(BYOTBrand.accent)
+                .tint(BYOTBrand.interactionTint)
                 .environment(\.font, .cleanBody)
                 .background {
                     BYOTAppearanceOverride(appearance: appearance)

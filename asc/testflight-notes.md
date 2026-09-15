@@ -1,6 +1,8 @@
-byot 1.0.18 — compact composer controls
+byot 1.0.21 — one composer row that minimizes on send
 
-- Files now uses a document icon and sits beside the agent and model-variant controls below the message input.
-- The controls stay in one scrollable row when larger text needs more space.
+- Sending a message folds the composer back to a single row with a smooth native animation; tapping Message expands it again.
+- Model, agent, and effort now share one row with add and send, so the input container is one row and the knobs are one row.
+- Files moved into the + menu beside Choose Photo and Choose File.
+- The effort control is neutral instead of green.
 
-Please check the composer in Light and Dark Mode, with the keyboard open and with larger text. Try Files, adding file context, @ search, and switching between Build and Plan.
+Please send a message and watch the input minimize, then tap Message to bring the knobs back. Check the + menu for Server Files and confirm the knob row reads as one row in Light and Dark Mode.

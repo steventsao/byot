@@ -14,6 +14,7 @@ struct OpenCodeSessionView: View {
     private let client: OpenCodeClient
     private let serverName: String
     private let attention: OpenCodeSessionAttentionStore?
+    private let startsWithComposerFocused: Bool
 
     private let bottomAnchorID = "opencode-session-bottom"
 
@@ -21,11 +22,13 @@ struct OpenCodeSessionView: View {
         client: OpenCodeClient,
         session: OpenCodeSession,
         directory: String,
-        attention: OpenCodeSessionAttentionStore? = nil
+        attention: OpenCodeSessionAttentionStore? = nil,
+        startsWithComposerFocused: Bool = false
     ) {
         self.client = client
         serverName = client.profile.name
         self.attention = attention
+        self.startsWithComposerFocused = startsWithComposerFocused
         _store = StateObject(
             wrappedValue: OpenCodeSessionStore(
                 client: client,
@@ -247,6 +250,7 @@ struct OpenCodeSessionView: View {
         .safeAreaInset(edge: .bottom) {
             OpenCodeSessionComposerView(
                 store: store,
+                startsFocused: startsWithComposerFocused,
                 onNewSession: { isShowingNewSession = true },
                 sessionActions: OpenCodeSessionAction.allCases.map { action in
                     OpenCodeComposerAction(name: action.rawValue, title: action.title,
@@ -270,6 +274,7 @@ struct OpenCodeSessionView: View {
                             .accessibilityIdentifier("session-menu-\(action.rawValue)")
                     }
                 } label: { Image(systemName: "ellipsis.circle") }
+                .tint(BYOTBrand.chromeTint)
                 .accessibilityLabel("Session actions")
                 .accessibilityIdentifier("session-actions")
             }
@@ -278,6 +283,7 @@ struct OpenCodeSessionView: View {
                     isShowingDiff = true
                 }
                 .labelStyle(.iconOnly)
+                .tint(BYOTBrand.chromeTint)
                 .disabled(!store.diffPresentation.canPresent)
             }
         }
