@@ -89,6 +89,11 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--attachment-screenshot", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
+        let composer = app.textFields["Message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        // The model control lives in the composer's knob row, which appears once
+        // the composer is in use.
+        composer.tap()
         XCTAssertTrue(app.buttons["Choose model"].waitForExistence(timeout: 10))
         app.buttons["Choose model"].tap()
         let automatic = app.buttons["automatic-model-option"]
@@ -97,6 +102,100 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         attach("empty-model-picker-largest-text")
         XCTAssertGreaterThanOrEqual(empty.frame.minY, automatic.frame.maxY)
         XCTAssertTrue(automatic.isHittable)
+    }
+
+    @MainActor
+    func testComposerCollapsesToOneRowAndKeepsFilesInTheAddMenu() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--attachment-screenshot"]
+        app.launch()
+        let composer = app.textFields["opencode-composer-message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        let model = app.buttons["Choose model"]
+        let add = app.buttons["Add attachment"]
+        let send = app.buttons["opencode-composer-send"]
+        XCTAssertTrue(add.exists)
+        XCTAssertTrue(send.exists)
+        XCTAssertFalse(model.exists, "An untouched composer shows one row")
+        XCTAssertFalse(app.buttons["remote-file-picker"].exists, "Files moved into the add menu")
+        let collapsed = composer.frame.height
+        attach("composer-collapsed")
+
+        add.tap()
+        let serverFiles = app.buttons["Server Files"]
+        XCTAssertTrue(serverFiles.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Choose Photo"].exists)
+        XCTAssertTrue(app.buttons["Choose File"].exists)
+        attach("composer-add-menu")
+        serverFiles.tap()
+        let browser = app.navigationBars["Server files"]
+        XCTAssertTrue(browser.waitForExistence(timeout: 10), app.debugDescription)
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(browser.waitForNonExistence(timeout: 10))
+
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap()
+        XCTAssertTrue(model.waitForExistence(timeout: 5), "Focus reveals the knob row")
+        composer.typeText("Minimize the composer after sending")
+        XCTAssertGreaterThan(model.frame.minY, composer.frame.maxY,
+                             "The knobs sit under the message, in one row")
+        attach("composer-expanded")
+
+        XCTAssertTrue(app.buttons["opencode-composer-send"].isHittable)
+        app.buttons["opencode-composer-send"].tap()
+        XCTAssertTrue(model.waitForNonExistence(timeout: 5),
+                      "Sending folds the composer back to one row")
+        XCTAssertEqual(composer.value as? String, "Message")
+        XCTAssertEqual(composer.frame.height, collapsed, accuracy: 1)
+        attach("composer-collapsed-after-send")
+    }
+
+    @MainActor
+    func testEveryComposerKnobSharesTheRowWithSend() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--attachment-screenshot", "--composer-catalog"]
+        app.launch()
+        let composer = app.textFields["opencode-composer-message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        composer.tap()
+        let add = app.buttons["Add attachment"]
+        let model = app.buttons["Choose model"]
+        let agent = app.buttons["opencode-agent-picker"]
+        let variant = app.buttons["opencode-variant-picker"]
+        let send = app.buttons["opencode-composer-send"]
+        for control in [add, model, agent, variant, send] {
+            XCTAssertTrue(control.waitForExistence(timeout: 5), control.debugDescription)
+        }
+        attach("composer-one-control-row")
+        for control in [add, model, agent] {
+            XCTAssertLessThan(abs(control.frame.midY - send.frame.midY), 12,
+                              "Every knob shares the send control's row")
+            XCTAssertGreaterThanOrEqual(control.frame.midY, composer.frame.maxY,
+                                        "The knobs sit under the message")
+        }
+        XCTAssertLessThanOrEqual(add.frame.maxX, model.frame.minX)
+        XCTAssertLessThanOrEqual(model.frame.maxX, agent.frame.minX)
+        XCTAssertTrue(send.isHittable)
+        XCTAssertLessThanOrEqual(send.frame.maxX, app.frame.maxX)
+    }
+
+    @MainActor
+    func testComposerKnobsStayReachableAtLargestTextSize() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--attachment-screenshot", "--composer-catalog",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        let composer = app.textFields["Message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        composer.tap()
+        let send = app.buttons["opencode-composer-send"]
+        for control in [app.buttons["Add attachment"], app.buttons["Choose model"],
+                        app.buttons["opencode-agent-picker"], app.buttons["opencode-variant-picker"], send] {
+            XCTAssertTrue(control.waitForExistence(timeout: 5), control.debugDescription)
+            XCTAssertLessThanOrEqual(control.frame.maxX, app.frame.maxX)
+        }
+        attach("composer-controls-largest-text")
+        XCTAssertTrue(send.isHittable)
     }
 
     @MainActor private func attach(_ name: String) {

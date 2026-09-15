@@ -1,7 +1,8 @@
-byot 1.0.20 — neutral controls and focused new sessions
+byot 1.0.21 — one composer row that minimizes on send
 
-- The info, server, and menu icons now use neutral Liquid Glass chrome instead of mint green.
-- Server and project choices plus the Start session action are neutral in both Light and Dark Mode.
-- A newly created session focuses Message automatically and opens the keyboard with the standard blue insertion point.
+- Sending a message folds the composer back to a single row with a smooth native animation; tapping Message expands it again.
+- Model, agent, and effort now share one row with add and send, so the input container is one row and the knobs are one row.
+- Files moved into the + menu beside Choose Photo and Choose File.
+- The effort control is neutral instead of green.
 
-Please check the home toolbar and New session in Light and Dark Mode. Start a session and confirm Message has focus and the keyboard opens without another tap.
+Please send a message and watch the input minimize, then tap Message to bring the knobs back. Check the + menu for Server Files and confirm the knob row reads as one row in Light and Dark Mode.

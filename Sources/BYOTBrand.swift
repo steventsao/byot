@@ -23,6 +23,9 @@ enum BYOTBrand {
         static let quick = 0.18
         static let activityStep = 0.24
         static let shimmer = 1.45
+        /// The composer grows into its knobs and folds back to one row after a
+        /// send. Long enough to read as one motion, short enough to keep typing.
+        static let composerResize = 0.28
     }
 
     static var background: Color { canvas }

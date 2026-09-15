@@ -69,51 +69,27 @@ struct OpenCodeSessionComposerView: View {
                 .accessibilityLabel("Attachments")
             }
 
-            TextField("Message", text: $text, axis: .vertical)
-                .focused($isFocused)
-                .tint(BYOTBrand.interactionTint)
-                .lineLimit(1...(dynamicTypeSize.isAccessibilitySize ? 2 : 6))
-                .padding(.horizontal, 8)
-                .padding(.top, 6)
-                .accessibilityIdentifier("opencode-composer-message")
-                .submitLabel(.send)
-                .onSubmit(send)
-
-            if store.remoteFiles != nil || !store.composerCatalog.agents.isEmpty || !store.availableVariants.isEmpty {
-                ScrollView(.horizontal, showsIndicators: dynamicTypeSize.isAccessibilitySize) {
-                    HStack(spacing: 8) {
-                        if store.remoteFiles != nil {
-                            OpenCodeRemoteFileButton {
-                                isFocused = false
-                                isShowingRemoteFiles = true
-                            }
-                        }
-                        if !store.composerCatalog.agents.isEmpty { agentButton }
-                        if !store.availableVariants.isEmpty { variantMenu }
-                    }
-                }
-                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if dynamicTypeSize.isAccessibilitySize {
-                modelButton
-                HStack(spacing: 8) {
-                    attachmentButton
-                    Spacer(minLength: 8)
-                    sessionProgress
-                    submitButton
-                }
-            } else {
-                HStack(spacing: 4) {
-                    attachmentButton
-                    modelButton
-                    Spacer(minLength: 4)
+            HStack(alignment: .bottom, spacing: 4) {
+                if !isExpanded { attachmentButton }
+                TextField("Message", text: $text, axis: .vertical)
+                    .focused($isFocused)
+                    .tint(BYOTBrand.interactionTint)
+                    .lineLimit(1...(dynamicTypeSize.isAccessibilitySize ? 2 : 6))
+                    .padding(.horizontal, 8)
+                    .padding(.top, isExpanded ? 6 : 0)
+                    .frame(minHeight: isExpanded ? 0 : 44)
+                    .accessibilityIdentifier("opencode-composer-message")
+                    .submitLabel(.send)
+                    .onSubmit(send)
+                if !isExpanded {
                     sessionProgress
                     submitButton
                 }
             }
+
+            if isExpanded { controlRow }
         }
+        .animation(.smooth(duration: BYOTBrand.Motion.composerResize), value: isExpanded)
         .padding(10)
         .background(BYOTBrand.controlSurface, in: RoundedRectangle(cornerRadius: 26))
         .overlay {
@@ -183,6 +159,59 @@ struct OpenCodeSessionComposerView: View {
         )
     }
 
+    private var isExpanded: Bool {
+        Self.showsExpandedControls(
+            isFocused: isFocused, text: text,
+            hasAttachments: !attachments.isEmpty || !remoteReferences.isEmpty
+        )
+    }
+
+    // The composer only carries its knobs while it is in use. Sending clears the
+    // draft and releases focus, so the container animates back to the single
+    // input row instead of holding the keyboard-height panel open
+    // (TestFlight AOZmN-SID8Bh11kUI4sRAT0).
+    nonisolated static func showsExpandedControls(isFocused: Bool, text: String,
+                                                  hasAttachments: Bool = false) -> Bool {
+        isFocused || hasAttachments
+            || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    // One row of knobs under the message, the way Codex arranges its composer:
+    // add, model, agent, and effort lead; send stays at the trailing edge
+    // (TestFlight AP61hUE2AovmmO2zq7no_hg). Accessibility sizes keep stacking
+    // because the labels cannot share a line at those widths.
+    @ViewBuilder
+    private var controlRow: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                if !store.composerCatalog.agents.isEmpty { agentButton }
+                if !store.availableVariants.isEmpty { variantMenu }
+                modelButton
+                HStack(spacing: 8) {
+                    attachmentButton
+                    Spacer(minLength: 8)
+                    sessionProgress
+                    submitButton
+                }
+            }
+        } else {
+            HStack(spacing: 4) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        attachmentButton
+                        modelButton
+                        if !store.composerCatalog.agents.isEmpty { agentButton }
+                        if !store.availableVariants.isEmpty { variantMenu }
+                    }
+                }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .fixedSize(horizontal: false, vertical: true)
+                sessionProgress
+                submitButton
+            }
+        }
+    }
+
     private var hasSendableContent: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !attachments.isEmpty || !remoteReferences.isEmpty
@@ -211,12 +240,21 @@ struct OpenCodeSessionComposerView: View {
 
     private var attachmentButton: some View {
         Menu {
+            if store.remoteFiles != nil {
+                Button("Server Files", systemImage: "folder") {
+                    isFocused = false
+                    isShowingRemoteFiles = true
+                }
+                .accessibilityIdentifier("opencode-composer-server-files")
+            }
             Button("Choose Photo", systemImage: "photo") {
                 isShowingPhotoPicker = true
             }
+            .disabled(isAtAttachmentLimit)
             Button("Choose File", systemImage: "doc") {
                 isShowingFileImporter = true
             }
+            .disabled(isAtAttachmentLimit)
 #if DEBUG
             if let screenshotAttachment {
                 Button("Add Screenshot Fixture", systemImage: "sparkles") {
@@ -243,7 +281,13 @@ struct OpenCodeSessionComposerView: View {
         }
         .foregroundStyle(.primary)
         .accessibilityLabel("Add attachment")
-        .disabled(isImportingAttachment || attachments.count >= OpenCodePromptAttachment.maximumCount)
+        // The menu also opens the server file browser, so the attachment limit
+        // disables the importing items instead of the whole control.
+        .disabled(isImportingAttachment || (isAtAttachmentLimit && store.remoteFiles == nil))
+    }
+
+    private var isAtAttachmentLimit: Bool {
+        attachments.count >= OpenCodePromptAttachment.maximumCount
     }
 
     @ViewBuilder
@@ -356,6 +400,8 @@ struct OpenCodeSessionComposerView: View {
             text = prompt
             attachments = promptAttachments
             remoteReferences = promptReferences
+        } else {
+            isFocused = false
         }
     }
 
@@ -393,6 +439,9 @@ struct OpenCodeSessionComposerView: View {
                 .padding(.horizontal, 8)
                 .frame(minHeight: 44)
         }
+        // Composer knobs stay neutral; mint belongs to brand surfaces, not to
+        // every control in the input (TestFlight AFLln8T3hkHG3FFblK9JN0k).
+        .foregroundStyle(.primary)
         .accessibilityLabel("Model variant")
         .accessibilityValue(store.variantLabel)
         .accessibilityIdentifier("opencode-variant-picker")
