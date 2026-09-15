@@ -27,4 +27,8 @@ Simulators ran iOS 26.5 (23F77) under Xcode 26.5.
 
 The first capture of this change showed single-line tool rows spaced wider than wrapped ones, because of a minimum row height, and the "Changed 3 files" glyph out of line with the chevrons. Both were fixed, and every run above is against the fixed tree.
 
+## Distribution
+
+Uploaded as 1.0.22 (20260915093500), build `5de31100-2bac-427f-9395-1d394fdab3e2`, from commit `c488221`. App Store Connect validated the IPA, processing finished `VALID`, and the What to Test notes were set. The release script's group assignment then failed with an App Store Connect 500 while Apple reported every service operational. A manual `asc builds add-groups` retry added the build to **Internal Testers**, and the group lookup confirms explicit membership. Beta review was not submitted.
+
 Not covered: the transcript in Light Mode (the Light run exercised the composer and lists, not a transcript), iPad, physical devices, and live OpenCode servers. The App Store screenshot set in `docs/app-store` still shows the 1.0.21 type and was not reshot.
