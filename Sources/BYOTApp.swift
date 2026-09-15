@@ -29,6 +29,8 @@ struct BYOTApp: App {
             OpenCodeSessionBrowserHarness()
         } else if ProcessInfo.processInfo.arguments.contains("--attachment-screenshot") {
             OpenCodeAttachmentScreenshotHarness()
+        } else if ProcessInfo.processInfo.arguments.contains("--app-store-screenshots") {
+            OpenCodeAppStoreScreenshotHarness()
         } else {
             BYOTRootView(appearance: $appearance)
         }
