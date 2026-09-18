@@ -1,8 +1,8 @@
-byot 1.0.23 — swipe to archive a session
+Connect providers from your iPhone
 
-- Swipe a session left in the session list to reveal a red Archive pill, then tap it to archive the session.
-- The archived session leaves the list right away and stays hidden after a refresh. If the server rejects it, the row comes back with an error.
-- Only one row stays open at a time, and tapping an open row closes it. VoiceOver offers Archive as a row action.
-- Archiving works on OpenCode 1 servers. OpenCode 2 beta servers have no archive API yet, so their sessions don't offer the swipe.
+- Open Connect provider from the session list or model picker, including when no models are configured.
+- Choose an advertised login method or enter an API key. ChatGPT headless/device login is recommended for remote servers; localhost-only browser login is explained.
+- Complete provider-specific prompts and code/device authorization, return from Safari, retry failures, and refresh available models.
+- Provider credentials stay on the selected OpenCode server. Server password login remains separate.
 
-Please swipe a session on an OpenCode 1 server, archive it, pull to refresh, and confirm it stays gone. Also check that scrolling the list and opening a session still feel normal.
+Please test ChatGPT headless login with the phone and server on different machines, including leaving and returning to byot. Also test API-key setup and a prompt using the newly connected model. This beta retains the 1.0.23 typography and swipe-to-archive changes.

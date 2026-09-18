@@ -147,6 +147,13 @@ def main():
                 config = {"model": "fixture/test", "update": "disable", "share": "disabled", "providers": {"fixture": {
                     "name": "BYOT Fixture", "package": "aisdk:@ai-sdk/openai-compatible", "settings": options,
                     "models": {"test": model_config}}}, "permissions": [{"action": "byot_acceptance", "resource": "*", "effect": "ask"}]}
+            if major == "v1" and os.environ.get("BYOT_PROVIDER_AUTH_FIXTURE") == "1":
+                plugin = project / "auth-fixture.mjs"
+                plugin.write_text((Path(__file__).parent / "provider-auth-fixture.mjs").read_text())
+                config["plugin"] = [plugin.as_uri()]
+                config["provider"]["byot-auth-fixture"] = {
+                    "name": "BYOT Auth Fixture", "npm": "@ai-sdk/openai-compatible",
+                    "models": {"test": {"name": "Auth fixture model", "limit": {"context": 128000, "output": 4096}}}}
             config["command" if major == "v1" else "commands"] = {
                 "byot-acceptance": {"template": "Reply with BYOT upstream compatibility verified. Arguments: $ARGUMENTS",
                                     "description": "Verify custom command arguments"}}

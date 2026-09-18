@@ -21,7 +21,9 @@ struct BYOTApp: App {
     @ViewBuilder
     private var appRoot: some View {
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--text-selection-fixture") {
+        if ProcessInfo.processInfo.arguments.contains("--provider-auth-fixture") {
+            OpenCodeProviderAuthHarness()
+        } else if ProcessInfo.processInfo.arguments.contains("--text-selection-fixture") {
             AgentTextSelectionHarness()
         } else if ProcessInfo.processInfo.arguments.contains("--remote-files-fixture") {
             OpenCodeRemoteFileHarness()
