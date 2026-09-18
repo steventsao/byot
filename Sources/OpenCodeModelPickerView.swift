@@ -4,18 +4,11 @@ struct OpenCodeModelPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var store: OpenCodeSessionStore
-    @State private var isConnectingProvider = false
     @State private var searchText = ""
 
     var body: some View {
         NavigationStack {
             List {
-                if store.providerConnectionStore != nil {
-                    Section {
-                        Button("Connect provider", systemImage: "person.badge.key") { isConnectingProvider = true }
-                            .accessibilityIdentifier("connect-provider")
-                    }
-                }
                 if automaticMatchesSearch {
                     Section {
                         Button(action: chooseAutomatic) {
@@ -94,7 +87,7 @@ struct OpenCodeModelPickerView: View {
                     Section {
                         ContentUnavailableView(
                             "No models", systemImage: "cpu",
-                            description: Text("Connect a provider to choose a model.")
+                            description: Text("Connect a provider, then refresh.")
                         )
                         Button("Reload models", systemImage: "arrow.clockwise") {
                             Task { await store.reloadModels() }
@@ -131,13 +124,6 @@ struct OpenCodeModelPickerView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", action: dismiss.callAsFunction)
                 }
-            }
-        }
-        .sheet(isPresented: $isConnectingProvider, onDismiss: {
-            Task { await store.reloadModels(); await store.reloadComposerCatalog() }
-        }) {
-            if let connection = store.providerConnectionStore {
-                OpenCodeProviderConnectionView(store: connection)
             }
         }
     }

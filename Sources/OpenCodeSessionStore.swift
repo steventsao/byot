@@ -64,7 +64,6 @@ final class OpenCodeSessionStore: ObservableObject {
     private var todoMutationGeneration = 0
     private var revertedUserMessages: [OpenCodeMessageEnvelope] = []
     let directory: String
-    let providerConnectionStore: OpenCodeProviderConnectionStore?
     let remoteFiles: OpenCodeRemoteFileStore?
     let serverID: UUID
     private let workspace: String?
@@ -114,12 +113,6 @@ final class OpenCodeSessionStore: ObservableObject {
         remoteFiles: OpenCodeRemoteFileStore? = nil
     ) {
         self.service = service
-        providerConnectionStore = (service as? any OpenCodeProviderConnectionServicing).map {
-            if let client = $0 as? OpenCodeClient {
-                return OpenCodeProviderConnectionStore(client: client, directory: directory, workspace: session.workspaceID)
-            }
-            return OpenCodeProviderConnectionStore(service: $0, directory: directory, workspace: session.workspaceID)
-        }
         self.serverID = serverID
         featureService = service as? any OpenCodeSessionFeatureServicing
         self.session = session

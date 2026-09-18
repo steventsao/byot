@@ -24,7 +24,6 @@ struct OpenCodeConnectedView: View {
     @AppStorage("byot.projects.sort") private var projectSort: OpenCodeSessionSort = .recent
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
-    @State private var isConnectingProvider = false
     @State private var isVisible = false
     @State private var search = ""
     @State private var collapsedProjects = Set<String>()
@@ -172,14 +171,7 @@ struct OpenCodeConnectedView: View {
             .padding(.vertical, 8)
             .background(BYOTBrand.canvas)
         }
-        .sheet(isPresented: $isConnectingProvider) {
-            OpenCodeProviderConnectionView(client: client, directory: client.profile.directory.trimmedNonEmpty ?? projects.first?.worktree ?? "")
-        }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Connect provider", systemImage: "person.badge.key") { isConnectingProvider = true }
-                    .accessibilityIdentifier("connect-provider")
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu("Session list options", systemImage: "line.3.horizontal.decrease") {
                     Toggle("Group by project", isOn: $groupByProject)

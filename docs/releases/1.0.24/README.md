@@ -1,5 +1,7 @@
 # byot 1.0.24 — provider authentication
 
+> Withdrawn September 18, 2026 at the product owner's request. Issue #7 is deferred and PR #72 is closed without merging. This build was removed from Internal Testers; [1.0.25](../1.0.25/README.md) restores the prior provider experience. The evidence below records the original release.
+
 Issue [#7](https://github.com/steventsao/byot/issues/7) adds Connect provider to the session list and model picker, including an empty picker. The app loads methods and conditional prompts from the selected server, supports API keys and code/automatic OAuth, recommends ChatGPT headless sign-in, and explains why OpenAI's localhost browser callback cannot finish on a remote phone. Completion refreshes the model catalog; errors, cancellation, expiry, and returning from the browser remain recoverable. Credentials are sent through the existing authenticated transport and are not saved in preferences or logged.
 
 Application source commit: `cbaef81bc7d8b00466b3ec461ab80337fbc9fd12`.
