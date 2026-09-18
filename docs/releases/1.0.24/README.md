@@ -27,3 +27,9 @@ Screenshots below use DEBUG fixtures and synthetic codes only.
 | Methods | Device code | Models after connection |
 | --- | --- | --- |
 | <img src="provider-methods.png" width="250" alt="Headless login recommended and browser limitation explained"> | <img src="provider-device-code.png" width="250" alt="Synthetic device code and provider link"> | <img src="provider-models-refreshed.png" width="250" alt="Model picker refreshed after connecting a provider"> |
+
+## Distribution
+
+**Available to Internal Testers:** 1.0.24 (20260918110000), build `cf74a71b-fd2a-41b9-82d8-5432ff6a6716`. Uploaded September 18, 2026 from application commit `cbaef81`. Apple processing finished as `VALID`, internal state is `IN_BETA_TESTING`, and explicit membership in Internal Testers is independently verified. The en-US What to Test notes match `asc/testflight-notes.md`. App Store release and external beta review were not submitted.
+
+Receipts: [publish](testflight-publish.json), [build](app-store-connect-build.json), [beta state](beta-detail.json), [group membership](beta-groups.json), [notes](testflight-notes.json). Implementation and release evidence are in [draft PR #72](https://github.com/steventsao/byot/pull/72).
