@@ -6,7 +6,7 @@ Issue [#7](https://github.com/steventsao/byot/issues/7) adds Connect provider to
 
 Application source commit: `cbaef81bc7d8b00466b3ec461ab80337fbc9fd12`.
 
-The release preserves the latest shipped 1.0.23 code (`c7a475d`) and its release records through `fb19e16`, including typography and swipe-to-archive. [Protocol contracts and manual acceptance](../../opencode-provider-authentication.md) document the v1/v2 differences and schema gating.
+The release preserves the latest shipped 1.0.23 code (`c7a475d`) and its release records through `fb19e16`, including typography and swipe-to-archive. [Protocol contracts and manual acceptance](https://github.com/steventsao/byot/blob/cbaef81bc7d8b00466b3ec461ab80337fbc9fd12/docs/opencode-provider-authentication.md) document the v1/v2 differences and schema gating.
 
 ## Verification
 

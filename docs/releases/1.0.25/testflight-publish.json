@@ -1,0 +1,14 @@
+{
+  "mode": "ipa_upload",
+  "buildId": "724a3be7-f10d-41ea-be6d-bd91a522c88c",
+  "buildVersion": "1.0.25",
+  "buildNumber": "20260918151913",
+  "groupIds": [
+    "a2c29c92-ddfd-4c22-9368-8563d9b756ea"
+  ],
+  "uploaded": true,
+  "processingState": "VALID",
+  "verifiedAt": "2026-09-18T22:32:58.721218+00:00",
+  "internalBuildState": "IN_BETA_TESTING",
+  "notesVerified": true
+}
