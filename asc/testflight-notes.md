@@ -1,11 +1,11 @@
-byot 1.0.26 — background push notifications
+byot 1.0.27 — queue work and close the app
 
-Production push is configured and ready for iPhone testing. Please verify receiving a test alert, alerts while byot is in the background, and tapping into the correct session.
+- Enable the computer queue from a session’s actions menu → Message queue.
+- Follow-up messages, attachments, file context, agent, model, and reasoning selections are saved before sending.
+- “Saved on this iPhone” means upload is pending. “Accepted for computer” means the companion can run it with byot closed.
+- Pause, edit, reorder, and cancel pending messages. Edits and reordering pause the queue; resume when ready.
+- Interrupted deliveries reconcile against the session. Uncertain work requires review and is never automatically repeated.
 
-- Get alerts for OpenCode approvals, questions, completed turns, and errors while byot is closed.
-- Tap an alert to open its saved server and session.
-- Choose alert categories or mute individual sessions. Notifications contain generic text, without your prompts, code, or session titles.
+Setup: update the companion using the command in server Notifications settings and pair again, then enable Message queue. Keep the computer awake with OpenCode and the companion running. Queued content passes through the BYOT relay in encrypted form; see the updated privacy policy.
 
-Setup: server menu → Notifications → Set up notifications. Run the copied command on the OpenCode computer (Node.js 22+), enter the pairing code, and keep the companion running. macOS setup can install a background service. Try Send test notification, then complete a real turn with byot in the background.
-
-The companion must stay connected to capture events. Existing model selection and server authentication are unchanged.
+Please queue three messages, wait for Accepted, close byot, and reopen after the turns complete. Also test leaving the session, a connection drop, attachment retention, pause/edit/reorder, and stop. Production relay and real OpenCode 1/2 acceptance are recorded with this release; physical-iPhone background delivery still needs device acceptance.

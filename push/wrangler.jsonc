@@ -21,6 +21,7 @@
     },
   ],
   "ratelimits": [
+    { "name": "QUEUE_RATE_LIMITER", "namespace_id": "7302", "simple": { "limit": 600, "period": 60 } },
     {
       "name": "RATE_LIMITER",
       "namespace_id": "7301",

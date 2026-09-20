@@ -1,6 +1,6 @@
 import Foundation
 
-struct OpenCodePromptAttachment: Identifiable, Equatable, Sendable {
+struct OpenCodePromptAttachment: Identifiable, Equatable, Codable, Sendable {
     static let maximumCount = 10
     static let maximumFileBytes = 20 * 1_024 * 1_024
     static let maximumTotalBytes = 20 * 1_024 * 1_024

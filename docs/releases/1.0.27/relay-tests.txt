@@ -1,0 +1,156 @@
+
+> test
+> node --test tests/*.test.mjs
+
+TAP version 13
+# Subtest: Workers runtime sends valid APNs authentication and never follows redirects
+ok 1 - Workers runtime sends valid APNs authentication and never follows redirects
+  ---
+  duration_ms: 259.677917
+  type: 'test'
+  ...
+# Subtest: initial idle is silent and each busy-to-idle transition notifies once
+ok 2 - initial idle is silent and each busy-to-idle transition notifies once
+  ---
+  duration_ms: 3.404083
+  type: 'test'
+  ...
+# Subtest: terminal errors suppress completion until the next turn
+ok 3 - terminal errors suppress completion until the next turn
+  ---
+  duration_ms: 0.872083
+  type: 'test'
+  ...
+# Subtest: v1/v2 permissions, questions, forms, duplicate events and nonterminal tool errors
+ok 4 - v1/v2 permissions, questions, forms, duplicate events and nonterminal tool errors
+  ---
+  duration_ms: 0.723625
+  type: 'test'
+  ...
+# Subtest: AES-GCM uses CryptoKit combined format and conceals directory metadata
+ok 5 - AES-GCM uses CryptoKit combined format and conceals directory metadata
+  ---
+  duration_ms: 1.217584
+  type: 'test'
+  ...
+# Subtest: SSE chunks, CRLF, comments and oversized records
+ok 6 - SSE chunks, CRLF, comments and oversized records
+  ---
+  duration_ms: 9.0565
+  type: 'test'
+  ...
+# Subtest: connection URL enforces HTTPS except loopback and rejects credentials in URLs
+ok 7 - connection URL enforces HTTPS except loopback and rejects credentials in URLs
+  ---
+  duration_ms: 0.969958
+  type: 'test'
+  ...
+# Subtest: v2 discovery rejects HTML legacy fallback and validates advertised routes
+ok 8 - v2 discovery rejects HTML legacy fallback and validates advertised routes
+  ---
+  duration_ms: 24.890667
+  type: 'test'
+  ...
+# Subtest: outbox serializes concurrent arrivals and acknowledgements without losing events
+ok 9 - outbox serializes concurrent arrivals and acknowledgements without losing events
+  ---
+  duration_ms: 24.980667
+  type: 'test'
+  ...
+# Subtest: outbox retries failed persistence, deduplicates and expires pending events
+ok 10 - outbox retries failed persistence, deduplicates and expires pending events
+  ---
+  duration_ms: 1.432167
+  type: 'test'
+  ...
+# Subtest: legacy completed turns get different event IDs across companion restarts
+ok 11 - legacy completed turns get different event IDs across companion restarts
+  ---
+  duration_ms: 1.756
+  type: 'test'
+  ...
+# (node:4846) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: encrypted upload commits atomically, retries idempotently, and isolates sender and owner
+ok 12 - encrypted upload commits atomically, retries idempotently, and isolates sender and owner
+  ---
+  duration_ms: 29.474125
+  type: 'test'
+  ...
+# Subtest: pause, optimistic editing, strict ordering, single claim, and cancellation races
+ok 13 - pause, optimistic editing, strict ordering, single claim, and cancellation races
+  ---
+  duration_ms: 15.407625
+  type: 'test'
+  ...
+# Subtest: three prompts execute in order without a phone, including companion restart
+ok 14 - three prompts execute in order without a phone, including companion restart
+  ---
+  duration_ms: 20.425417
+  type: 'test'
+  ...
+# Subtest: lost send acknowledgement reconciles existing turn; killed claim never resends
+ok 15 - lost send acknowledgement reconciles existing turn; killed claim never resends
+  ---
+  duration_ms: 6.956625
+  type: 'test'
+  ...
+# Subtest: busy sessions, unresolved approvals, and failed turns prevent follow-up dispatch
+ok 16 - busy sessions, unresolved approvals, and failed turns prevent follow-up dispatch
+  ---
+  duration_ms: 4.545583
+  type: 'test'
+  ...
+# Subtest: tampering and cross-session ciphertext cannot run; preserved settings and file context
+ok 17 - tampering and cross-session ciphertext cannot run; preserved settings and file context
+  ---
+  duration_ms: 2.579209
+  type: 'test'
+  ...
+# Subtest: uncertain jobs send one attention alert after reconnecting, without resending work
+ok 18 - uncertain jobs send one attention alert after reconnecting, without resending work
+  ---
+  duration_ms: 3.771
+  type: 'test'
+  ...
+# (node:4847) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: owner authentication, single-use pairing, expiry, sender separation and revocation
+ok 19 - owner authentication, single-use pairing, expiry, sender separation and revocation
+  ---
+  duration_ms: 46.725292
+  type: 'test'
+  ...
+# Subtest: muted subscriptions, kinds and sessions never call APNs
+ok 20 - muted subscriptions, kinds and sessions never call APNs
+  ---
+  duration_ms: 5.014167
+  type: 'test'
+  ...
+# Subtest: APNs headers, private payload, acceptance and duplicate delivery
+ok 21 - APNs headers, private payload, acceptance and duplicate delivery
+  ---
+  duration_ms: 10.564584
+  type: 'test'
+  ...
+# Subtest: APNs transient failures retry and invalid tokens disable further delivery
+ok 22 - APNs transient failures retry and invalid tokens disable further delivery
+  ---
+  duration_ms: 4.519791
+  type: 'test'
+  ...
+# Subtest: bounds and schema validation, stale events, and missing APNs configuration
+ok 23 - bounds and schema validation, stale events, and missing APNs configuration
+  ---
+  duration_ms: 5.6035
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 693.161167

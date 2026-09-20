@@ -1,0 +1,10 @@
+{
+  "version": "1.0.27",
+  "build": "20260920003100",
+  "bundleID": "com.steventsao.byot",
+  "signatureVerified": true,
+  "apsEnvironment": "production",
+  "getTaskAllow": false,
+  "appleValidation": true,
+  "ipaSHA256": "143654e28b3399ec34b3d3a627875947eb5123afb99fa04ac2057753c9303d90"
+}

@@ -67,6 +67,8 @@ final class OpenCodeSessionStore: ObservableObject {
     let remoteFiles: OpenCodeRemoteFileStore?
     let serverID: UUID
     private let workspace: String?
+    let durableQueue: BYOTDurableQueue?
+    private var queueObservation: AnyCancellable?
     private let service: any OpenCodeSessionServicing
     private let defaults: UserDefaults
     private let modelSelectionKey: String
@@ -110,8 +112,10 @@ final class OpenCodeSessionStore: ObservableObject {
         session: OpenCodeSession,
         directory: String,
         defaults: UserDefaults = .standard,
-        remoteFiles: OpenCodeRemoteFileStore? = nil
+        remoteFiles: OpenCodeRemoteFileStore? = nil,
+        durableQueue: BYOTDurableQueue? = nil
     ) {
+        self.durableQueue = durableQueue
         self.service = service
         self.serverID = serverID
         featureService = service as? any OpenCodeSessionFeatureServicing
@@ -126,6 +130,7 @@ final class OpenCodeSessionStore: ObservableObject {
         agentSelectionKey = "byot.opencode.agent.\(serverID.uuidString).\(session.id)"
         serverDefaultAgentKey = "byot.opencode.agent.default.\(serverID.uuidString)"
         selectedAgentID = defaults.string(forKey: agentSelectionKey)?.trimmedNonEmpty
+        queueObservation = durableQueue?.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
     deinit {
@@ -143,12 +148,13 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     var willQueueNextPrompt: Bool {
+        if durableQueue?.enabled == true { return true }
         if revertMessageID != nil, !status.isActive, !isSending { return false }
         return status.isActive || isSending || promptQueue.shouldQueueNextPrompt
     }
 
     var canSubmitPrompt: Bool {
-        isRunning && isStatusReady && isStoppingTurn == false && !isPerformingSessionAction && !didDeleteSession
+        isRunning && (isStatusReady || durableQueue?.enabled == true) && isStoppingTurn == false && !isPerformingSessionAction && !didDeleteSession
     }
 
     var modelFailure: OpenCodeMessageError? {
@@ -224,6 +230,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     func start() async {
+        durableQueue?.start()
         lifecycleGeneration &+= 1
         let generation = lifecycleGeneration
         isRunning = true
@@ -240,6 +247,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     func stop() {
+        durableQueue?.stop()
         lifecycleGeneration &+= 1
         featureRefreshGeneration &+= 1
         isRunning = false
@@ -523,7 +531,7 @@ final class OpenCodeSessionStore: ObservableObject {
         if !supported { return "This server does not support this action." }
         if !isRunning || !isStatusReady { return "Wait for the session to connect." }
         if isPerformingSessionAction || isSending || isStoppingTurn { return "Wait for the current request to finish." }
-        if status.isActive { return "Stop the current turn before changing its history." }
+        if status.isActive || durableQueue?.pending.contains(where: { ["claimed", "submitted"].contains($0.state) }) == true { return "Stop the current turn before changing its history." }
         if action == .undo && !messages.contains(where: { $0.info.role == "user" }) { return "No turn to undo." }
         if action == .redo && revertMessageID == nil { return "No undone turn to restore." }
         if action == .compact && sessionFeatures.compactRequiresModel && selectedModel == nil { return "Choose a model before compacting." }
@@ -547,6 +555,13 @@ final class OpenCodeSessionStore: ObservableObject {
         cancelQueueRecovery()
         defer { isPerformingSessionAction = false }
         do {
+            if let queue = durableQueue, queue.enabled {
+                try await queue.setPaused(true)
+                try await queue.refresh()
+                guard !queue.pending.contains(where: { ["claimed", "submitted"].contains($0.state) }) else {
+                    throw BYOTQueueError.message("A queued message has started. Stop that turn before changing session history.")
+                }
+            }
             switch action {
             case .undo:
                 // A refresh already in flight may publish the old unreverted
@@ -663,6 +678,17 @@ final class OpenCodeSessionStore: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+        if let queue = durableQueue, queue.enabled {
+            guard revertMessageID == nil else { errorMessage = "Redo the conversation before adding work to the computer queue."; return false }
+            guard queuedPrompts.isEmpty else { errorMessage = "Send or remove the existing local queued messages first."; return false }
+            do {
+                try queue.enqueue(OpenCodeQueuedPrompt(text: trimmed, model: selectedModel, attachments: attachments,
+                    agent: effectiveAgentID, variant: selectedVariant,
+                    command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands), remoteReferences: remoteReferences))
+                queueAnnouncementRevision &+= 1
+                return true
+            } catch { errorMessage = error.localizedDescription; return false }
+        }
         didStatusProbeFailWithFreshTranscript = false
         recoveryIdleUserMessageID = nil
         dismissUnansweredPromptRecovery()
@@ -724,6 +750,7 @@ final class OpenCodeSessionStore: ObservableObject {
         }
 
         do {
+            if let queue = durableQueue, queue.enabled { try await queue.setPaused(true) }
             let didAbort = try await service.abort(
                 sessionID: session.id,
                 directory: directory,

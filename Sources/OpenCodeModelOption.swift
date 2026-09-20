@@ -1,6 +1,6 @@
 import Foundation
 
-struct OpenCodeModelOption: Identifiable, Equatable, Hashable, Sendable {
+struct OpenCodeModelOption: Identifiable, Equatable, Hashable, Codable, Sendable {
     let providerID: String
     let providerName: String
     let modelID: String

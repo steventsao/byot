@@ -67,6 +67,7 @@ struct BYOTPushPreferences: Codable, Equatable, Sendable {
     var mutedThreads: [String] = []
     var paired = false
     var lastSeen: Double?
+    var queueVersion: Int?
 }
 
 struct BYOTPushDestination: Identifiable, Equatable, Sendable {

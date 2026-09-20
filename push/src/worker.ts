@@ -7,6 +7,7 @@ import {
   uuid,
 } from './protocol.ts';
 import { sendAPNS, type APNSSecrets } from './apns.ts';
+import { queueRequest, cleanQueue } from './queue.ts';
 
 type Row = {
   id: string;
@@ -21,6 +22,7 @@ type Row = {
   pair_key: string | null;
   paired_at: number | null;
   last_seen: number | null;
+  queue_version: number;
 };
 const json = (body: unknown, status = 200) =>
   Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
@@ -31,12 +33,12 @@ class HTTPError extends Error {
     this.status = status;
   }
 }
-async function body(request: Request): Promise<Record<string, unknown>> {
+async function body(request: Request, maximum = 8192): Promise<Record<string, unknown>> {
   if (
     !(request.headers.get('content-type') ?? '').startsWith('application/json')
   )
     throw new HTTPError(415, 'JSON required');
-  if (Number(request.headers.get('content-length') ?? 0) > 8192)
+  if (Number(request.headers.get('content-length') ?? 0) > maximum)
     throw new HTTPError(413, 'Request too large');
   const reader = request.body?.getReader();
   if (!reader) throw new HTTPError(400, 'Body required');
@@ -47,7 +49,7 @@ async function body(request: Request): Promise<Record<string, unknown>> {
       const chunk = await reader.read();
       if (chunk.done) break;
       size += chunk.value.length;
-      if (size > 8192) throw new HTTPError(413, 'Request too large');
+      if (size > maximum) throw new HTTPError(413, 'Request too large');
       parts.push(chunk.value);
     }
   } finally {
@@ -74,6 +76,7 @@ function status(row: Row) {
     kinds: JSON.parse(row.kinds),
     mutedThreads: JSON.parse(row.muted_threads),
     lastSeen: row.last_seen,
+    queueVersion: row.queue_version ?? 0,
   };
 }
 
@@ -90,6 +93,17 @@ export default {
         return env.ASSETS.fetch(request);
       if (!url.pathname.startsWith('/v1/'))
         return json({ error: 'Not found' }, 404);
+      const queueMatch = url.pathname.match(/^\/v1\/subscriptions\/([0-9a-f-]+)\/queue(?:\/(.*))?$/i);
+      if (queueMatch && uuid.test(queueMatch[1])) {
+        const auth = await authorization(request);
+        const subscription = await env.DB.prepare('SELECT owner_hash,sender_hash FROM subscriptions WHERE id=?').bind(queueMatch[1]).first<{owner_hash:string;sender_hash:string}>();
+        if (!subscription) return json({error:'Subscription not found'},404);
+        const permitted = await env.DB.prepare('SELECT owner_hash=? AS owner,sender_hash=? AS sender FROM subscriptions WHERE id=?').bind(auth,auth,queueMatch[1]).first<{owner:number;sender:number}>();
+        if (!permitted || (!permitted.owner && !permitted.sender)) return json({error:'Forbidden'},403);
+        const queueLimit = await env.QUEUE_RATE_LIMITER.limit({ key: queueMatch[1] });
+        if (!queueLimit.success) return json({error:'Too many queue requests'},429);
+        return await queueRequest(request,env.DB,queueMatch[1],!!permitted.sender,(queueMatch[2] ?? '').split('/').filter(Boolean),body);
+      }
       const limit = await env.RATE_LIMITER.limit({
         key: request.headers.get('cf-connecting-ip') ?? 'local',
       });
@@ -233,8 +247,9 @@ export default {
         });
       }
       if (action === 'heartbeat' && request.method === 'POST') {
-        await env.DB.prepare('UPDATE subscriptions SET last_seen=? WHERE id=?')
-          .bind(now, id)
+        const heartbeat = await body(request);
+        await env.DB.prepare('UPDATE subscriptions SET last_seen=?,queue_version=? WHERE id=?')
+          .bind(now, heartbeat.queueVersion === 1 ? 1 : 0, id)
           .run();
         return json({ ok: true });
       }
@@ -326,6 +341,7 @@ export default {
     }
   },
   async scheduled(_controller: ScheduledController, env: Env) {
+    await cleanQueue(env.DB, Date.now());
     await env.DB.batch([
       env.DB.prepare('DELETE FROM deliveries WHERE expires_at<?').bind(
         Date.now(),
