@@ -13,5 +13,6 @@
   "storeProfileContainsLocalCertificate": true,
   "firstExport": "Failed at codesign with errSecInternalComponent after a Keychain authorization prompt",
   "diagnosis": "Certificate validity and profile matching pass. Evidence points to private-key access authorization; errSecInternalComponent alone is not a unique diagnosis.",
-  "retry": "Export restarted with the same identity; awaiting outcome"
+  "retry": "Two subsequent exports failed at the same codesign step with errSecInternalComponent; no IPA produced",
+  "lastRetryCheckedAt": "2026-09-20T04:49:42.670752+00:00"
 }
