@@ -7,6 +7,7 @@ struct OpenCodeRootView: View {
     init(
         openAppNavigation: @escaping () -> Void,
         profileStore: OpenCodeProfileStore? = nil,
+        push: BYOTPushNotifications = .shared,
         makeClient: @escaping (OpenCodeServerProfile, String) -> OpenCodeClient = {
             OpenCodeClient(profile: $0, password: $1)
         }
@@ -14,10 +15,14 @@ struct OpenCodeRootView: View {
         self.openAppNavigation = openAppNavigation
         self.makeClient = makeClient
         _profileStore = StateObject(wrappedValue: profileStore ?? OpenCodeProfileStore())
+        _push = ObservedObject(wrappedValue: push)
     }
 
     @StateObject private var profileStore: OpenCodeProfileStore
     @State private var path = NavigationPath()
+    @ObservedObject private var push: BYOTPushNotifications
+    @State private var pathServerID: UUID?
+    @State private var notificationProfile: OpenCodeServerProfile?
     private struct ProfileEditor: Identifiable {
         let id = UUID()
         let profile: OpenCodeServerProfile?
@@ -73,6 +78,13 @@ struct OpenCodeRootView: View {
                     }
                 }
             }
+            .navigationDestination(for: BYOTPushSessionRoute.self) { destination in
+                if let profile = profileStore.profiles.first(where: { $0.id == destination.serverID }) {
+                    OpenCodeSessionView(client: makeClient(profile, profileStore.password(for: profile)),
+                        session: destination.session, directory: destination.session.directory)
+                        .id(destination.id)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("About byot", systemImage: "info.circle", action: openAppNavigation)
@@ -89,7 +101,15 @@ struct OpenCodeRootView: View {
                 }
             }
         }
-        .onChange(of: profileStore.activeProfileID) { _, _ in path = NavigationPath() }
+        .task(id: push.pendingDestination?.id) { await openNotification() }
+        .sheet(item: $notificationProfile) { profile in BYOTPushSettingsView(profile: profile) }
+        .alert("Couldn’t open notification", isPresented: Binding(get: { push.routingError != nil }, set: { if !$0 { push.routingError = nil } })) {
+            Button("OK") { push.routingError = nil }
+        } message: { Text(push.routingError ?? "") }
+        .onChange(of: profileStore.activeProfileID) { _, id in
+            if pathServerID != id { path = NavigationPath() }
+            pathServerID = id
+        }
         .sheet(item: $profileEditor) { editor in
             OpenCodeProfileEditorView(
                 profile: editor.profile,
@@ -108,12 +128,13 @@ struct OpenCodeRootView: View {
         ) {
             if let profilePendingRemoval {
                 Button("Remove \(profilePendingRemoval.name)", role: .destructive) {
-                    do {
-                        try profileStore.remove(profilePendingRemoval)
-                    } catch {
-                        profileRemovalError = error.localizedDescription
+                    Task {
+                        do {
+                            try await push.remove(profilePendingRemoval.id)
+                            try profileStore.remove(profilePendingRemoval)
+                        } catch { profileRemovalError = error.localizedDescription }
+                        self.profilePendingRemoval = nil
                     }
-                    self.profilePendingRemoval = nil
                 }
             }
             Button("Cancel", role: .cancel) {
@@ -156,6 +177,7 @@ struct OpenCodeRootView: View {
                 .pickerStyle(.inline)
             }
             if let profile = profileStore.activeProfile {
+                Button("Notifications", systemImage: "bell") { notificationProfile = profile }
                 Button("Edit server", systemImage: "pencil") {
                     edit(profile)
                 }
@@ -167,6 +189,33 @@ struct OpenCodeRootView: View {
                 edit(nil)
             }
         }
+    }
+
+    private func openNotification() async {
+        guard let destination = push.pendingDestination else { return }
+        let route = destination.route
+        defer { if push.pendingDestination?.id == destination.id { push.pendingDestination = nil } }
+        guard let profile = profileStore.profiles.first(where: { $0.id == route.serverID }),
+              let credential = push.credentials[profile.id],
+              credential.fingerprint == BYOTPushCredential.fingerprint(profile) else {
+            push.routingError = "The saved server has changed or was removed. Open Notifications on the correct server to pair it again."
+            return
+        }
+        profileEditor = nil
+        notificationProfile = nil
+        path = NavigationPath()
+        pathServerID = profile.id
+        profileStore.select(profile)
+        if route.sessionID.isEmpty { notificationProfile = profile; return }
+        do {
+            let client = makeClient(profile, profileStore.password(for: profile))
+            let details = try await client.sessionDetails(sessionID: route.sessionID, directory: route.directory, workspace: route.workspace)
+            try Task.checkCancellation()
+            guard push.pendingDestination?.id == destination.id, profileStore.activeProfileID == profile.id else { return }
+            guard details.session.id == route.sessionID else { throw BYOTPushError.invalidNotification }
+            path.append(BYOTPushSessionRoute(serverID: profile.id, session: details.session))
+        } catch is CancellationError { }
+        catch { push.routingError = "Couldn’t load this session. It may have been deleted, or the server may be offline. Open the server and try again." }
     }
 
     private func edit(_ profile: OpenCodeServerProfile?) {
@@ -418,4 +467,12 @@ private struct OpenCodeProfileEditorView: View {
             isSaving = false
         }
     }
+}
+
+private struct BYOTPushSessionRoute: Hashable {
+    let id = UUID()
+    let serverID: UUID
+    let session: OpenCodeSession
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }

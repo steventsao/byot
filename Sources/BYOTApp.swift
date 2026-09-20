@@ -2,11 +2,16 @@ import SwiftUI
 
 @main
 struct BYOTApp: App {
+    @UIApplicationDelegateAdaptor(BYOTPushAppDelegate.self) private var pushDelegate
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("byot.appearance") private var appearance: BYOTAppearance = .system
 
     var body: some Scene {
         WindowGroup {
             appRoot
+                .task(id: scenePhase) {
+                    if scenePhase == .active { await BYOTPushNotifications.shared.refreshAuthorization() }
+                }
                 .tint(BYOTBrand.interactionTint)
                 .environment(\.font, .cleanBody)
                 .background {
@@ -43,9 +48,13 @@ struct BYOTApp: App {
 private struct BYOTRootView: View {
     @Binding var appearance: BYOTAppearance
     @State private var isShowingAbout = false
+    @ObservedObject private var push = BYOTPushNotifications.shared
 
     var body: some View {
         OpenCodeRootView(openAppNavigation: { isShowingAbout = true })
+            .onChange(of: push.pendingDestination) { _, destination in
+                if destination != nil { isShowingAbout = false }
+            }
             .sheet(isPresented: $isShowingAbout) {
                 AboutView(appearance: $appearance)
             }

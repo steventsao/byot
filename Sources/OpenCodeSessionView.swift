@@ -5,6 +5,8 @@ struct OpenCodeSessionView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
     @State private var isShowingDiff = false
+    @ObservedObject private var push = BYOTPushNotifications.shared
+    @State private var notificationError: String?
     @State private var isShowingRecoveryModelPicker = false
     @State private var isAtBottom = true
     @State private var isShowingDetails = false
@@ -267,6 +269,14 @@ struct OpenCodeSessionView: View {
                 Menu {
                     Button("Session details", systemImage: "info.circle") { isShowingDetails = true }
                     Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
+                    if push.credentials[client.profile.id] != nil {
+                        Button(push.isMuted(serverID: client.profile.id, sessionID: store.session.id) ? "Unmute notifications" : "Mute notifications", systemImage: "bell.slash") {
+                            Task {
+                                do { try await push.toggleMute(serverID: client.profile.id, sessionID: store.session.id) }
+                                catch { notificationError = error.localizedDescription }
+                            }
+                        }
+                    }
                     ForEach(OpenCodeSessionAction.allCases) { action in
                         Button(action.title, systemImage: action.symbol) {
                             Task { await store.performSessionAction(action) }
@@ -319,9 +329,14 @@ struct OpenCodeSessionView: View {
             OpenCodeModelPickerView(store: store)
                 .task { await store.reloadModels() }
         }
+        .onAppear { push.activeRoute = BYOTPushRoute(serverID: client.profile.id, sessionID: store.session.id, directory: store.session.directory, workspace: store.session.workspaceID) }
+        .alert("Couldn’t update notifications", isPresented: Binding(get: { notificationError != nil }, set: { if !$0 { notificationError = nil } })) {
+            Button("OK") { notificationError = nil }
+        } message: { Text(notificationError ?? "") }
         .task { await store.start() }
         .onChange(of: store.errorMessage) { _, _ in rememberAttention() }
         .onDisappear {
+            if push.activeRoute?.serverID == client.profile.id && push.activeRoute?.sessionID == store.session.id { push.activeRoute = nil }
             rememberAttention()
             store.stop()
         }

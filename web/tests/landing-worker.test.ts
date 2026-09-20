@@ -32,8 +32,6 @@ test("forwards other routes, methods, and hosts without changing the request or 
   });
 
   for (const url of [
-    "https://byot.app/privacy",
-    "https://byot.app/support?from=landing",
     "https://byot.app/api",
     "https://byot.app/api/t/example/ws",
     "https://byot.app/agents",
@@ -56,4 +54,10 @@ test("forwards other routes, methods, and hosts without changing the request or 
   assert.equal(forwarded, request);
   assert.equal(request.bodyUsed, false);
   assert.deepEqual(await request.json(), { example: "must reach the dispatcher" });
+});
+
+test("privacy and support disclose optional push processing", async()=>{
+  for(const path of ["/privacy","/support?from=landing"]){
+    const response=await worker.fetch(new Request("https://byot.app"+path));assert.equal(response.status,200);assert.match(await response.text(),/companion/);
+  }
 });

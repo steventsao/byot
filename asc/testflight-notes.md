@@ -1,7 +1,9 @@
-byot 1.0.25 — restore the previous provider experience
+byot 1.0.26 — background push notifications
 
-- Removes the provider OAuth/API-key setup screens introduced in 1.0.24.
-- Uses providers already configured on your OpenCode server, as before.
-- Keeps the existing model picker, server password login, typography, and swipe-to-archive behavior.
+- Get alerts for OpenCode approvals, questions, completed turns, and errors while byot is closed.
+- Tap an alert to open its saved server and session.
+- Choose alert categories or mute individual sessions. Notifications contain generic text, without your prompts, code, or session titles.
 
-Please update from 1.0.24 and confirm the session list and model picker match the previous experience.
+Setup: server menu → Notifications → Set up notifications. Run the copied command on the OpenCode computer (Node.js 22+), enter the pairing code, and keep the companion running. macOS setup can install a background service. Try Send test notification, then complete a real turn with byot in the background.
+
+The companion must stay connected to capture events. Existing model selection and server authentication are unchanged.

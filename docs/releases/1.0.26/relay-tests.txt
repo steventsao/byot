@@ -1,0 +1,27 @@
+
+> test
+> node --test tests/*.test.mjs
+
+✔ initial idle is silent and each busy-to-idle transition notifies once (4.379209ms)
+✔ terminal errors suppress completion until the next turn (0.445542ms)
+✔ v1/v2 permissions, questions, forms, duplicate events and nonterminal tool errors (0.77775ms)
+✔ AES-GCM uses CryptoKit combined format and conceals directory metadata (3.027792ms)
+✔ SSE chunks, CRLF, comments and oversized records (2.200917ms)
+✔ connection URL enforces HTTPS except loopback and rejects credentials in URLs (0.368667ms)
+✔ v2 discovery rejects HTML legacy fallback and validates advertised routes (28.194375ms)
+✔ outbox serializes concurrent arrivals and acknowledgements without losing events (25.838416ms)
+✔ outbox retries failed persistence, deduplicates and expires pending events (0.520792ms)
+✔ legacy completed turns get different event IDs across companion restarts (0.452625ms)
+✔ owner authentication, single-use pairing, expiry, sender separation and revocation (53.601792ms)
+✔ muted subscriptions, kinds and sessions never call APNs (6.94175ms)
+✔ APNs headers, private payload, acceptance and duplicate delivery (8.51625ms)
+✔ APNs transient failures retry and invalid tokens disable further delivery (5.840666ms)
+✔ bounds and schema validation, stale events, and missing APNs configuration (5.262167ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 305.644375
