@@ -52,6 +52,29 @@ struct OpenCodeSessionFeatureTests {
         #expect(requests.filter { $0.url!.path != "/api/session" }.allSatisfy { $0.url!.query == nil })
     }
 
+    @Test("V1 archives by stamping time.archived; the V2 beta has no archive route")
+    func archiveRequests() async throws {
+        let transport = SessionFeatureTransport(v2: false)
+        let service = featureService(transport: transport, v2: false)
+        try await service.archive("ses_one", directory: "/project", workspace: "wrk_one", at: Date(timeIntervalSince1970: 1_700_000_000))
+        let requests = await transport.requests
+        let request = try #require(requests.first)
+        #expect(requests.count == 1)
+        #expect(request.httpMethod == "PATCH")
+        #expect(request.url?.path == "/session/ses_one")
+        #expect(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+            == [URLQueryItem(name: "directory", value: "/project"), URLQueryItem(name: "workspace", value: "wrk_one")])
+        #expect(try body(request) == ["time": .object(["archived": .number(1_700_000_000_000)])])
+
+        let betaTransport = SessionFeatureTransport(v2: true)
+        let beta = featureService(transport: betaTransport, v2: true)
+        #expect(!beta.support.archive)
+        await #expect(throws: OpenCodeSessionFeatureError.self) {
+            try await beta.archive("ses_one", directory: "/project", workspace: nil)
+        }
+        #expect(await betaTransport.requests.isEmpty)
+    }
+
     @Test("V2 fork lineage stays distinct from the parent used to filter subagent sessions")
     func forkSourceRemainsRoot() throws {
         let value: [String: OpenCodeJSONValue] = [
@@ -335,6 +358,7 @@ private actor FeatureStoreService: OpenCodeSessionServicing, OpenCodeSessionFeat
         return OpenCodeSessionDetails(session: currentSession, revertMessageID: revert)
     }
     func deleteSession(sessionID: String, directory: String, workspace: String?) async throws {}
+    func archiveSession(sessionID: String, directory: String, workspace: String?) async throws {}
     func childSessions(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeSession] { [featureSession(id: "ses_child", parentID: sessionID)] }
     func sessionTodos(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeTodo]? { let snapshot = todoValues; if todoDelay { try await Task.sleep(for: .milliseconds(75)) }; return snapshot }
     func stageSessionRevert(sessionID: String, directory: String, workspace: String?, messageID: String) async throws {

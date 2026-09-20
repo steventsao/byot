@@ -1,0 +1,9 @@
+This update refines how BYOT looks and feels:
+
+- Conversations use OpenCode's type: the system font for text and controls, monospace for tools and code, and more room between turns.
+- Tool calls are quiet one-line rows you can tap to see input and output, and your prompt sits in a pill.
+- Swipe a session left in the session list to archive it on OpenCode 1 servers.
+- Sending a message folds the composer back to a single row; tap Message to expand it. Model, agent, and reasoning effort share one row, and Files moved into the + menu.
+- Controls use neutral colors, and new sessions open ready to type.
+
+OpenCode 1 and OpenCode 2 beta remain supported. Available controls depend on your server.

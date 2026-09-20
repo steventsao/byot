@@ -1,8 +1,11 @@
-byot 1.0.21 — one composer row that minimizes on send
+byot 1.0.26 — background push notifications
 
-- Sending a message folds the composer back to a single row with a smooth native animation; tapping Message expands it again.
-- Model, agent, and effort now share one row with add and send, so the input container is one row and the knobs are one row.
-- Files moved into the + menu beside Choose Photo and Choose File.
-- The effort control is neutral instead of green.
+Production push is configured and ready for iPhone testing. Please verify receiving a test alert, alerts while byot is in the background, and tapping into the correct session.
 
-Please send a message and watch the input minimize, then tap Message to bring the knobs back. Check the + menu for Server Files and confirm the knob row reads as one row in Light and Dark Mode.
+- Get alerts for OpenCode approvals, questions, completed turns, and errors while byot is closed.
+- Tap an alert to open its saved server and session.
+- Choose alert categories or mute individual sessions. Notifications contain generic text, without your prompts, code, or session titles.
+
+Setup: server menu → Notifications → Set up notifications. Run the copied command on the OpenCode computer (Node.js 22+), enter the pairing code, and keep the companion running. macOS setup can install a background service. Try Send test notification, then complete a real turn with byot in the background.
+
+The companion must stay connected to capture events. Existing model selection and server authentication are unchanged.

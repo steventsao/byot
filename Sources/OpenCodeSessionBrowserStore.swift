@@ -64,8 +64,17 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
     @Published private(set) var isLoading = false
     private let service: any OpenCodeSessionBrowsing
     private var generation = 0
+    // Archived from this list. A load already in flight must not bring them back.
+    private var archivedIDs: Set<String> = []
 
     init(service: any OpenCodeSessionBrowsing) { self.service = service }
+
+    func markArchived(_ id: String) {
+        archivedIDs.insert(id)
+        for index in groups.indices { groups[index].sessions.removeAll { $0.id == id } }
+    }
+
+    func unmarkArchived(_ id: String) { archivedIDs.remove(id) }
 
     var sessions: [OpenCodeSession] {
         // A configured worktree can overlap a server project. Keep one row per session.
@@ -174,6 +183,7 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
                 if let index = groups.firstIndex(where: { $0.id == loaded.id }) {
                     var loaded = loaded
                     if !loaded.isLoaded { loaded.sessions = groups[index].sessions }
+                    loaded.sessions.removeAll { archivedIDs.contains($0.id) }
                     groups[index] = loaded
                 }
                 enqueue()

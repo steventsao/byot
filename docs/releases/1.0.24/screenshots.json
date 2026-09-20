@@ -1,0 +1,27 @@
+[
+  {
+    "file": "provider-device-code.png",
+    "sha256": "0d14b18daf19c53462f06fe37535faa23faa70f0dc272c04a0eafe2ffd204f7e",
+    "test": "OpenCodeProviderAuthUITests/testDeviceSignInAndReturnFromBackground()"
+  },
+  {
+    "file": "provider-models-refreshed.png",
+    "sha256": "ada76c34307c6006402081254763c5b81b3fe35fce1e61869665332128132e26",
+    "test": "OpenCodeProviderAuthUITests/testEmptyPickerConnectsAPIKeyAndRefreshesModels()"
+  },
+  {
+    "file": "provider-connected.png",
+    "sha256": "12124dce852e4b626c002c0cbc768c5ee8f2eb13b116a4168a82327403e2c371",
+    "test": "OpenCodeProviderAuthUITests/testEmptyPickerConnectsAPIKeyAndRefreshesModels()"
+  },
+  {
+    "file": "provider-methods.png",
+    "sha256": "35dff356a2588dfe32e025a4283efbff05074ac782973af13809abd11b8b8dd6",
+    "test": "OpenCodeProviderAuthUITests/testEmptyPickerConnectsAPIKeyAndRefreshesModels()"
+  },
+  {
+    "file": "provider-catalog.png",
+    "sha256": "ce5934c5cca0c0b0b6343d10758a1b673fcc53c54e4d88587e5f437a4fc328a1",
+    "test": "OpenCodeProviderAuthUITests/testEmptyPickerConnectsAPIKeyAndRefreshesModels()"
+  }
+]

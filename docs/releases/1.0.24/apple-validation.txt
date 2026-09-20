@@ -1,0 +1,12 @@
+** EXPORT SUCCEEDED **
+
+{"archive_path":".asc/artifacts/BYOT.xcarchive","export_options_path":"/tmp/byot-1.0.24-export.plist","ipa_path":".asc/artifacts/BYOT.ipa","bundle_id":"com.steventsao.byot","version":"1.0.24","build_number":"20260918110000"}
+Release metadata verified: com.steventsao.byot 1.0.24 (20260918110000).
+Running altool at path '/Applications/Xcode-26.5.0.app/Contents/SharedFrameworks/ContentDelivery.framework/Resources/altool'...
+
+2026-09-18 11:17:27.969  INFO: [ContentDelivery.Uploader.87EC48440]
+==========================================
+VERIFY SUCCEEDED with no errors
+==========================================
+No errors validating archive at '.asc/artifacts/BYOT.ipa'.
+{"ipa_path":".asc/artifacts/BYOT.ipa","validated":true}

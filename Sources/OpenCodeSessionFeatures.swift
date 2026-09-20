@@ -25,6 +25,7 @@ struct OpenCodeSessionFeatureSupport: Equatable, Sendable {
     var details = false
     var rename = false
     var delete = false
+    var archive = false
     var children = false
     var todoSnapshot = false
     var undo = false
@@ -36,7 +37,7 @@ struct OpenCodeSessionFeatureSupport: Equatable, Sendable {
 
     static func negotiated(_ context: OpenCodeFeatureContext) -> Self {
         if context.serverProtocol == .v1 {
-            return Self(details: true, rename: true, delete: true, children: true,
+            return Self(details: true, rename: true, delete: true, archive: true, children: true,
                         todoSnapshot: true, undo: true, redo: true, compact: true,
                         fork: true, compactRequiresModel: true, undoIncludesFileChanges: true)
         }
@@ -102,6 +103,7 @@ protocol OpenCodeSessionFeatureServicing: Sendable {
     func sessionDetails(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSessionDetails
     func renameSession(sessionID: String, directory: String, workspace: String?, title: String) async throws -> OpenCodeSessionDetails
     func deleteSession(sessionID: String, directory: String, workspace: String?) async throws
+    func archiveSession(sessionID: String, directory: String, workspace: String?) async throws
     func childSessions(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeSession]
     func sessionTodos(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeTodo]?
     func stageSessionRevert(sessionID: String, directory: String, workspace: String?, messageID: String) async throws

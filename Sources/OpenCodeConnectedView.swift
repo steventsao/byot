@@ -40,10 +40,13 @@ struct OpenCodeConnectedView: View {
         _attention = StateObject(wrappedValue: OpenCodeSessionAttentionStore(serverID: client.profile.id))
     }
 
+    @State private var canArchiveSessions = false
+    @State private var archiveError: String?
+
     var body: some View {
         List {
             Group {
-                if let error = creationError ?? workspace.errorMessage {
+                if let error = creationError ?? archiveError ?? workspace.errorMessage {
                     Section { ErrorBanner(message: error) }
                 }
                 if !browser.groups.isEmpty && (groupByProject || !visibleSessions(browser.sessions).isEmpty) {
@@ -304,16 +307,118 @@ struct OpenCodeConnectedView: View {
         }
     }
 
+    @State private var openSwipeSessionID: String?
+
     private func sessionLink(_ session: OpenCodeSession, showProject: Bool) -> some View {
-        NavigationLink(value: OpenCodeSessionRoute(session: session)) {
-            OpenCodeSessionRow(
-                session: session,
-                status: browser.statuses[session.id],
-                projectName: showProject ? projectName(for: session) : nil,
-                attentionMessage: attentionIDs.contains(session.id) ? attention.failures[session.id] : nil
-            )
+        SwipeToArchive(isEnabled: canArchiveSessions, isOpen: Binding(
+            get: { openSwipeSessionID == session.id },
+            set: { open in
+                if open { openSwipeSessionID = session.id }
+                else if openSwipeSessionID == session.id { openSwipeSessionID = nil }
+            }
+        )) {
+            archive(session)
+        } content: {
+            NavigationLink(value: OpenCodeSessionRoute(session: session)) {
+                OpenCodeSessionRow(
+                    session: session,
+                    status: browser.statuses[session.id],
+                    projectName: showProject ? projectName(for: session) : nil,
+                    attentionMessage: attentionIDs.contains(session.id) ? attention.failures[session.id] : nil
+                )
+            }
+            .accessibilityIdentifier("session-\(session.id)")
         }
-        .accessibilityIdentifier("session-\(session.id)")
+    }
+
+    /// Swipe left to reveal a red, horizontal Archive pill. Native swipe actions
+    /// draw a round button with the title underneath and cannot take this shape.
+    private struct SwipeToArchive<Content: View>: View {
+        let isEnabled: Bool
+        @Binding var isOpen: Bool
+        let archive: () -> Void
+        @ViewBuilder let content: Content
+
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @GestureState(resetTransaction: Transaction(animation: .snappy(duration: BYOTBrand.Motion.quick)))
+        private var drag: CGFloat = 0
+        @State private var pillWidth: CGFloat = 132
+
+        private var revealWidth: CGFloat { pillWidth + BYOTBrand.Space.sm }
+        private var offset: CGFloat {
+            min(0, max(-revealWidth * 1.3, (isOpen ? -revealWidth : 0) + drag))
+        }
+
+        var body: some View {
+            content
+                .overlay {
+                    // While open, a tap on the row closes it instead of navigating.
+                    if isOpen {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { setOpen(false) }
+                    }
+                }
+                .offset(x: offset)
+                .overlay(alignment: .trailing) {
+                    // Only a revealed pill exists, so closed rows expose no Archive button.
+                    if offset < 0 {
+                        Button(role: .destructive) {
+                            setOpen(false)
+                            archive()
+                        } label: {
+                            Label("Archive", systemImage: "archivebox")
+                                .labelStyle(.titleAndIcon)
+                                .fixedSize()
+                                .font(.cleanBodySemibold)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 18)
+                                .frame(minHeight: 44)
+                                .background(Color(uiColor: .systemRed), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pillWidth = $0 }
+                        .opacity(min(1, -offset / revealWidth))
+                        .allowsHitTesting(isOpen)
+                    }
+                }
+                .simultaneousGesture(swipe, including: isEnabled ? .all : .subviews)
+                .accessibilityActions {
+                    if isEnabled { Button("Archive", action: archive) }
+                }
+        }
+
+        private var swipe: some Gesture {
+            DragGesture(minimumDistance: 16)
+                .updating($drag) { value, state, _ in
+                    // Leave vertical drags to the list's scrolling.
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    state = value.translation.width
+                }
+                .onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    let end = (isOpen ? -revealWidth : 0) + value.predictedEndTranslation.width
+                    setOpen(end < -revealWidth / 2)
+                }
+        }
+
+        private func setOpen(_ open: Bool) {
+            withAnimation(reduceMotion ? nil : .snappy(duration: BYOTBrand.Motion.quick)) { isOpen = open }
+        }
+    }
+
+    private func archive(_ session: OpenCodeSession) {
+        archiveError = nil
+        browser.markArchived(session.id)
+        Task {
+            do {
+                try await client.archiveSession(sessionID: session.id, directory: session.directory, workspace: session.workspaceID)
+            } catch {
+                browser.unmarkArchived(session.id)
+                archiveError = "Couldn’t archive “\(session.title)”: \(error.localizedDescription)"
+                await browser.load(projects: projects)
+            }
+        }
     }
 
     private func sessionView(
@@ -366,7 +471,10 @@ struct OpenCodeConnectedView: View {
             return
         }
         guard workspace.compatibility != nil else { return }
+        // Swipe to archive only where the server can archive (v1 today).
+        async let support = try? client.sessionFeatureSupport()
         await browser.load(projects: projects)
+        canArchiveSessions = await support?.archive ?? false
         await attention.refresh(sessions: browser.sessions, service: client)
     }
 

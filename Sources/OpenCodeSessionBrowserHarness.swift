@@ -3,17 +3,31 @@ import SwiftUI
 
 struct OpenCodeSessionBrowserHarness: View {
     @StateObject private var store: OpenCodeProfileStore
+    @StateObject private var push: BYOTPushNotifications
 
     init() {
         _store = StateObject(wrappedValue: Self.makeStore())
+        _push = StateObject(wrappedValue: Self.makePush())
+    }
+
+    private static var profiles: [OpenCodeServerProfile] {
+        [
+            OpenCodeServerProfile(id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!, name: "Mac mini", baseURL: "https://mini.example.test"),
+            OpenCodeServerProfile(id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!, name: "Windows", baseURL: "https://windows.example.test")
+        ]
+    }
+
+    private static func makePush() -> BYOTPushNotifications {
+        let credentials = ProcessInfo.processInfo.arguments.contains("--push-route-fixture") ? profiles.map(BYOTPushCredential.make) : []
+        let push = BYOTPushNotifications(credentials: credentials)
+        if ProcessInfo.processInfo.arguments.contains("--push-cold-launch") {
+            deliverNotification(push, profile: profiles[1])
+        }
+        return push
     }
 
     private static func makeStore() -> OpenCodeProfileStore {
         let defaults = UserDefaults(suiteName: "byot.browser-ui-fixture")!
-        let profiles = [
-            OpenCodeServerProfile(id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!, name: "Mac mini", baseURL: "https://mini.example.test"),
-            OpenCodeServerProfile(id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!, name: "Windows", baseURL: "https://windows.example.test")
-        ]
         defaults.set(try! JSONEncoder().encode(profiles), forKey: "byot.opencode.profiles.v1")
         if ProcessInfo.processInfo.arguments.contains("--reset-browser") {
             defaults.set(profiles[0].id.uuidString, forKey: "byot.opencode.active-profile.v1")
@@ -28,15 +42,34 @@ struct OpenCodeSessionBrowserHarness: View {
     }
 
     var body: some View {
-        OpenCodeRootView(openAppNavigation: {}, profileStore: store) { profile, _ in
+        OpenCodeRootView(openAppNavigation: {}, profileStore: store, push: push) { profile, _ in
             let config = URLSessionConfiguration.ephemeral
             config.protocolClasses = [OpenCodeBrowserFixtureProtocol.self]
             return OpenCodeClient(profile: profile, password: "fixture", session: URLSession(configuration: config), serverProtocol: .v1)
         }
+        .overlay(alignment: .bottomTrailing) {
+            if ProcessInfo.processInfo.arguments.contains("--push-route-fixture") {
+                Button("Simulate notification") { Self.deliverNotification(push, profile: store.profiles[1]) }
+                    .buttonStyle(.borderedProminent).padding(.bottom, 75)
+            }
+        }
+    }
+
+    private static func deliverNotification(_ push: BYOTPushNotifications, profile: OpenCodeServerProfile) {
+        let credential = push.credentials[profile.id]!
+        let route = BYOTPushRoute(serverID: profile.id, sessionID: "active", directory: "C:/work/byot", workspace: nil)
+        let data = try! JSONSerialization.data(withJSONObject: ["byot": ["version": 1,
+            "subscriptionID": credential.subscriptionID.uuidString, "kind": "permission", "route": try! route.encrypted(key: credential.routeKey)]])
+        push.receive(data)
     }
 }
 
 private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Sendable {
+    // Archived during this launch. Like OpenCode 1.18, the list keeps returning
+    // archived sessions with time.archived set.
+    private static let archiveLock = NSLock()
+    nonisolated(unsafe) private static var archived: Set<String> = []
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() { }
@@ -48,14 +81,22 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
         let base = windows ? "C:/work" : "/repo"
         let now = Date().timeIntervalSince1970 * 1_000
         func session(_ id: String, _ title: String, _ directory: String, _ minutes: Double) -> [String: Any] {
-            ["id": id, "slug": id, "projectID": directory, "directory": directory,
-             "title": title, "version": "1.18.10", "time": ["created": now - minutes * 60_000, "updated": now - minutes * 60_000]]
+            var time: [String: Any] = ["created": now - minutes * 60_000, "updated": now - minutes * 60_000]
+            if Self.archiveLock.withLock({ Self.archived.contains(id) }) { time["archived"] = now }
+            return ["id": id, "slug": id, "projectID": directory, "directory": directory,
+                    "title": title, "version": "1.18.10", "time": time]
         }
         let sessions = [
             session("active", windows ? "Windows build" : "Fix checkout", base + "/byot", 2),
             session("retry", "Review billing", base + "/byot", 8),
             session("idle", "Update documentation", base + "/docs", 25)
         ]
+        if request.httpMethod == "PATCH", url.path.hasPrefix("/session/") {
+            let id = url.lastPathComponent
+            Self.archiveLock.withLock { _ = Self.archived.insert(id) }
+            respond(url, body: sessions.first { $0["id"] as? String == id } ?? ["id": id], status: 200)
+            return
+        }
         let body: Any
         switch url.path {
         case "/event":
@@ -73,6 +114,8 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
              "vcs": "git", "sandboxes": [], "time": ["created": now - 100_000, "updated": now]] as [String: Any]
         }
         case "/session" where request.httpMethod == "POST": body = session("created", "New session", directory, 0)
+        case let endpoint where endpoint == "/session/active" || endpoint == "/session/retry" || endpoint == "/session/idle":
+            body = sessions.first { $0["id"] as? String == url.lastPathComponent }!
         case "/session": body = sessions.filter { $0["directory"] as? String == directory }
         case "/session/status": body = ["active": ["type": "busy"], "retry": ["type": "retry", "attempt": 1, "message": "Provider rate limit", "next": now + 10_000]]
         case "/provider": body = ["all": [], "connected": [], "default": [:]] as [String: Any]

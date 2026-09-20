@@ -1,4 +1,5 @@
 import { renderLanding } from "./landing.ts";
+import { renderInformation } from "./information.ts";
 
 const LANDING_HOSTS = new Set(["byot.app", "www.byot.app"]);
 
@@ -10,9 +11,9 @@ export default {
     if (
       LANDING_HOSTS.has(url.hostname) &&
       (request.method === "GET" || request.method === "HEAD") &&
-      (url.pathname === "/" || url.pathname === "/index.html")
+      (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/privacy" || url.pathname === "/support")
     ) {
-      return new Response(request.method === "HEAD" ? null : renderLanding(), {
+      return new Response(request.method === "HEAD" ? null : (renderInformation(url.pathname) ?? renderLanding()), {
         headers: {
           "content-type": "text/html; charset=utf-8",
           "cache-control": "public, max-age=300",

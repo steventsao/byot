@@ -1,0 +1,10 @@
+{
+  "service": "https://byot-push.steventsao.workers.dev",
+  "checkedAt": "2026-09-20T04:08:22.113Z",
+  "registration": "passed",
+  "ownerIsolation": "passed",
+  "pairing": "passed",
+  "senderHeartbeat": "passed",
+  "preferences": "passed",
+  "delivery": "Awaiting APNs key registration; no delivery claimed"
+}

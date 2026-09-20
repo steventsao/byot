@@ -1,0 +1,10 @@
+✔ real OpenCode 1 stream produces routable alerts (1384.401833ms)
+✔ real OpenCode 2 stream produces routable alerts (1245.960958ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2775.476834

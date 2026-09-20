@@ -28,7 +28,7 @@ npm run deploy
 ```
 
 `wrangler.jsonc` deploys `byot-landing` on the standard routes `byot.app/*` and
-`www.byot.app/*`. It serves only GET and HEAD requests for `/` and `/index.html`,
+`www.byot.app/*`. It serves GET and HEAD requests for `/`, `/index.html`, `/privacy`, and `/support`,
 including query strings. Other requests are forwarded unchanged to the existing
 `byot-dispatcher` Custom Domain worker. More specific API, task, and agent routes
 retain precedence; tenant subdomains and email routing keep their existing paths.

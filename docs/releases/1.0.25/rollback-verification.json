@@ -1,0 +1,8 @@
+{
+  "version": "1.0.25",
+  "build": "20260918151913",
+  "restoredFromCommit": "fb19e160177676086dd21452075972e1ff512947",
+  "sourceMatchesPreFeature": true,
+  "testsAndFixturesMatchPreFeature": true,
+  "sourceCommit": "d6c235957ec38bae2565402816cac07e1c1a86a4"
+}

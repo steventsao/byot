@@ -15,6 +15,21 @@ struct OpenCodeSessionBrowserTests {
         #expect(store.groups[0].error?.contains("Status unavailable") == true)
     }
 
+    @Test("An archived session stays hidden while a reload still lists it")
+    func archivedSessionStaysHidden() async {
+        let service = BrowserService()
+        let store = OpenCodeSessionBrowserStore(service: service)
+        let projects = [project("/one"), project("/two")]
+        await store.load(projects: projects)
+        store.markArchived("/one")
+        #expect(Set(store.sessions.map(\.id)) == ["/two"])
+        await store.load(projects: projects)
+        #expect(Set(store.sessions.map(\.id)) == ["/two"])
+        store.unmarkArchived("/one")
+        await store.load(projects: projects)
+        #expect(Set(store.sessions.map(\.id)) == ["/one", "/two"])
+    }
+
     @Test("A failed project does not hide sessions from other projects")
     func partialFailure() async {
         let service = BrowserService()
