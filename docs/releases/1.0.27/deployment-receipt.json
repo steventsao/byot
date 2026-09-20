@@ -1,0 +1,14 @@
+{
+  "sourceCommit": "56b619bf2aa4d61420546d7510c0b92c29ae899f",
+  "relay": {
+    "url": "https://byot-push.steventsao.workers.dev",
+    "version": "5ba60c36-9bd3-4d03-85f6-6ee9a1710dc6",
+    "migration": "0002_prompt_queue.sql",
+    "companionSHA256": "783f44e438cd8cd3f09b930094de1c51fb71ae0c2d133ce7da00dd7e1a0dc5a8"
+  },
+  "website": {
+    "url": "https://byot.app",
+    "version": "7617d565-ca06-4691-a678-9637f1049ee2"
+  },
+  "compatibility": "Additive schema; previous notification clients remain supported."
+}

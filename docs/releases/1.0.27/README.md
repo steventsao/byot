@@ -17,4 +17,6 @@ The simulator and Node-driven production acceptance do not establish physical-iP
 
 ## Distribution
 
-Release signing, Apple validation, and TestFlight receipts are recorded here as distribution completes. The production schema is additive and old notification clients remain supported. See [operator documentation](../../../push/README.md) for limits and setup.
+**Available to Internal Testers:** 1.0.27 (`20260920003100`), build ID `661774e8-eabe-4382-b1a8-6cd520bc0685`. An independent App Store Connect read confirmed `VALID`, `IN_BETA_TESTING`, Internal Testers membership, and exact test-note content. The IPA passed strict signature verification and Apple validation, with production APNs entitlement and debugging disabled.
+
+The shipped source is commit `56b619bf2aa4d61420546d7510c0b92c29ae899f`. [Signature receipt](signature-receipt.json), [TestFlight receipt](testflight-receipt.json), and [backend/site deployment receipt](deployment-receipt.json) record the artifacts. The production schema is additive and old notification clients remain supported. See [operator documentation](../../../push/README.md) for limits and setup.
