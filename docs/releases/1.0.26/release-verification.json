@@ -18,5 +18,8 @@
   "internalTestersGroupID": "a2c29c92-ddfd-4c22-9368-8563d9b756ea",
   "internalTestersAssignmentVerified": true,
   "testNotesVerified": true,
-  "liveAPNsDelivery": "Pending production provider-key registration/configuration and physical-device validation"
+  "liveAPNsDelivery": "Provider authentication and deployed relay transport verified with a synthetic invalid device token; physical iPhone receipt and tap-through pending",
+  "apnsProviderConfigured": true,
+  "apnsProviderKeyID": "8ZH3BB32U9",
+  "testNotesUpdatedAt": "2026-09-20T05:14:33.016480+00:00"
 }

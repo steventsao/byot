@@ -1,6 +1,6 @@
 byot 1.0.26 — background push notifications
 
-Deployment status: production push delivery is pending APNs provider-key activation. Notification setup and routing can be reviewed now; Send test notification and background delivery require that activation. This note will be updated when delivery is ready to test.
+Production push is configured and ready for iPhone testing. Please verify receiving a test alert, alerts while byot is in the background, and tapping into the correct session.
 
 - Get alerts for OpenCode approvals, questions, completed turns, and errors while byot is closed.
 - Tap an alert to open its saved server and session.

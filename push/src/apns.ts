@@ -54,7 +54,9 @@ export async function sendAPNS(
       : 'api.push.apple.com';
   const response = await fetch(`https://${host}/3/device/${token}`, {
     method: 'POST',
-    redirect: 'error',
+    // Workers does not implement redirect: 'error'. Manual mode keeps the
+    // provider JWT and device token on the fixed Apple endpoint.
+    redirect: 'manual',
     signal: AbortSignal.timeout(15000),
     headers: {
       authorization: `bearer ${jwt}`,
@@ -67,6 +69,10 @@ export async function sendAPNS(
     },
     body: JSON.stringify(payload(subscriptionID, event)),
   });
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel();
+    throw new Error('APNs redirects are not allowed');
+  }
   // Apple error responses are tiny; do not log token, JWT or payload.
   const body = await response.text();
   let reason = '';

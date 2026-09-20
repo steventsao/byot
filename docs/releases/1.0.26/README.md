@@ -8,20 +8,24 @@ Adds opt-in APNs registration, per-server notification setup, approval/question/
 
 - [iOS unit results](unit-tests.json): 236 passed, zero failed; eight existing live-server opt-in tests skipped in this offline run. Six new push tests cover Node-to-CryptoKit encryption, tampering, trusted subscriptions/servers, foreground suppression, test-alert routing, and bounds.
 - [UI results](ui-tests.json): all three passed: settings entry, cold notification routing, and switching from an open session to the notification’s saved server. The test harness uses synthetic data. An eager fixture initializer initially caused a render loop; the lazy initializer is corrected in the final source.
-- [Relay/companion results](relay-tests.txt): 15 passed, covering SQLite-backed authentication, one-time pairing, revocation, mutes, deduplication, APNs transport responses, SSE parsing, encrypted routes, and retry queue persistence. APNs HTTP is mocked in this suite.
+- [Relay/companion results](relay-tests.txt): 16 passed, covering SQLite-backed authentication, one-time pairing, revocation, mutes, deduplication, APNs transport responses, SSE parsing, encrypted routes, and retry queue persistence. The workerd runtime test additionally checks Workers fetch/WebCrypto, the signed provider JWT, and refusing redirects. APNs HTTP is mocked in this suite.
 - [Real upstream results](upstream-tests.txt): OpenCode 1.18.29 and 2 beta 19271 passed. Both emitted completion alerts with correct encrypted routes; v2 also emitted a permission and form alert. Servers and model data were isolated; no paid provider was used.
 - TypeScript checks and Worker dry builds passed. Four public-site tests passed.
 - [Deployed API check](deployed-api-check.json): a synthetic subscription exercised registration, ownership isolation, pairing, sender heartbeat, preferences, and deletion against the production Worker.
 
 ## Deployment state
 
-The relay and updated support/privacy pages are deployed. `/health` currently reports `ready: false` because Apple key registration has not been approved yet. The prepared APNs key is restricted to Production and the `com.steventsao.byot` topic; TestFlight uses that environment. Debug/sandbox APNs is not configured.
+The relay and updated support/privacy pages are deployed. Apple key `8ZH3BB32U9` is registered and installed as Worker secrets, restricted to Production and the `com.steventsao.byot` topic; TestFlight uses that environment. `/health` reports `ready: true` (credentials configured). Debug/sandbox APNs is not configured.
+
+[Live APNs activation checks](apns-activation.json) verified provider authentication: Apple returned `BadDeviceToken` for a correctly signed request using a synthetic token and `InvalidProviderToken` for an intentionally invalid signature. The deployed relay also reached Apple, returned its expected 410 for the synthetic invalid token, and disabled that subscription. Test data was deleted. There were no real registered devices at the time of this check, so no physical delivery is claimed.
+
+The live check exposed a Workers runtime incompatibility: `redirect: 'error'` throws before contacting Apple. The deployed fix uses manual redirect handling with explicit 3xx rejection, preserving the restriction on sending credentials to other destinations. Runtime regression coverage now exercises this behavior. Active Worker version: `676f73ea-f062-4b07-9ed0-7e70e98e7176`.
 
 Version **1.0.26**, build **20260919210242**, is uploaded and available to **Internal Testers**. Apple reports processing state `VALID` and internal state `IN_BETA_TESTING`; group assignment and the published test notes were independently verified. See [publish receipt](testflight-publish.json), [release verification](release-verification.json), and [Apple validation](apple-validation.json).
 
 The signing blocker is resolved. An existing dedicated release keychain unlocked using its saved password and signed successfully. `asc` created a manually managed BYOT App Store profile, then exported using the working keychain explicitly. The existing distribution certificate was reused; none were replaced or revoked. The IPA passed strict signature verification and Apple validation, with `aps-environment: production`, the expected team/bundle/version/build, and debugging disabled. [Signing diagnostics](signing-diagnostic.json) retain the earlier failures and resolution.
 
-The TestFlight notes clearly state that live push delivery is pending APNs provider-key activation. Physical-device APNs receipt and tap-through remain unverified.
+The TestFlight notes now invite real iPhone testing with the configured production push service. Physical-device APNs receipt and tap-through remain unverified; no new iOS build was needed for the relay configuration or runtime fix.
 
 ## Acceptance on an iPhone
 

@@ -1,0 +1,32 @@
+{
+  "checkedAt": "2026-09-20T05:12:21.583Z",
+  "keyID": "8ZH3BB32U9",
+  "teamID": "449BD89VDV",
+  "topic": "com.steventsao.byot",
+  "environment": "production",
+  "physicalDeviceDelivery": "Not tested; random synthetic device token only",
+  "appleValidSignature": {
+    "status": 400,
+    "reason": "BadDeviceToken"
+  },
+  "appleInvalidSignatureControl": {
+    "status": 403,
+    "reason": "InvalidProviderToken"
+  },
+  "health": {
+    "service": "byot-push",
+    "ready": true
+  },
+  "deployedRelaySyntheticToken": {
+    "status": 410,
+    "body": {
+      "error": "Device must register again"
+    }
+  },
+  "invalidTokenDisabled": true,
+  "syntheticSubscriptionDeleted": true,
+  "workerVersion": "676f73ea-f062-4b07-9ed0-7e70e98e7176",
+  "registeredPhysicalDevicesAtCheck": 0,
+  "providerAuthentication": "Correct signature reaches device-token validation; intentionally invalid signature is rejected",
+  "runtimeFix": "Workers fetch requires manual redirect mode and explicit 3xx rejection"
+}

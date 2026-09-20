@@ -36,7 +36,7 @@ Start `scripts/e2e/fixtures.py` using the pinned CLIs from `scripts/e2e/package-
 
 The computer must remain awake and the companion must stay connected. The upstream SSE stream has no durable replay guarantee, so events emitted while the companion is stopped/disconnected may be missed. Captured alerts persist locally (at most 256) and retry for up to one hour; crash/restart and concurrent writes are covered by tests. APNs acceptance does not guarantee presentation: Focus, system permission, network, and Apple delivery policy apply. Alerts may coalesce within the same session/category. No durable prompt queue, Live Activity, or background iOS socket is added.
 
-The planned Apple key is production/topic-specific to `com.steventsao.byot`, covering TestFlight and App Store. Key registration and relay configuration are still pending. Debug builds register sandbox tokens and need a separate sandbox key/deployment for real APNs testing; simulator-injected routing tests do not prove device delivery.
+The installed Apple key is production/topic-specific to `com.steventsao.byot`, covering TestFlight and App Store. Provider authentication and the deployed relay's connection to Apple have been verified using a synthetic invalid device token. Actual iPhone receipt and tap-through still need acceptance testing. Debug builds register sandbox tokens and need a separate sandbox key/deployment for real APNs testing; simulator-injected routing tests do not prove device delivery.
 
 ## Relay development and deployment
 
@@ -52,6 +52,6 @@ npx wrangler d1 migrations apply byot-push --remote
 npm run deploy
 ```
 
-`GET /health` returns service readiness, never credentials. The `Env` type is generated with `npm run types`. Tests use SQLite for real SQL constraints and mock only APNs transport. Node↔CryptoKit AES-GCM interoperability, tamper rejection, trusted routing, foreground suppression, and cold/warm UI routing are covered in the iOS tests.
+`GET /health` reports whether provider credentials are configured, never their values; this is not a delivery check. The `Env` type is generated with `npm run types`. Tests use SQLite for real SQL constraints and mock only APNs transport. An additional workerd test exercises real Workers fetch/WebCrypto, verifies the JWT signature, and rejects redirects without forwarding credentials. Workers requires `redirect: 'manual'` with explicit rejection of 3xx responses; `redirect: 'error'` throws before sending the request. Node↔CryptoKit AES-GCM interoperability, tamper rejection, trusted routing, foreground suppression, and cold/warm UI routing are covered in the iOS tests.
 
-Operational checks: verify readiness, a current companion heartbeat, device registration, then a real notification on a TestFlight device. A 410 response disables an invalid token. Reopen BYOT and set up/enable notifications to recover after token revocation. APNs is unavailable until the production key is configured.
+Operational checks: verify credential configuration, a current companion heartbeat, device registration, then a real notification on a TestFlight device. A 410 response disables an invalid token. Reopen BYOT and set up/enable notifications to recover after token revocation.
