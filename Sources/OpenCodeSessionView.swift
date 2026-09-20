@@ -5,6 +5,7 @@ struct OpenCodeSessionView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
     @State private var isShowingDiff = false
+    @State private var isShowingQueue = false
     @ObservedObject private var push = BYOTPushNotifications.shared
     @State private var notificationError: String?
     @State private var isShowingRecoveryModelPicker = false
@@ -144,6 +145,10 @@ struct OpenCodeSessionView: View {
                         .id("opencode-session-activity")
                     }
 
+                    if let queue = store.durableQueue {
+                        BYOTQueueSummary(queue: queue) { isShowingQueue = true }
+                    }
+
                     if !store.queuedPrompts.isEmpty {
                         OpenCodeQueuedPromptsView(
                             prompts: store.queuedPrompts,
@@ -267,6 +272,8 @@ struct OpenCodeSessionView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button("Message queue", systemImage: "list.bullet.rectangle") { isShowingQueue = true }
+                        .accessibilityIdentifier("session-queue")
                     Button("Session details", systemImage: "info.circle") { isShowingDetails = true }
                     Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
                     if push.credentials[client.profile.id] != nil {
@@ -296,6 +303,9 @@ struct OpenCodeSessionView: View {
                 .tint(BYOTBrand.chromeTint)
                 .disabled(!store.diffPresentation.canPresent)
             }
+        }
+        .sheet(isPresented: $isShowingQueue) {
+            if let queue = store.durableQueue { BYOTDurableQueueView(queue: queue) }
         }
         .sheet(isPresented: $isShowingDetails) {
             OpenCodeSessionDetailsView(store: store) { session in

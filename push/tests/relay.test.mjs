@@ -15,6 +15,7 @@ function fixture() {
       'utf8',
     ),
   );
+  db.exec(readFileSync(new URL('../migrations/0002_prompt_queue.sql', import.meta.url), 'utf8'));
   const wrap = (sql, args = []) => ({
     bind(...a) {
       return wrap(sql, a);

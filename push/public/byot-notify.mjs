@@ -5,6 +5,7 @@ import {
   randomBytes,
   randomUUID,
   createCipheriv,
+  createDecipheriv,
 } from 'node:crypto';
 import {
   mkdir,
@@ -330,8 +331,219 @@ export class PendingNotifications {
     );
   }
 }
+// The relay owns admission and ordering. A claim is never replayed after an ambiguous
+// failure: reconcile its stable message ID, or require human review.
+export function decryptQueue(text, key) {
+  const data = Buffer.from(text, 'base64');
+  const decipher = createDecipheriv('aes-256-gcm', Buffer.from(key, 'base64'), data.subarray(0, 12));
+  decipher.setAuthTag(data.subarray(-16));
+  return JSON.parse(Buffer.concat([decipher.update(data.subarray(12, -16)), decipher.final()]));
+}
+export function promptBody(envelope, version, schema) {
+  const p = envelope.prompt;
+  const messageID = 'msg_' + p.id.replaceAll('-', '').toLowerCase();
+  const files = [...(p.attachments ?? []).map(a => ({uri:`data:${a.mimeType};base64,${a.data}`, name:a.filename, mime:a.mimeType})), ...(envelope.references ?? [])];
+  if (version === 1) {
+    if (p.command?.kind === 'skill') throw new Error('Unsupported skill');
+    const parts = files.map(f => ({type:'file',url:f.uri,filename:f.name,mime:f.mime}));
+    if (!p.command && p.text) parts.unshift({type:'text',text:p.text});
+    const body = {messageID,parts};
+    if (p.agent) body.agent = p.agent;
+    if (p.variant) body.variant = p.variant;
+    if (p.command) {
+      body.command=p.command.name; body.arguments=p.command.arguments;
+      if(p.model) body.model=p.model.providerID+'/'+p.model.modelID;
+    } else if (p.model) body.model={providerID:p.model.providerID,modelID:p.model.modelID};
+    return {body, suffix:p.command ? 'command':'prompt_async', messageID};
+  }
+  const command = p.command?.kind === 'command';
+  const suffix = command ? 'command':'prompt';
+  const properties = schema?.paths?.[`/api/session/{sessionID}/${suffix}`]?.post?.requestBody?.content?.['application/json']?.schema?.properties;
+  if (!properties) throw new Error('Unsupported prompt contract');
+  const content = {text:p.command?.arguments ?? p.text};
+  if (files.length) content.files=files.map(({uri,name})=>({uri,name}));
+  if (p.command?.kind === 'skill') {
+    if (!properties.skills) throw new Error('Unsupported skill');
+    content.skills=[{id:p.command.name}];
+  }
+  const body = {delivery:'queue'};
+  if (command) body.command=p.command.name;
+  else {
+    body.id=messageID;
+    if(properties.metadata) {
+      body.metadata={displayText:p.text};
+      if(p.agent) body.metadata.agent=p.agent;
+      if(p.model) body.metadata.model={providerID:p.model.providerID,modelID:p.model.modelID,...(p.variant?{variant:p.variant}:{})};
+    }
+  }
+  if (properties.text) Object.assign(body,content);
+  else if(properties.prompt) body.prompt=content;
+  else throw new Error('Unsupported prompt contract');
+  return {body,suffix,messageID};
+}
+export class PromptRunner {
+  constructor(config, relayRequest = queueAPI, upstream = queueUpstream, notifyReview) {
+    this.config=config; this.relay=relayRequest; this.upstream=upstream;
+    this.running=false; this.cache=new Map(); this.notifyReview=notifyReview; this.reviewAlerts=new Set();
+  }
+  async envelope(job) {
+    const key=job.id+':'+job.revision;
+    if(this.cache.has(key)) return this.cache.get(key);
+    let ciphertext='';
+    for(let i=0;i<job.chunks;i++) ciphertext += (await this.relay(this.config,'GET',`/${job.id}/chunks/${i}?revision=${job.revision}`)).content;
+    if(digest(ciphertext)!==job.digest) throw new Error('Invalid ciphertext digest');
+    const value=decryptQueue(ciphertext,this.config.routeKey);
+    if(value.version!==1 || value.subscriptionID.toLowerCase()!==this.config.subscriptionID.toLowerCase() || value.prompt.id.toLowerCase()!==job.id.toLowerCase() || value.revision!==job.revision || value.route.serverID.toLowerCase()!==this.config.serverID.toLowerCase() || digest(this.config.subscriptionID.toLowerCase()+':'+value.route.sessionID)!==job.thread || !/^[A-Za-z0-9_-]{1,200}$/.test(value.route.sessionID)) throw new Error('Queue context mismatch');
+    if(!Array.isArray(value.prompt.attachments) || value.prompt.attachments.length>10 || value.prompt.attachments.reduce((n,a)=>n+Buffer.from(a.data,'base64').length,0)>20*1024*1024) throw new Error('Invalid attachments');
+    if(value.prompt.variant && !value.prompt.model?.variants?.includes(value.prompt.variant)) throw new Error('Invalid model variant');
+    this.cache.set(key,value);
+    if(this.cache.size>20) this.cache.delete(this.cache.keys().next().value);
+    return value;
+  }
+  async tick(version) {
+    if(this.running) return;
+    this.running=true;
+    try {
+      const snapshot=await this.relay(this.config,'GET','');
+      const paused=new Set(snapshot.sessions.filter(s=>s.paused).map(s=>s.thread));
+      const handled=new Set();
+      for(const job of snapshot.jobs.filter(j=>!['completed','cancelled','uploading'].includes(j.state))) {
+        if(handled.has(job.thread)) continue;
+        // Resolve an in-flight job before any queued sibling, regardless of reordering.
+        const active=snapshot.jobs.find(j=>j.thread===job.thread && ['claimed','submitted','needsReview'].includes(j.state));
+        const current=active ?? job;
+        handled.add(job.thread);
+        if(current.state==='needsReview') {
+          if(this.notifyReview && !this.reviewAlerts.has(current.id)) {
+            try { await this.notifyReview(await this.envelope(current)); this.reviewAlerts.add(current.id); }
+            catch { /* Retry notification after reconnecting; never retry the prompt. */ }
+          }
+          continue;
+        }
+        if(!active && paused.has(job.thread)) continue;
+        try { await this.process(current,version); }
+        catch { /* Offline upstream/relay: leave the authoritative job intact. */ }
+      }
+    } finally { this.running=false; }
+  }
+  async process(job,version) {
+    const envelope=await this.envelope(job), route=envelope.route;
+    const state=await this.upstream(this.config,version,route,'snapshot');
+    const messageID='msg_'+job.id.replaceAll('-','').toLowerCase();
+    const messages=state.messages.map(m=>m.info ?? m);
+    const index=messages.findIndex(m=>m.id===messageID);
+    const nextUser=messages.findIndex((m,i)=>i>index && (m.role ?? m.type)==='user');
+    const response=index<0?[]:messages.slice(index+1,nextUser<0?undefined:nextUser).filter(m=>(m.role ?? m.type)==='assistant' && (!m.parentID || m.parentID===messageID));
+    const complete=response.some(m=>m.time?.completed && !m.error && m.finish && !['tool-calls','unknown'].includes(m.finish));
+    const failed=response.some(m=>m.error);
+    if(['claimed','submitted'].includes(job.state)) {
+      if(state.active || state.blocked) return;
+      if(complete) return this.relay(this.config,'PATCH',`/${job.id}/state`,{state:'completed'});
+      if(failed || Date.now()-job.updated_at>60000)
+        return this.relay(this.config,'PATCH',`/${job.id}/state`,{state:'needsReview'});
+      return;
+    }
+    if(state.active || state.blocked) return;
+    if(index>=0) {
+      // An admission ID already exists; never create another upstream request.
+      await this.relay(this.config,'POST',`/${job.id}/claim`,{revision:job.revision});
+      return this.relay(this.config,'PATCH',`/${job.id}/state`,{state:complete?'completed':'needsReview'});
+    }
+    // Construct/validate before claiming, so a schema error cannot mutate session settings.
+    let prepared;
+    try { prepared=promptBody(envelope,version,state.schema); }
+    catch {
+      await this.relay(this.config,'POST',`/${job.id}/claim`,{revision:job.revision});
+      return this.relay(this.config,'PATCH',`/${job.id}/state`,{state:'needsReview'});
+    }
+    await this.relay(this.config,'POST',`/${job.id}/claim`,{revision:job.revision});
+    // Only the caller receiving a successful one-time claim can enter this block.
+    // A killed process or lost response leaves a claimed job for reconciliation.
+    try {
+      const queue=await this.relay(this.config,'GET','');
+      if(queue.sessions.some(s=>s.thread===job.thread && s.paused)) throw new Error('Queue paused');
+      const fresh=await this.upstream(this.config,version,route,'status');
+      if(fresh.active || fresh.blocked) throw new Error('Session became active');
+      await this.upstream(this.config,version,route,'send',{...prepared,prompt:envelope.prompt});
+      await this.relay(this.config,'PATCH',`/${job.id}/state`,{state: version===2 && envelope.prompt.command?.kind==='command' ? 'completed' : 'submitted'});
+    } catch {
+      // Keep claimed: a later snapshot can prove completion, otherwise review is required.
+    }
+  }
+}
+export async function queueAPI(config,method,path,body) {
+  const r=await fetch(RELAY+`/v1/subscriptions/${config.subscriptionID}/queue`+path,{
+    method,redirect:'error',signal:AbortSignal.timeout(25000),
+    headers:{authorization:`Bearer ${config.senderKey}`,'content-type':'application/json'},
+    ...(body?{body:JSON.stringify(body)}:{})
+  });
+  if(!r.ok) throw new Error('Queue request failed: '+r.status);
+  return boundedJSON(r);
+}
+export async function queueUpstream(config,version,route,operation,prepared) {
+  const prefix=version===2?'/api':'', path=`${prefix}/session/${encodeURIComponent(route.sessionID)}`;
+  const query=version===1?{directory:route.directory,workspace:route.workspace}:{};
+  const get=(path,q=query)=>serverRequest(config,path,q);
+  const post=async(suffix,body)=>{
+    const url=new URL(serverURL(config.server)+path+'/'+suffix);
+    for(const[k,v]of Object.entries(query)) if(v) url.searchParams.set(k,v);
+    const r=await fetch(url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(30000),headers:{authorization:'Basic '+Buffer.from(`${config.username}:${config.password}`).toString('base64'),'content-type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok) throw new Error('OpenCode did not acknowledge the prompt');
+    if(r.status!==204) { const result=await boundedJSON(r); if(version===2 && suffix==='prompt' && result.data?.sessionID!==route.sessionID) throw new Error('Invalid admission'); }
+  };
+  if(operation==='send') {
+    if(version===2) {
+      if(prepared.prompt.agent) await post('agent',{agent:prepared.prompt.agent});
+      if(prepared.prompt.model) await post('model',{model:{id:prepared.prompt.model.modelID,providerID:prepared.prompt.model.providerID,...(prepared.prompt.variant?{variant:prepared.prompt.variant}:{})}});
+    }
+    return post(prepared.suffix,prepared.body);
+  }
+  // Resolve the session on the configured server. Do not trust a phone-supplied URL.
+  const raw=await get(path), session=version===2?raw.data:raw;
+  const directory=session?.location?.directory ?? session?.directory;
+  const workspace=session?.location?.workspaceID ?? session?.workspaceID ?? null;
+  if(session?.id!==route.sessionID || directory!==route.directory || workspace!==(route.workspace ?? null)) throw new Error('Session location changed');
+  const states=await get(version===2?'/api/session/active':'/session/status',version===2?{}:query);
+  const active=version===2?!!states.data?.[route.sessionID]:['busy','retry'].includes(states[route.sessionID]?.type);
+  if(version===2 && (!states.data || typeof states.data!=='object')) throw new Error('Invalid active status');
+  let blocked=false;
+  if(version===1) {
+    const [permissions,questions]=await Promise.all([get('/permission'),get('/question')]);
+    if(!Array.isArray(permissions)||!Array.isArray(questions)) throw new Error('Invalid pending actions');
+    blocked=[...permissions,...questions].some(p=>p.sessionID===route.sessionID);
+  } else {
+    const [permissions,forms]=await Promise.all([get(path+'/permission'),get(path+'/form')]);
+    if(!Array.isArray(permissions.data)||!Array.isArray(forms.data)) throw new Error('Invalid pending actions');
+    blocked=permissions.data.some(p=>!p.time?.replied && !p.reply) || forms.data.length > 0;
+  }
+  if(operation==='status') return {active,blocked};
+  const messages=[];
+  if(version===1) messages.push(...await get(path+'/message',{...query,limit:'200'}));
+  else {
+    let cursor; const seen=new Set();
+    do {
+      const result=await get(path+'/message',cursor?{limit:'200',cursor}:{limit:'200',order:'asc'});
+      if(!Array.isArray(result.data)) throw new Error('Invalid transcript');
+      messages.push(...result.data); cursor=result.cursor?.next;
+      if(cursor && seen.has(cursor)) throw new Error('Repeated cursor');
+      seen.add(cursor);
+      if(messages.length>10000) throw new Error('Transcript too large');
+    } while(cursor);
+  }
+  return {active,blocked,messages,schema:version===2?await get('/openapi.json',{}):undefined};
+}
+
 async function runServer(config) {
   const tracker = new EventTracker();
+  const prompts = new PromptRunner(config, queueAPI, queueUpstream, async envelope => {
+    await api(`/v1/subscriptions/${config.subscriptionID}/events`, config.senderKey, {
+      eventID: digest('queue-review:' + envelope.prompt.id), kind: 'error',
+      createdAt: Date.now(), thread: digest(config.subscriptionID.toLowerCase() + ':' + envelope.route.sessionID),
+      route: encryptRoute(envelope.route, config.routeKey),
+    });
+  });
+  let queueVersion;
+  const promptTimer = setInterval(() => { if (queueVersion) void prompts.tick(queueVersion).catch(() => {}); }, 5000);
   const queuePath = join(root, config.subscriptionID + '.pending.json');
   const queue = new PendingNotifications(
     await readJSON(queuePath, []),
@@ -376,7 +588,7 @@ async function runServer(config) {
       await api(
         `/v1/subscriptions/${config.subscriptionID}/heartbeat`,
         config.senderKey,
-        {},
+        { queueVersion: 1 },
       );
     } catch {}
   };
@@ -386,6 +598,8 @@ async function runServer(config) {
     while (true) {
       try {
         const version = await detect(config);
+        queueVersion = version;
+        void prompts.tick(version).catch(() => {});
         await heartbeat();
         await flush();
         const response = await serverRequest(
@@ -411,6 +625,7 @@ async function runServer(config) {
       backoff = Math.min(backoff * 2, 30000);
     }
   } finally {
+    clearInterval(promptTimer);
     clearInterval(flushTimer);
     clearInterval(heartbeatTimer);
   }

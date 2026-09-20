@@ -17,14 +17,14 @@ struct OpenCodeAgentOption: Identifiable, Equatable, Sendable {
 }
 
 struct OpenCodeSlashCommand: Identifiable, Equatable, Sendable {
-    enum Kind: String, Sendable { case command, skill }
+    enum Kind: String, Codable, Sendable { case command, skill }
     let name: String
     let description: String?
     let kind: Kind
     var id: String { "\(kind.rawValue):\(name)" }
 }
 
-struct OpenCodeCommandInvocation: Equatable, Sendable {
+struct OpenCodeCommandInvocation: Equatable, Codable, Sendable {
     let name: String
     let arguments: String
     let kind: OpenCodeSlashCommand.Kind

@@ -1,0 +1,30 @@
+{
+  "checkedAt": "2026-09-20T07:27:15.110Z",
+  "relay": "https://byot-push.steventsao.workers.dev",
+  "syntheticSubscriptionsDeleted": true,
+  "physicalDevice": false,
+  "results": [
+    {
+      "version": 1,
+      "orderedPrompts": 3,
+      "states": [
+        "completed",
+        "completed",
+        "completed"
+      ],
+      "duplicateAdmissions": 0,
+      "companionRestartedBetweenTicks": true
+    },
+    {
+      "version": 2,
+      "orderedPrompts": 3,
+      "states": [
+        "completed",
+        "completed",
+        "completed"
+      ],
+      "duplicateAdmissions": 0,
+      "companionRestartedBetweenTicks": true
+    }
+  ]
+}
