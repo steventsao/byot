@@ -17,7 +17,11 @@ Adds opt-in APNs registration, per-server notification setup, approval/question/
 
 The relay and updated support/privacy pages are deployed. `/health` currently reports `ready: false` because Apple key registration has not been approved yet. The prepared APNs key is restricted to Production and the `com.steventsao.byot` topic; TestFlight uses that environment. Debug/sandbox APNs is not configured.
 
-Signed Release archive built successfully: version **1.0.26**, build **20260919210242**. The first export failed at `codesign` with `errSecInternalComponent` after waiting on Keychain authorization. A follow-up [signing diagnostic](signing-diagnostic.json) verified the distribution certificate trust and expiry, the valid local identity, and a fresh App Store profile with production APNs and the matching certificate. Two subsequent exports with the same identity failed at the same signing step; no IPA has been produced. No TestFlight upload or physical APNs delivery is claimed at this stage. Final Apple validation, production entitlements, and distribution receipts will be added after export and upload.
+Version **1.0.26**, build **20260919210242**, is uploaded and available to **Internal Testers**. Apple reports processing state `VALID` and internal state `IN_BETA_TESTING`; group assignment and the published test notes were independently verified. See [publish receipt](testflight-publish.json), [release verification](release-verification.json), and [Apple validation](apple-validation.json).
+
+The signing blocker is resolved. An existing dedicated release keychain unlocked using its saved password and signed successfully. `asc` created a manually managed BYOT App Store profile, then exported using the working keychain explicitly. The existing distribution certificate was reused; none were replaced or revoked. The IPA passed strict signature verification and Apple validation, with `aps-environment: production`, the expected team/bundle/version/build, and debugging disabled. [Signing diagnostics](signing-diagnostic.json) retain the earlier failures and resolution.
+
+The TestFlight notes clearly state that live push delivery is pending APNs provider-key activation. Physical-device APNs receipt and tap-through remain unverified.
 
 ## Acceptance on an iPhone
 

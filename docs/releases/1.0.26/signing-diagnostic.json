@@ -14,5 +14,13 @@
   "firstExport": "Failed at codesign with errSecInternalComponent after a Keychain authorization prompt",
   "diagnosis": "Certificate validity and profile matching pass. Evidence points to private-key access authorization; errSecInternalComponent alone is not a unique diagnosis.",
   "retry": "Two subsequent exports failed at the same codesign step with errSecInternalComponent; no IPA produced",
-  "lastRetryCheckedAt": "2026-09-20T04:49:42.670752+00:00"
+  "lastRetryCheckedAt": "2026-09-20T04:49:42.670752+00:00",
+  "resolvedAt": "2026-09-20T05:00:19.847922+00:00",
+  "resolution": "Unlocked an existing dedicated release keychain using its saved password via the Security framework; codesign probe and asc xcode export succeeded using that keychain explicitly. No certificate was replaced or revoked.",
+  "manualProfileID": "U34Y879J64",
+  "manualProfileUUID": "7682bf48-1d32-4d2b-897c-5bb37b2d7dab",
+  "manualProfileName": "BYOT Push App Store 20260920",
+  "manualProfileExpiry": "2027-06-09T17:26:09Z",
+  "export": "Successful; production APNs entitlement and strict code signature verified",
+  "appleValidation": "asc xcode validate passed with no errors"
 }

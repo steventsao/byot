@@ -1,0 +1,22 @@
+{
+  "checkedAt": "2026-09-20T04:57:52.666889+00:00",
+  "bundleID": "com.steventsao.byot",
+  "version": "1.0.26",
+  "buildNumber": "20260919210242",
+  "productionAPNs": true,
+  "debuggerEntitlement": false,
+  "teamID": "449BD89VDV",
+  "profileUUID": "7682bf48-1d32-4d2b-897c-5bb37b2d7dab",
+  "profileID": "U34Y879J64",
+  "certificateID": "828T52V56G",
+  "codesignVerification": "deep and strict passed",
+  "ipaSHA256": "0c495b43010c4e0e6bee55dfdb8357e86427d04bc86ddbfc3ac06b3ef7f876b6",
+  "testflightVerifiedAt": "2026-09-20T05:03:33.844928+00:00",
+  "testflightBuildID": "45190f1b-2c6d-4859-bfdf-5cc0cd865b89",
+  "testflightProcessingState": "VALID",
+  "internalBuildState": "IN_BETA_TESTING",
+  "internalTestersGroupID": "a2c29c92-ddfd-4c22-9368-8563d9b756ea",
+  "internalTestersAssignmentVerified": true,
+  "testNotesVerified": true,
+  "liveAPNsDelivery": "Pending production provider-key registration/configuration and physical-device validation"
+}
