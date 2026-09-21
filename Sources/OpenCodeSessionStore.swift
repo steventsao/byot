@@ -246,6 +246,12 @@ final class OpenCodeSessionStore: ObservableObject {
         if Task.isCancelled, generation == lifecycleGeneration { stop() }
     }
 
+    func refreshAfterForeground() {
+        guard isRunning else { return }
+        // Reconcile missed events without interrupting an in-flight submission.
+        scheduleReconciliation()
+    }
+
     func stop() {
         durableQueue?.stop()
         lifecycleGeneration &+= 1

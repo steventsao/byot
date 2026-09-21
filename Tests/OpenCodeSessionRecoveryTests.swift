@@ -4,6 +4,25 @@ import Testing
 
 @Suite("OpenCode session recovery")
 struct OpenCodeSessionRecoveryTests {
+    @Test("Returning to foreground reconciles status without aborting or sending a prompt")
+    @MainActor
+    func foregroundRefresh() async throws {
+        let harness = OpenCodeRecoveryStub.register(messages: Self.answeredMessages,
+            statusCode: 200, statusBody: "{}")
+        defer { harness.unregister() }
+        let store = makeStore(client: harness.client, sessionID: harness.sessionID)
+        await store.start()
+        defer { store.stop() }
+        // Allow initial event reconciliation to settle before simulating a missed update.
+        try await Task.sleep(for: .milliseconds(200))
+        harness.updateStatus(code: 200, body: #"{"ses-recovery":{"type":"busy"}}"#)
+        store.refreshAfterForeground()
+        for _ in 0..<100 where !store.status.isActive { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(store.status.isActive)
+        #expect(harness.abortCount == 0)
+        #expect(harness.promptBodies.isEmpty)
+    }
+
     @Test("A retired automatic model can retry the original text and attachment with an explicit model")
     @MainActor
     func retiredModelRecoveryPreservesPrompt() async throws {

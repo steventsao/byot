@@ -1,0 +1,20 @@
+{
+  "version": "1.0.28",
+  "sourceCommit": "6a42553",
+  "swiftSourcesSHA256": "83195c0d51d0b3c4c364c7d2468a424fb674da385bec32643688545a8f8b0ccf",
+  "unitPassed": 246,
+  "liveOptInSkipped": 8,
+  "unitFailed": 0,
+  "evidence": [
+    "\t Executed 115 tests, with 8 tests skipped and 0 failures (0 unexpected) in 7.717 (8.366) seconds",
+    "\t Executed 115 tests, with 8 tests skipped and 0 failures (0 unexpected) in 7.717 (8.387) seconds",
+    "\u2714 Suite \"Composer drafts\" passed after 0.043 seconds.",
+    "\u2714 Test \"Returning to foreground reconciles status without aborting or sending a prompt\" passed after 0.289 seconds.",
+    "\u2714 Test run with 139 tests in 19 suites passed after 3.296 seconds."
+  ],
+  "queueUI": {
+    "passed": 2,
+    "failed": 0
+  },
+  "interruption": "After the unit suite and queue UI passed, Apple test automation stalled while terminating an app. This Mac then reported insufficient processes to boot another simulator. Remaining UI checks moved to a fresh simulator."
+}

@@ -3,6 +3,39 @@ import UIKit
 
 final class OpenCodeAttachmentUITests: XCTestCase {
     @MainActor
+    func testDraftSurvivesAppTermination() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--attachment-screenshot", "--persist-composer-draft"]
+        app.launch()
+        let composer = app.textFields["opencode-composer-message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        composer.tap()
+        if let value = composer.value as? String, value != "Message", !value.isEmpty {
+            composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+        }
+        let remove = app.buttons["Remove review-notes.txt"]
+        if remove.exists { remove.tap() }
+        composer.tap()
+        composer.typeText("Draft survives relaunch")
+        app.buttons["Add attachment"].tap()
+        app.buttons["Add Text Fixture"].tap()
+        XCTAssertTrue(remove.waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertEqual(composer.value as? String, "Draft survives relaunch")
+        XCTAssertTrue(remove.waitForExistence(timeout: 5))
+        attach("restored-composer-draft")
+        app.buttons["opencode-composer-send"].tap()
+        XCTAssertTrue(remove.waitForNonExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertEqual(composer.value as? String, "Message")
+        XCTAssertFalse(remove.exists)
+    }
+
+    @MainActor
     func testImageAndDocumentPreviewsKeepTheDraft() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--attachment-screenshot"]
@@ -77,8 +110,10 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         XCTAssertTrue(remove.waitForExistence(timeout: 5))
         attach("attachment-largest-text")
         XCTAssertLessThanOrEqual(remove.frame.maxX, app.frame.maxX - 10)
-        XCTAssertGreaterThanOrEqual(remove.frame.width, 44)
-        XCTAssertGreaterThanOrEqual(remove.frame.height, 44)
+        // Accessibility converts screen coordinates through floating-point transforms.
+        // A 44 pt control can be reported as 43.99999999999994 pt.
+        XCTAssertGreaterThanOrEqual(remove.frame.width, 44 - 0.01)
+        XCTAssertGreaterThanOrEqual(remove.frame.height, 44 - 0.01)
         XCTAssertTrue(remove.isHittable)
         remove.tap()
         XCTAssertTrue(remove.waitForNonExistence(timeout: 5))
@@ -130,7 +165,7 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         serverFiles.tap()
         let browser = app.navigationBars["Server files"]
         XCTAssertTrue(browser.waitForExistence(timeout: 10), app.debugDescription)
-        app.buttons["Done"].firstMatch.tap()
+        browser.buttons["Done"].tap()
         XCTAssertTrue(browser.waitForNonExistence(timeout: 10))
 
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
