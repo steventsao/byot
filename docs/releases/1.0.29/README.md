@@ -15,4 +15,8 @@ The empty state now has a native bordered text button with an intrinsic-width ti
 
 ## Distribution
 
-Version 1.0.29, build `20260921121630`. Upload has been committed to App Store Connect; processing and Internal Testers distribution are being verified.
+**Available to Internal Testers:** 1.0.29 (`20260921121630`), build `cb22a475-43e2-4306-af55-01265d45550a`. Independent App Store Connect reads confirm `VALID`, `IN_BETA_TESTING`, Internal Testers membership, and matching test notes. See [verification](release-verification.json) and [publish receipt](testflight-publish.json).
+
+The shipped source is commit `95bc946`. The final IPA is retained locally at `.asc/artifacts/BYOT-1.0.29.ipa`; the signed archive is on the release Mac at `/Users/steventsao/dev/byot-testflight-loading-1.0.29/.asc/artifacts/BYOT.xcarchive`.
+
+The separate `altool --validate-app` check completed after the upload and returned Apple's duplicate-build error 90189. No second upload was attempted. The uploaded binary subsequently processed successfully to `VALID` and entered internal beta testing.
