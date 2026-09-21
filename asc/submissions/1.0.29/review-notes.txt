@@ -1,0 +1,29 @@
+BYOT 1.0.29 (20260921123203) is a native iPhone and iPad client for OpenCode running on the user's own computer. It uses OpenCode's public HTTP/SSE API. Commands execute on the configured server; BYOT renders responses and does not download or execute code on iOS. BYOT is independent and is not affiliated with OpenCode.
+
+There is no BYOT account, analytics, tracking, or in-app purchase. Server passwords are stored in the iOS Keychain. The dedicated review server has a scratch workspace and needs no VPN, Tailscale, browser sign-in, MFA, or invitation.
+
+REVIEW SERVER
+Name: App Review
+URL: https://testflight.byot.app
+Username: opencode
+Server password: use the secure demo-account password field in App Review Information.
+Working directory: /workspace
+
+REVIEW STEPS
+1. Launch BYOT and tap Add server (or the plus in the server bar). Enter the Name, URL, Username, and Server password above. The password is required. Enter /workspace under Working directory.
+2. Tap Test connection, then Save. Select App Review in the server bar.
+3. Tap compose/New session. Select App Review and /workspace. If /workspace is not listed, choose Other directory and enter /workspace. Tap Start session.
+4. In the composer, choose the connected OpenCode provider's Big Pickle model. Send: Reply exactly: BYOT App Review connection verified. Watch the response stream. To try tools, send: List the files in this scratch project and summarize the README without changing files. Tap a tool row to expand it; answer any permission request with Allow once.
+5. Use the composer plus menu to attach a photo/document or choose Files to browse project files. Previewing an attachment preserves the draft. Send is disabled until imports finish.
+6. Type an unsent draft and attach a file, leave the session, reopen it, then relaunch BYOT. The draft is restored only in that session. Send it and reopen the session to confirm the draft clears.
+7. Search, sort, group, or switch servers in the session browser. Swipe left and tap Archive to archive a session. The empty session screen has a readable New session button. Appearance supports System, Light, and Dark.
+
+CHANGES SINCE APP STORE 1.0.23
+Local draft persistence, import limits, foreground reconciliation without interrupting submissions, optional push alerts, an optional computer-owned prompt queue, and the empty-state alignment fix.
+
+OPTIONAL COMPANION FEATURES
+Notifications and the computer queue are opt-in. The core live review flow above does not require them. Set up the companion from the saved server menu > Notifications; the app shows a one-time pairing code and the command to run on the OpenCode computer. Session actions > Message queue can enable the computer queue after pairing. The computer must remain awake and connected. Only prompts marked Accepted for computer can continue with the phone closed. Uncertain delivery requires review before later prompts run. No additional iOS code is installed.
+
+The relay stores APNs registration/preferences and encrypted queued prompts/attachments for these features. Direct-mode content goes to the configured OpenCode server. Local drafts/outbox use iOS file protection and are excluded from backups. Privacy and support pages describe retention and the pairing trust boundary. No advertising or tracking is used.
+
+OpenCode 1 and OpenCode 2 beta are supported; controls follow server capabilities. OpenCode 2 undo does not roll back workspace files. There is no offline demo; use the review server above.
