@@ -1,11 +1,14 @@
-byot 1.0.27 — queue work and close the app
+BYOT 1.0.28 — drafts and session reliability
 
-- Enable the computer queue from a session’s actions menu → Message queue.
-- Follow-up messages, attachments, file context, agent, model, and reasoning selections are saved before sending.
-- “Saved on this iPhone” means upload is pending. “Accepted for computer” means the companion can run it with byot closed.
-- Pause, edit, reorder, and cancel pending messages. Edits and reordering pause the queue; resume when ready.
-- Interrupted deliveries reconcile against the session. Uncertain work requires review and is never automatically repeated.
+• Unsent text, photo/file attachments, and remote file selections stay on this iPhone when you leave a session or relaunch the app.
+• Send waits until photo/file imports finish. Oversized selections stop importing as soon as they exceed the limit.
+• Returning to BYOT refreshes the transcript and status without interrupting a prompt submission.
 
-Setup: update the companion using the command in server Notifications settings and pair again, then enable Message queue. Keep the computer awake with OpenCode and the companion running. Queued content passes through the BYOT relay in encrypted form; see the updated privacy policy.
+Please test:
+1. Type a draft and attach a file. Leave the session, reopen it, then relaunch BYOT. Verify the draft is restored in the same session only.
+2. Send the draft and reopen the session. The composer should be empty and the submitted message should appear once.
+3. Import multiple photos/files and try Send while they load. Verify all accepted attachments travel with the message.
+4. Background BYOT during a turn, then return. Check the current status, response, and pending questions/permissions.
+5. Check the existing computer-owned queue and notifications. Keep the companion running on your computer.
 
-Please queue three messages, wait for Accepted, close byot, and reopen after the turns complete. Also test leaving the session, a connection drop, attachment retention, pause/edit/reorder, and stop. Production relay and real OpenCode 1/2 acceptance are recorded with this release; physical-iPhone background delivery still needs device acceptance.
+Drafts stay locally on this device and are excluded from device backups. They are sent only when you tap Send.

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct OpenCodeSessionView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
@@ -344,6 +345,9 @@ struct OpenCodeSessionView: View {
             Button("OK") { notificationError = nil }
         } message: { Text(notificationError ?? "") }
         .task { await store.start() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { store.refreshAfterForeground() }
+        }
         .onChange(of: store.errorMessage) { _, _ in rememberAttention() }
         .onDisappear {
             if push.activeRoute?.serverID == client.profile.id && push.activeRoute?.sessionID == store.session.id { push.activeRoute = nil }

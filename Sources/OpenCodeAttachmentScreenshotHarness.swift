@@ -6,6 +6,8 @@ struct OpenCodeAttachmentScreenshotHarness: View {
 
     init() {
         let profile = OpenCodeServerProfile(
+            id: ProcessInfo.processInfo.arguments.contains("--persist-composer-draft")
+                ? UUID(uuidString: "AAAAAAAA-1111-2222-3333-444444444444")! : UUID(),
             name: "Screenshot",
             baseURL: "https://screenshot.invalid",
             username: "opencode",

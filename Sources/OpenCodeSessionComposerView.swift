@@ -11,6 +11,8 @@ struct OpenCodeSessionComposerView: View {
     private let onRestoreConsumed: (() -> Void)?
     private let screenshotAttachment: OpenCodePromptAttachment?
     @State private var text = ""
+    @State private var didLoadDraft = false
+    @State private var draftErrorMessage: String?
     @State private var remoteReferences: [OpenCodePromptFileReference] = []
     @State private var isShowingRemoteFiles = false
     @State private var isShowingAgentPicker = false
@@ -46,6 +48,12 @@ struct OpenCodeSessionComposerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let draftErrorMessage {
+                Text(draftErrorMessage)
+                    .font(.cleanCaption)
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("composer-draft-error")
+            }
             slashSuggestions
             if let files = store.remoteFiles {
                 OpenCodeRemoteContextView(text: $text, references: $remoteReferences, files: files,
@@ -100,6 +108,10 @@ struct OpenCodeSessionComposerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(BYOTBrand.canvas)
+        .onAppear(perform: loadDraft)
+        .onChange(of: text) { _, _ in saveDraft() }
+        .onChange(of: remoteReferences) { _, _ in saveDraft() }
+        .onChange(of: attachments) { _, _ in saveDraftAttachments() }
         .task {
             guard startsFocused, !didRequestInitialFocus else { return }
             didRequestInitialFocus = true
@@ -157,6 +169,42 @@ struct OpenCodeSessionComposerView: View {
                 Text(attachmentErrorMessage ?? "The attachment couldn’t be read.")
             }
         )
+    }
+
+    private var draftStore: OpenCodeComposerDraftStore {
+        OpenCodeComposerDraftStore(serverID: store.serverID, sessionID: store.session.id,
+            directory: store.directory, workspace: store.session.workspaceID)
+    }
+
+    private func loadDraft() {
+        guard !didLoadDraft else { return }
+        do {
+            let (draft, savedAttachments) = try draftStore.load()
+            text = draft.text
+            remoteReferences = draft.references
+            attachments = savedAttachments
+        } catch {
+            draftErrorMessage = "Couldn’t restore this draft from this iPhone."
+        }
+        didLoadDraft = true
+    }
+
+    private func saveDraft() {
+        guard didLoadDraft else { return }
+        do {
+            try draftStore.save(OpenCodeComposerDraft(text: text, references: remoteReferences))
+        } catch {
+            draftErrorMessage = "Couldn’t save this draft. Keep this session open until you send it."
+        }
+    }
+
+    private func saveDraftAttachments() {
+        guard didLoadDraft else { return }
+        do {
+            try draftStore.saveAttachments(attachments)
+        } catch {
+            draftErrorMessage = "Couldn’t save draft attachments. Keep this session open until you send them."
+        }
     }
 
     private var isExpanded: Bool {
@@ -314,7 +362,7 @@ struct OpenCodeSessionComposerView: View {
         .accessibilityLabel(showsStopControl ? "Stop the current turn" :
             (store.willQueueNextPrompt ? "Queue message" : "Send message"))
         .accessibilityIdentifier(showsStopControl ? "opencode-composer-stop" : "opencode-composer-send")
-        .disabled(!showsStopControl && (!hasSendableContent || !store.canSubmitPrompt))
+        .disabled(!showsStopControl && (!hasSendableContent || !store.canSubmitPrompt || isImportingAttachment))
     }
 
     private func attachmentChip(_ attachment: OpenCodePromptAttachment) -> some View {
@@ -385,6 +433,7 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private func send() {
+        guard !isImportingAttachment else { return }
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if attachments.isEmpty, remoteReferences.isEmpty,
            !store.composerCatalog.commands.contains(where: { "/" + $0.name == prompt }),
@@ -392,15 +441,12 @@ struct OpenCodeSessionComposerView: View {
         guard (!prompt.isEmpty || !attachments.isEmpty || !remoteReferences.isEmpty), store.canSubmitPrompt else { return }
         let promptAttachments = attachments
         let promptReferences = remoteReferences
-        text = ""
-        attachments = []
-        remoteReferences = []
-        if store.send(prompt, attachments: promptAttachments, remoteReferences: promptReferences) == false,
-           text.isEmpty, attachments.isEmpty, remoteReferences.isEmpty {
-            text = prompt
-            attachments = promptAttachments
-            remoteReferences = promptReferences
-        } else {
+        if store.send(prompt, attachments: promptAttachments, remoteReferences: promptReferences) {
+            text = ""
+            attachments = []
+            remoteReferences = []
+            saveDraft()
+            saveDraftAttachments()
             isFocused = false
         }
     }
@@ -573,6 +619,7 @@ struct OpenCodeSessionComposerView: View {
                             data: data
                         )
                     )
+                    try OpenCodePromptAttachment.validate(attachments + imported)
                 }
                 try appendAttachments(imported)
             } catch {
@@ -590,9 +637,13 @@ struct OpenCodeSessionComposerView: View {
             Task { @MainActor in
                 defer { isImportingAttachment = false }
                 do {
+                    guard urls.count + attachments.count <= OpenCodePromptAttachment.maximumCount else {
+                        throw OpenCodePromptAttachmentError.tooMany(maximum: OpenCodePromptAttachment.maximumCount)
+                    }
                     var imported: [OpenCodePromptAttachment] = []
                     for url in urls {
                         imported.append(try await Self.loadAttachment(from: url))
+                        try OpenCodePromptAttachment.validate(attachments + imported)
                     }
                     try appendAttachments(imported)
                 } catch {

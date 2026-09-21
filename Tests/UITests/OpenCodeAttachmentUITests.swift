@@ -3,6 +3,39 @@ import UIKit
 
 final class OpenCodeAttachmentUITests: XCTestCase {
     @MainActor
+    func testDraftSurvivesAppTermination() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--attachment-screenshot", "--persist-composer-draft"]
+        app.launch()
+        let composer = app.textFields["opencode-composer-message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        composer.tap()
+        if let value = composer.value as? String, value != "Message", !value.isEmpty {
+            composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+        }
+        let remove = app.buttons["Remove review-notes.txt"]
+        if remove.exists { remove.tap() }
+        composer.tap()
+        composer.typeText("Draft survives relaunch")
+        app.buttons["Add attachment"].tap()
+        app.buttons["Add Text Fixture"].tap()
+        XCTAssertTrue(remove.waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertEqual(composer.value as? String, "Draft survives relaunch")
+        XCTAssertTrue(remove.waitForExistence(timeout: 5))
+        attach("restored-composer-draft")
+        app.buttons["opencode-composer-send"].tap()
+        XCTAssertTrue(remove.waitForNonExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertEqual(composer.value as? String, "Message")
+        XCTAssertFalse(remove.exists)
+    }
+
+    @MainActor
     func testImageAndDocumentPreviewsKeepTheDraft() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--attachment-screenshot"]
