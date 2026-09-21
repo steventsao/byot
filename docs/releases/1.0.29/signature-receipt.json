@@ -1,0 +1,10 @@
+{
+  "version": "1.0.29",
+  "build": "20260921121630",
+  "bundleID": "com.steventsao.byot",
+  "apsEnvironment": "production",
+  "getTaskAllow": false,
+  "teamID": "449BD89VDV",
+  "signatureVerified": true,
+  "ipaSHA256": "c3303d2fc7a2a53a9653eaa27b7e5e173c44449b02cf8bc5fa9ac8a4e30b0ace"
+}

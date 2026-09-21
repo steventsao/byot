@@ -116,7 +116,9 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
         case "/session" where request.httpMethod == "POST": body = session("created", "New session", directory, 0)
         case let endpoint where endpoint == "/session/active" || endpoint == "/session/retry" || endpoint == "/session/idle":
             body = sessions.first { $0["id"] as? String == url.lastPathComponent }!
-        case "/session": body = sessions.filter { $0["directory"] as? String == directory }
+        case "/session":
+            body = ProcessInfo.processInfo.arguments.contains("--empty-session-browser")
+                ? [] : sessions.filter { $0["directory"] as? String == directory }
         case "/session/status": body = ["active": ["type": "busy"], "retry": ["type": "retry", "attempt": 1, "message": "Provider rate limit", "next": now + 10_000]]
         case "/provider": body = ["all": [], "connected": [], "default": [:]] as [String: Any]
         case "/session/idle/message":

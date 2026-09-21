@@ -2,6 +2,41 @@ import XCTest
 
 final class OpenCodeSessionBrowserUITests: XCTestCase {
     @MainActor
+    func testEmptySessionActionStaysReadableAndOpensComposer() throws {
+        try checkEmptySessionAction(largeText: false)
+    }
+
+    @MainActor
+    func testEmptySessionActionAtLargestTextSize() throws {
+        try checkEmptySessionAction(largeText: true)
+    }
+
+    @MainActor
+    private func checkEmptySessionAction(largeText: Bool) throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--session-browser-fixture", "--reset-browser", "--empty-session-browser"]
+        if largeText {
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        }
+        app.launch()
+        XCTAssertTrue(app.staticTexts["No sessions"].waitForExistence(timeout: 10), app.debugDescription)
+        // The empty-state action is above the separate bottom compose button.
+        let action = try XCTUnwrap(app.buttons.matching(identifier: "New session").allElementsBoundByIndex
+            .filter { $0.isHittable }.min { $0.frame.minY < $1.frame.minY })
+        attach(largeText ? "empty-sessions-largest-text" : "empty-sessions")
+        XCTAssertGreaterThan(action.frame.width, action.frame.height,
+                             "The action must read horizontally, not wrap one character per line")
+        XCTAssertGreaterThanOrEqual(action.frame.height, 44 - 0.01)
+        XCTAssertGreaterThanOrEqual(action.frame.minX, 0)
+        XCTAssertLessThanOrEqual(action.frame.maxX, app.frame.width)
+        XCTAssertLessThan(action.frame.maxY, app.textFields["session-search"].frame.minY)
+        action.tap()
+        XCTAssertTrue(app.buttons["new-session-server"].waitForExistence(timeout: 5), app.debugDescription)
+        app.terminate()
+    }
+
+    @MainActor
     func testFinalProviderFailureReturnsToTheSessionList() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

@@ -94,7 +94,15 @@ struct OpenCodeConnectedView: View {
                         ContentUnavailableView {
                             Label("No sessions", systemImage: "bubble.left.and.bubble.right")
                         } actions: {
-                            newSessionMenu
+                            Button(action: openNewSession) {
+                                // The compact icon button's label can collapse to
+                                // one character per line in ContentUnavailableView.
+                                Text("New session")
+                                    .fixedSize(horizontal: true, vertical: true)
+                                    .frame(minHeight: 44)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(BYOTBrand.chromeTint)
                         }
                     }
                 } else if !browser.sessions.isEmpty && visibleSessions(browser.sessions).isEmpty {
