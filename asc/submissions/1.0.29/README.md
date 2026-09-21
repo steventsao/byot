@@ -16,4 +16,14 @@ Replacement build: **1.0.29 (`20260921123203`)**. The archive was rebuilt with t
 
 The standard readiness check reports zero errors and zero warnings; the submission dry run returns `wouldSubmit: true`. The extra URL checker warns only that `https://byot.app` is the marketing site root, which is the intended product landing page. Support and privacy URLs resolve correctly, and fresh direct reads confirm they include notifications, encrypted queue handling, and retention. Apple web privacy publication still requires verification before the final submit.
 
-The replacement archive is undergoing Apple validation; after processing, attach it to this version, update/publish the App Privacy labels, and run the final review submission.
+The replacement build **c0326a7e-119d-41e0-b04c-5655aabc5898** independently reached Apple processing state **VALID** and is attached to App Store version 1.0.29. The fresh readiness check has zero errors/warnings and the final dry run confirms it would submit this build. See [version status](version-status.json), [build processing](app-store-connect-build.json), and [dry run](submission-dry-run.json).
+
+The standalone altool validation was stopped after it remained running without a result. Apple's upload-processing validation subsequently succeeded. The existing Internal Testers build (`20260921121630`) remains available; this replacement is staged for App Store review.
+
+Remaining action: complete Apple web sign-in, publish the four App Privacy declarations in [privacy disclosures](privacy-disclosures.md), verify publication, then run:
+
+```sh
+asc review submit --app 6782403920 --version-id 99f0c629-0f16-4d03-9909-11848d68d483 --build-id c0326a7e-119d-41e0-b04c-5655aabc5898 --confirm
+```
+
+The owner has already authorized submission; no further approval is needed after the missing sign-in and privacy correction.
