@@ -1,0 +1,15 @@
+{
+  "checkedAt": "2026-09-21T07:20:50.439265+00:00",
+  "buildID": "0800d0e3-29d3-4ed9-8bac-55ad99de7dfd",
+  "version": "1.0.28",
+  "buildNumber": "20260920235124",
+  "processingState": "VALID",
+  "internalBuildState": "IN_BETA_TESTING",
+  "internalTestersAssignmentVerified": true,
+  "testNotesVerified": true,
+  "appSourceCommit": "6a42553",
+  "appleValidation": true,
+  "unitTestsPassed": 246,
+  "liveTestsSkipped": 8,
+  "focusedUITestsPassed": 5
+}

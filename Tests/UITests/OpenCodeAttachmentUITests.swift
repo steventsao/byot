@@ -110,8 +110,10 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         XCTAssertTrue(remove.waitForExistence(timeout: 5))
         attach("attachment-largest-text")
         XCTAssertLessThanOrEqual(remove.frame.maxX, app.frame.maxX - 10)
-        XCTAssertGreaterThanOrEqual(remove.frame.width, 44)
-        XCTAssertGreaterThanOrEqual(remove.frame.height, 44)
+        // Accessibility converts screen coordinates through floating-point transforms.
+        // A 44 pt control can be reported as 43.99999999999994 pt.
+        XCTAssertGreaterThanOrEqual(remove.frame.width, 44 - 0.01)
+        XCTAssertGreaterThanOrEqual(remove.frame.height, 44 - 0.01)
         XCTAssertTrue(remove.isHittable)
         remove.tap()
         XCTAssertTrue(remove.waitForNonExistence(timeout: 5))
@@ -163,7 +165,7 @@ final class OpenCodeAttachmentUITests: XCTestCase {
         serverFiles.tap()
         let browser = app.navigationBars["Server files"]
         XCTAssertTrue(browser.waitForExistence(timeout: 10), app.debugDescription)
-        app.buttons["Done"].firstMatch.tap()
+        browser.buttons["Done"].tap()
         XCTAssertTrue(browser.waitForNonExistence(timeout: 10))
 
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
