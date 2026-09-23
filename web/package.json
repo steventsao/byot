@@ -6,6 +6,7 @@
     "node": ">=22.18"
   },
   "scripts": {
+    "dev": "node --watch scripts/preview.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/landing-worker.test.ts",
     "build": "wrangler deploy --dry-run --outdir dist",
