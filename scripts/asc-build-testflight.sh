@@ -58,7 +58,6 @@ run_asc xcode version edit \
 archive_flags=(
   --xcodebuild-flag=-destination
   --xcodebuild-flag="$XCODE_DESTINATION"
-  --xcodebuild-flag=PRODUCT_BUNDLE_IDENTIFIER="$BYOT_BUNDLE_ID"
 )
 export_flags=()
 validate_args=()
