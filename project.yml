@@ -21,6 +21,10 @@ targets:
       # App Group key in Sources/BYOT.entitlements) to ship without it; see
       # docs/releases/1.0.31-signing.md.
       - target: BYOTWidgets
+      # Share-sheet entry that hands text, links, images and files to the
+      # composer. Remove this entry to ship without it; see
+      # docs/releases/1.0.31-signing.md.
+      - target: BYOTShare
     info:
       path: Sources/Info.plist
       properties:
@@ -29,6 +33,11 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
         NSSupportsLiveActivities: true
+        # Opened by the share extension with the id of a saved share only.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.steventsao.byot.share
+            CFBundleURLSchemes:
+              - byot-share
         UIAppFonts:
           - OpenRunde-Bold.otf
           - OpenRunde-Regular.otf
@@ -81,6 +90,46 @@ targets:
         PRODUCT_NAME: BYOTWidgets
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Widgets/Info.plist
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+  BYOTShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ShareExtension
+      - path: Shared/BYOTAppGroup.swift
+      - path: Sources/BYOTBrand.swift
+      - path: Sources/BYOTDesignSystem.swift
+      - path: Sources/BYOTShareImport.swift
+      - path: Sources/BYOTShareInbox.swift
+      - path: Sources/OpenCodePromptAttachment.swift
+      - path: Sources/Resources/Fonts/OpenRunde-Bold.otf
+        buildPhase: resources
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: byot
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).BYOTShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsFileWithMaxCount: 10
+        UIAppFonts:
+          - OpenRunde-Bold.otf
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: ShareExtension/BYOTShare.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot.share
+        PRODUCT_NAME: BYOTShare
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: ShareExtension/Info.plist
         SKIP_INSTALL: YES
         APPLICATION_EXTENSION_API_ONLY: YES
   BYOTTests:

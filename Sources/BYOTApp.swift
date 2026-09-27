@@ -54,16 +54,27 @@ private struct BYOTRootView: View {
     @Binding var appearance: BYOTAppearance
     @State private var isShowingAbout = false
     @ObservedObject private var push = BYOTPushNotifications.shared
+    @ObservedObject private var shares = BYOTShareCenter.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         OpenCodeRootView(openAppNavigation: { isShowingAbout = true })
             .onChange(of: push.pendingDestination) { _, destination in
                 if destination != nil { isShowingAbout = false }
             }
+            .onChange(of: shares.incoming?.id) { _, id in
+                if id != nil { isShowingAbout = false }
+            }
             .onOpenURL { url in
                 // Widget and Live Activity taps. The plain "open" link only
                 // brings byot forward.
                 if let destination = BYOTPushDestination(widgetURL: url) { push.pendingDestination = destination }
+                // The share extension names the share it just saved.
+                if let link = BYOTShareLink(url: url), !BYOTLaunch.isAutomated { shares.refresh(preferring: link.shareID) }
+            }
+            .task(id: scenePhase) {
+                // A share saved while byot couldn't be opened waits in the inbox.
+                if scenePhase == .active, !BYOTLaunch.isAutomated { shares.refresh() }
             }
             .sheet(isPresented: $isShowingAbout) {
                 AboutView(appearance: $appearance)

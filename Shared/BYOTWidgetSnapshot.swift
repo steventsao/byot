@@ -1,13 +1,5 @@
 import SwiftUI
 
-/// State the app shares with its widget extension. Without the App Group
-/// entitlement (for example an unsigned simulator build) the suite still works
-/// but stays private to the process that wrote it.
-enum BYOTAppGroup {
-    static let identifier = "group.com.steventsao.byot"
-    static var defaults: UserDefaults { UserDefaults(suiteName: identifier) ?? .standard }
-}
-
 enum BYOTWidgetKind {
     static let sessions = "BYOTSessionsWidget"
 }

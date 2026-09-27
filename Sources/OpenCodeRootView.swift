@@ -8,6 +8,7 @@ struct OpenCodeRootView: View {
         openAppNavigation: @escaping () -> Void,
         profileStore: OpenCodeProfileStore? = nil,
         push: BYOTPushNotifications = .shared,
+        shares: BYOTShareCenter = .shared,
         makeClient: @escaping (OpenCodeServerProfile, String) -> OpenCodeClient = {
             OpenCodeClient(profile: $0, password: $1)
         }
@@ -16,13 +17,18 @@ struct OpenCodeRootView: View {
         self.makeClient = makeClient
         _profileStore = StateObject(wrappedValue: profileStore ?? OpenCodeProfileStore())
         _push = ObservedObject(wrappedValue: push)
+        _shares = ObservedObject(wrappedValue: shares)
     }
 
     @StateObject private var profileStore: OpenCodeProfileStore
     @State private var path = NavigationPath()
     @ObservedObject private var push: BYOTPushNotifications
+    @ObservedObject private var shares: BYOTShareCenter
     @State private var pathServerID: UUID?
     @State private var notificationProfile: OpenCodeServerProfile?
+    /// The share on screen in the picker; follows `shares.incoming` once any
+    /// other sheet has finished closing.
+    @State private var sharePicker: BYOTShareContent?
     private struct ProfileEditor: Identifiable {
         let id = UUID()
         let profile: OpenCodeServerProfile?
@@ -70,10 +76,10 @@ struct OpenCodeRootView: View {
             }
             .navigationTitle(BYOTBrand.wordmark)
             .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: OpenCodeNewSessionRoute.self) { _ in
+            .navigationDestination(for: OpenCodeNewSessionRoute.self) { route in
                 if let profile = profileStore.activeProfile {
                     OpenCodeNewSessionView(profiles: profileStore.profiles,
-                        initialProfile: profile) { profile in
+                        initialProfile: profile, share: route.share, shares: shares) { profile in
                         makeClient(profile, profileStore.password(for: profile))
                     }
                 }
@@ -81,7 +87,8 @@ struct OpenCodeRootView: View {
             .navigationDestination(for: BYOTPushSessionRoute.self) { destination in
                 if let profile = profileStore.profiles.first(where: { $0.id == destination.serverID }) {
                     OpenCodeSessionView(client: makeClient(profile, profileStore.password(for: profile)),
-                        session: destination.session, directory: destination.session.directory)
+                        session: destination.session, directory: destination.session.directory,
+                        startsWithComposerFocused: destination.focusesComposer)
                         .id(destination.id)
                 }
             }
@@ -102,6 +109,18 @@ struct OpenCodeRootView: View {
             }
         }
         .task(id: push.pendingDestination?.id) { await openNotification() }
+        .sheet(item: $sharePicker) { content in
+            BYOTShareDestinationView(
+                content: content, profiles: profileStore.profiles, activeProfileID: profileStore.activeProfileID,
+                errorMessage: shares.deliveryError,
+                loadSessions: { (try? await BYOTIntentService.live.recentSessions(limit: 15)) ?? [] },
+                choose: { destination in Task { await openShare(content, at: destination) } },
+                discard: { shares.discard(content) })
+        }
+        .task(id: shares.incoming?.id) { await presentSharePicker() }
+        .alert("Shared to byot", isPresented: Binding(get: { shares.notice != nil }, set: { if !$0 { shares.notice = nil } })) {
+            Button("OK") { shares.notice = nil }
+        } message: { Text(shares.notice ?? "") }
         .sheet(item: $notificationProfile) { profile in BYOTPushSettingsView(profile: profile) }
         .alert("Couldn’t open session", isPresented: Binding(get: { push.routingError != nil }, set: { if !$0 { push.routingError = nil } })) {
             Button("OK") { push.routingError = nil }
@@ -225,6 +244,61 @@ struct OpenCodeRootView: View {
             path.append(BYOTPushSessionRoute(serverID: profile.id, session: details.session))
         } catch is CancellationError { }
         catch { push.routingError = "Couldn’t load this session. It may have been deleted, or the server may be offline. Open the server and try again." }
+    }
+
+    /// Shows the picker for the waiting share. It replaces any sheet the root
+    /// (or About, closed by the app) has open; SwiftUI drops a sheet presented
+    /// while another is still closing, which would leave the share unseen.
+    private func presentSharePicker() async {
+        guard let content = shares.incoming else {
+            sharePicker = nil
+            return
+        }
+        let wasCovered = profileEditor != nil || notificationProfile != nil
+        profileEditor = nil
+        notificationProfile = nil
+        if sharePicker == nil {
+            try? await Task.sleep(for: .milliseconds(wasCovered ? 650 : 350))
+        }
+        guard !Task.isCancelled, shares.incoming?.id == content.id else { return }
+        sharePicker = content
+    }
+
+    /// Opens the chosen destination with the share in its composer. The share
+    /// stays in the inbox until it is written into a draft.
+    private func openShare(_ content: BYOTShareContent, at destination: BYOTShareDestination) async {
+        let serverID = switch destination {
+        case .newSession(let serverID): serverID
+        case .session(let session): session.serverID
+        }
+        guard let profile = profileStore.profiles.first(where: { $0.id == serverID }) else {
+            shares.release(content, error: "This server was removed from byot. Choose another.")
+            return
+        }
+        shares.claim(content)
+        profileEditor = nil
+        notificationProfile = nil
+        path = NavigationPath()
+        pathServerID = profile.id
+        profileStore.select(profile)
+        guard case .session(let target) = destination else {
+            path.append(OpenCodeNewSessionRoute(share: content))
+            return
+        }
+        do {
+            let client = makeClient(profile, profileStore.password(for: profile))
+            let details = try await client.sessionDetails(sessionID: target.sessionID, directory: target.directory,
+                                                          workspace: target.workspace)
+            guard details.session.id == target.sessionID else { throw BYOTPushError.invalidNotification }
+            try shares.deliver(content, into: OpenCodeComposerDraftStore(
+                serverID: profile.id, sessionID: details.session.id,
+                directory: details.session.directory, workspace: details.session.workspaceID))
+            guard profileStore.activeProfileID == profile.id else { return }
+            path.append(BYOTPushSessionRoute(serverID: profile.id, session: details.session, focusesComposer: true))
+        } catch {
+            shares.release(content, error: "Couldn’t open “\(target.title)”. It may have been deleted, or the server "
+                + "may be offline. Choose another session or try again.")
+        }
     }
 
     private func edit(_ profile: OpenCodeServerProfile?) {
@@ -482,6 +556,8 @@ private struct BYOTPushSessionRoute: Hashable {
     let id = UUID()
     let serverID: UUID
     let session: OpenCodeSession
+    /// Set when a share was just added to the draft, so you can finish it.
+    var focusesComposer = false
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }

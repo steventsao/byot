@@ -11,7 +11,10 @@ struct OpenCodeSessionRoute: Hashable {
     }
 }
 
-struct OpenCodeNewSessionRoute: Hashable {}
+struct OpenCodeNewSessionRoute: Hashable {
+    /// Something shared from another app, added to the new session's message.
+    var share: BYOTShareContent?
+}
 
 struct OpenCodeConnectedView: View {
     let openNewSession: () -> Void
