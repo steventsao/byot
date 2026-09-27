@@ -63,6 +63,49 @@ final class OpenCodeWorktreesUITests: XCTestCase {
         attach("worktrees-dark-largest-text")
     }
 
+    /// The new-session page over the session-browser fixture, which serves v1 worktree
+    /// routes: a session already in a worktree is labelled, and a new one starts in a new worktree.
+    @MainActor func testNewSessionStartsInANewWorktree() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--session-browser-fixture", "--reset-browser"]
+        app.launch()
+        let existing = app.buttons["session-worktree"]
+        XCTAssertTrue(existing.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(existing.label.contains("login-flow"), existing.label)
+
+        app.buttons["New session"].firstMatch.tap()
+        let workspace = app.buttons["new-session-workspace"]
+        XCTAssertTrue(workspace.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.buttons["new-session-manage-worktrees"].exists)
+        XCTAssertTrue(selectMenuItem(app.buttons["New worktree"], opening: workspace), app.debugDescription)
+        let name = app.textFields["new-session-worktree-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5), app.debugDescription)
+        name.tap()
+        name.typeText("Fix Crash")
+        let hint = app.staticTexts["Creates the branch opencode/fix-crash in a new folder on the server."]
+        XCTAssertTrue(hint.waitForExistence(timeout: 5), app.debugDescription)
+        attach("new-session-new-worktree")
+
+        app.buttons["start-session"].tap()
+        let composer = app.textFields["opencode-composer-message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 15), app.debugDescription)
+        let context = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Server Mac mini, project /repo/worktrees/fix-crash"))
+            .firstMatch
+        XCTAssertTrue(context.exists, app.debugDescription)
+    }
+
+    @MainActor private func selectMenuItem(_ item: XCUIElement, opening menu: XCUIElement) -> Bool {
+        for _ in 0..<3 {
+            menu.tap()
+            if item.waitForExistence(timeout: 2) {
+                item.tap()
+                return true
+            }
+        }
+        return false
+    }
+
     @MainActor private func waitForLabel(of element: XCUIElement, containing text: String, timeout: TimeInterval = 5) -> Bool {
         let predicate = NSPredicate(format: "label CONTAINS %@", text)
         return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)],

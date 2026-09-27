@@ -69,10 +69,16 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
     // archived sessions with time.archived set.
     private static let archiveLock = NSLock()
     nonisolated(unsafe) private static var archived: Set<String> = []
+    // Worktrees created during this launch, reported ready on the global stream after a
+    // short checkout, as OpenCode 1.18 does.
+    private static let worktreeLock = NSLock()
+    nonisolated(unsafe) private static var createdWorktrees: [String] = []
+    private let stateLock = NSLock()
+    private var isStopped = false
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    override func stopLoading() { }
+    override func stopLoading() { stateLock.withLock { isStopped = true } }
 
     override func startLoading() {
         guard let url = request.url else { return }
@@ -86,10 +92,13 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
             return ["id": id, "slug": id, "projectID": directory, "directory": directory,
                     "title": title, "version": "1.18.10", "time": time]
         }
+        let worktreeRoot = base + "/worktrees"
+        let worktrees = [worktreeRoot + "/login-flow"] + Self.worktreeLock.withLock { Self.createdWorktrees }
         let sessions = [
             session("active", windows ? "Windows build" : "Fix checkout", base + "/byot", 2),
             session("retry", "Review billing", base + "/byot", 8),
-            session("idle", "Update documentation", base + "/docs", 25)
+            session("idle", "Update documentation", base + "/docs", 25),
+            session("worktree", "Polish sign-in", worktreeRoot + "/login-flow", 40)
         ]
         if request.httpMethod == "PATCH", url.path.hasPrefix("/session/") {
             let id = url.lastPathComponent
@@ -106,12 +115,29 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
             client?.urlProtocol(self, didLoad: Data("data: {\"type\":\"server.connected\",\"properties\":{}}\n\n".utf8))
             // Keep this fixture stream open until the conversation cancels it.
             return
+        case "/global/event":
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "text/event-stream"])!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data("data: {\"payload\":{\"type\":\"server.connected\",\"properties\":{}}}\n\n".utf8))
+            announceReadyWorktrees(after: Self.worktreeLock.withLock { Self.createdWorktrees.count })
+            return
+        case "/experimental/worktree" where request.httpMethod == "POST":
+            let input = (try? JSONSerialization.jsonObject(with: requestBody())) as? [String: Any]
+            let slug = OpenCodeWorktreeNaming.slug(input?["name"] as? String ?? "")
+            let name = slug.isEmpty ? "calm-river" : slug
+            let created = worktreeRoot + "/" + name
+            Self.worktreeLock.withLock { Self.createdWorktrees.append(created) }
+            body = ["name": name, "branch": "opencode/" + name, "directory": created]
+        case "/experimental/worktree":
+            body = directory == base + "/byot" ? worktrees : []
         case let endpoint where endpoint.hasPrefix("/api/"):
             respond(url, body: ["message": "Unavailable"], status: 404); return
         case "/global/health": body = ["healthy": true, "version": "1.18.10"]
         case "/project": body = ["byot", "docs"].map { name in
             ["id": base + "/" + name, "worktree": base + "/" + name, "name": name,
-             "vcs": "git", "sandboxes": [], "time": ["created": now - 100_000, "updated": now]] as [String: Any]
+             "vcs": "git", "sandboxes": name == "byot" ? worktrees : [],
+             "time": ["created": now - 100_000, "updated": now]] as [String: Any]
         }
         case "/session" where request.httpMethod == "POST": body = session("created", "New session", directory, 0)
         case let endpoint where endpoint == "/session/active" || endpoint == "/session/retry" || endpoint == "/session/idle":
@@ -134,6 +160,37 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
         default: body = []
         }
         respond(url, body: body, status: 200)
+    }
+
+    private func requestBody() -> Data {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1_024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data
+    }
+
+    /// Reports each worktree created after the stream opened as ready, a moment after its create.
+    private func announceReadyWorktrees(after announced: Int) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.8) { [self] in
+            guard !stateLock.withLock({ isStopped }) else { return }
+            let created = Self.worktreeLock.withLock { Self.createdWorktrees }
+            for directory in created.dropFirst(announced) {
+                let event: [String: Any] = ["directory": directory, "payload": [
+                    "id": "evt_\(UUID().uuidString)", "type": "worktree.ready",
+                    "properties": ["name": OpenCodeWorktree.name(of: directory)]]]
+                let json = String(decoding: try! JSONSerialization.data(withJSONObject: event), as: UTF8.self)
+                client?.urlProtocol(self, didLoad: Data("data: \(json)\n\n".utf8))
+            }
+            announceReadyWorktrees(after: max(announced, created.count))
+        }
     }
 
     private func respond(_ url: URL, body: Any, status: Int) {

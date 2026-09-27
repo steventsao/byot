@@ -199,7 +199,8 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
 
         app.buttons["Session list options"].tap()
         app.buttons["Group by project"].tap()
-        XCTAssertTrue(app.staticTexts["1 retrying · 2 sessions"].waitForExistence(timeout: 5))
+        // byot's count includes the session in its login-flow worktree.
+        XCTAssertTrue(app.staticTexts["1 retrying · 3 sessions"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["New session in byot"].exists)
         attach("sessions-grouped")
 

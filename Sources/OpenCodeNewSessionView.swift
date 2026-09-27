@@ -276,7 +276,8 @@ struct OpenCodeNewSessionView: View {
         isCreating = true
         error = nil
         var directory = targetDirectory
-        let workspace = worktrees.availability == .available ? workspace : .main
+        // Worktrees belong to a listed project; a typed directory always starts in place.
+        let workspace = worktrees.availability == .available && !self.directory.isEmpty ? workspace : .main
         Task {
             defer { isCreating = false }
             switch workspace {
