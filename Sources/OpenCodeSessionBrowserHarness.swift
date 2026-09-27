@@ -26,6 +26,15 @@ struct OpenCodeSessionBrowserHarness: View {
         return push
     }
 
+    /// A cache of its own, so offline launches can be tested without touching real data.
+    private static let offlineCache: OpenCodeOfflineCache? = {
+        guard ProcessInfo.processInfo.arguments.contains("--offline-cache-fixture") else { return nil }
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appending(path: "OfflineCacheUIFixture")
+        if ProcessInfo.processInfo.arguments.contains("--reset-browser") { try? FileManager.default.removeItem(at: root) }
+        return OpenCodeOfflineCache(root: root)
+    }()
+
     private static func makeStore() -> OpenCodeProfileStore {
         let defaults = UserDefaults(suiteName: "byot.browser-ui-fixture")!
         defaults.set(try! JSONEncoder().encode(profiles), forKey: "byot.opencode.profiles.v1")
@@ -38,14 +47,15 @@ struct OpenCodeSessionBrowserHarness: View {
                 UserDefaults.standard.removeObject(forKey: "byot.opencode.attention.\(profile.id.uuidString)")
             }
         }
-        return OpenCodeProfileStore(defaults: defaults)
+        return OpenCodeProfileStore(defaults: defaults, offlineCache: offlineCache)
     }
 
     var body: some View {
         OpenCodeRootView(openAppNavigation: {}, profileStore: store, push: push) { profile, _ in
             let config = URLSessionConfiguration.ephemeral
             config.protocolClasses = [OpenCodeBrowserFixtureProtocol.self]
-            return OpenCodeClient(profile: profile, password: "fixture", session: URLSession(configuration: config), serverProtocol: .v1)
+            return OpenCodeClient(profile: profile, password: "fixture", session: URLSession(configuration: config),
+                                  serverProtocol: .v1, offlineCache: Self.offlineCache)
         }
         .overlay(alignment: .bottomTrailing) {
             if ProcessInfo.processInfo.arguments.contains("--push-route-fixture") {
@@ -82,6 +92,12 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
 
     override func startLoading() {
         guard let url = request.url else { return }
+        if ProcessInfo.processInfo.arguments.contains("--server-offline") {
+            // Worded as URLSession words it on a device.
+            client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet, userInfo: [
+                NSLocalizedDescriptionKey: "The Internet connection appears to be offline."]))
+            return
+        }
         let directory = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "directory" }?.value ?? "/repo/byot"
         let windows = url.host == "windows.example.test"
         let base = windows ? "C:/work" : "/repo"

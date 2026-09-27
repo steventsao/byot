@@ -71,7 +71,17 @@ struct OpenCodeSessionView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
-                    if let errorMessage = store.errorMessage, hasConversationContent {
+                    if let offline = store.offlineTranscript, let errorMessage = store.errorMessage {
+                        // One notice covers the failed load and the dropped event stream.
+                        OpenCodeOfflineNotice(
+                            subject: .transcript,
+                            savedAt: offline.savedAt,
+                            detail: errorMessage,
+                            isTruncated: offline.isTruncated,
+                            isRetrying: store.isLoading,
+                            retry: refreshSession
+                        )
+                    } else if let errorMessage = store.errorMessage, hasConversationContent {
                         ErrorBanner(
                             message: errorMessage,
                             actionTitle: "Refresh",
@@ -80,6 +90,7 @@ struct OpenCodeSessionView: View {
                     }
 
                     if let eventErrorMessage = store.eventErrorMessage,
+                       store.offlineTranscript == nil || store.errorMessage == nil,
                        eventErrorMessage != store.errorMessage {
                         ErrorBanner(
                             message: eventErrorMessage,
@@ -458,6 +469,8 @@ struct OpenCodeSessionView: View {
             if phase == .active {
                 store.refreshAfterForeground()
                 Task { await refreshBranch() }
+            } else if phase == .background {
+                store.saveOfflineTranscriptNow()
             }
         }
         .onChange(of: store.errorMessage) { _, _ in rememberAttention() }

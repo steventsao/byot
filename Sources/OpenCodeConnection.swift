@@ -141,11 +141,13 @@ final class OpenCodeProfileStore: ObservableObject {
     }
 
     private let defaults: UserDefaults
+    private let offlineCache: OpenCodeOfflineCache?
     private let profilesKey = "byot.opencode.profiles.v1"
     private let activeProfileKey = "byot.opencode.active-profile.v1"
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, offlineCache: OpenCodeOfflineCache? = .shared) {
         self.defaults = defaults
+        self.offlineCache = offlineCache
         if let data = defaults.data(forKey: profilesKey),
            let decoded = try? JSONDecoder().decode([OpenCodeServerProfile].self, from: data) {
             profiles = decoded
@@ -156,6 +158,7 @@ final class OpenCodeProfileStore: ObservableObject {
         if activeProfile == nil {
             activeProfileID = profiles.first?.id
         }
+        offlineCache?.retainServers(profiles.map(\.id))
     }
 
     var activeProfile: OpenCodeServerProfile? {
@@ -171,6 +174,10 @@ final class OpenCodeProfileStore: ObservableObject {
         try profile.validate(password: password)
         try KeychainStore.set(password, for: passwordKey(for: profile.id))
         if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
+            // Sessions saved from the old address or directory belong to another server.
+            if OpenCodeOfflineCache.fingerprint(of: profiles[index]) != OpenCodeOfflineCache.fingerprint(of: profile) {
+                offlineCache?.removeServer(profile.id)
+            }
             profiles[index] = profile
         } else {
             profiles.append(profile)
@@ -183,6 +190,7 @@ final class OpenCodeProfileStore: ObservableObject {
     func remove(_ profile: OpenCodeServerProfile) throws {
         try KeychainStore.delete(passwordKey(for: profile.id))
         defaults.removeObject(forKey: "byot.opencode.attention.\(profile.id.uuidString)")
+        offlineCache?.removeServer(profile.id)
         profiles.removeAll { $0.id == profile.id }
         if activeProfileID == profile.id {
             activeProfileID = profiles.first?.id

@@ -36,7 +36,7 @@ struct OpenCodeConnectedView: View {
         self.openNewSession = openNewSession
         _client = State(initialValue: client)
         _workspace = StateObject(wrappedValue: OpenCodeWorkspaceStore(service: client))
-        _browser = StateObject(wrappedValue: OpenCodeSessionBrowserStore(service: client))
+        _browser = StateObject(wrappedValue: OpenCodeSessionBrowserStore(service: client, cache: client.offlineCache))
         _attention = StateObject(wrappedValue: OpenCodeSessionAttentionStore(serverID: client.profile.id))
     }
 
@@ -52,7 +52,17 @@ struct OpenCodeConnectedView: View {
     var body: some View {
         List {
             Group {
-                if let error = creationError ?? archiveError ?? workspace.errorMessage {
+                if let savedAt = offlineSavedAt {
+                    Section {
+                        OpenCodeOfflineNotice(subject: .sessions, savedAt: savedAt, detail: workspace.errorMessage,
+                                              isRetrying: workspace.isLoading) {
+                            Task { await reload() }
+                        }
+                    }
+                    if let error = creationError ?? archiveError {
+                        Section { ErrorBanner(message: error) }
+                    }
+                } else if let error = creationError ?? archiveError ?? workspace.errorMessage {
                     Section { ErrorBanner(message: error) }
                 }
                 if !browser.groups.isEmpty && (groupByProject || !visibleSessions(browser.sessions).isEmpty) {
@@ -90,7 +100,7 @@ struct OpenCodeConnectedView: View {
                         }
                     }
                 }
-                if browser.isLoading {
+                if browser.isLoading || (workspace.isLoading && browser.cachedAt != nil && offlineSavedAt == nil) {
                     Section {
                         BYOTActivityView(.loading, title: "Refreshing sessions", layout: .inline)
                     }
@@ -223,6 +233,11 @@ struct OpenCodeConnectedView: View {
                 do { try await Task.sleep(for: .seconds(15)) }
                 catch { break }
                 guard !Task.isCancelled else { break }
+                // Offline with saved sessions on screen: keep trying to reconnect.
+                if offlineSavedAt != nil {
+                    await reload()
+                    continue
+                }
                 guard workspace.compatibility != nil,
                       workspace.compatibility?.state != .unsupported else { continue }
                 await browser.load(projects: projects)
@@ -561,8 +576,16 @@ struct OpenCodeConnectedView: View {
         Set(attention.failures.keys.filter { browser.statuses[$0]?.isActive != true })
     }
 
+    /// When the saved sessions on screen were saved, while the server can't be reached.
+    private var offlineSavedAt: Date? {
+        guard workspace.compatibility == nil, workspace.errorMessage != nil else { return nil }
+        return browser.cachedAt
+    }
+
     private var projects: [OpenCodeProject] {
-        var result = workspace.projects
+        // Until the server answers, name projects from the saved list.
+        var result = workspace.compatibility == nil && workspace.projects.isEmpty
+            ? browser.cachedProjects : workspace.projects
         if let directory = client.profile.normalizedDirectory,
            !result.contains(where: { $0.worktree == directory }) {
             result.append(Self.project(directory: directory))

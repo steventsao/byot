@@ -62,16 +62,39 @@ enum OpenCodeSessionSort: String, CaseIterable, Identifiable {
 final class OpenCodeSessionBrowserStore: ObservableObject {
     @Published private(set) var groups: [OpenCodeSessionGroup] = []
     @Published private(set) var isLoading = false
+    /// When the sessions shown were saved, while they come from this device's cache
+    /// and the server has not answered yet. `nil` once a load reaches the server.
+    @Published private(set) var cachedAt: Date?
     private let service: any OpenCodeSessionBrowsing
+    private let cache: OpenCodeOfflineCacheScope?
     private var generation = 0
     // Archived from this list. A load already in flight must not bring them back.
     private var archivedIDs: Set<String> = []
+    private var savedGroups: [OpenCodeCachedSessionList.Group]?
 
-    init(service: any OpenCodeSessionBrowsing) { self.service = service }
+    init(service: any OpenCodeSessionBrowsing, cache: OpenCodeOfflineCacheScope? = nil) {
+        self.service = service
+        self.cache = cache
+        // Restore synchronously, so the first frame already lists the last-known sessions.
+        if let saved = cache?.sessionList() {
+            groups = saved.groups.map { saved in
+                // Statuses are live state. A saved "busy" would claim work that may have ended.
+                var group = OpenCodeSessionGroup(project: saved.project, sessions: saved.sessions)
+                group.isLoaded = true
+                return group
+            }
+            savedGroups = saved.groups
+            cachedAt = saved.savedAt
+        }
+    }
+
+    /// The projects of the restored list, so the workspace can name them before it connects.
+    var cachedProjects: [OpenCodeProject] { cachedAt == nil ? [] : groups.map(\.project) }
 
     func markArchived(_ id: String) {
         archivedIDs.insert(id)
         for index in groups.indices { groups[index].sessions.removeAll { $0.id == id } }
+        saveToCache()
     }
 
     func unmarkArchived(_ id: String) { archivedIDs.remove(id) }
@@ -191,6 +214,20 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
                 enqueue()
             }
         }
+        guard !Task.isCancelled, generation == requestGeneration else { return }
+        // Reconciled: the list now reflects the server, including removed projects.
+        cachedAt = nil
+        saveToCache()
+    }
+
+    /// Saves the last-known list. A project that failed this time keeps the sessions
+    /// it had, which is still the best offline answer. Unchanged lists are not rewritten.
+    private func saveToCache() {
+        guard let cache, cachedAt == nil else { return }
+        let snapshot = groups.map { OpenCodeCachedSessionList.Group(project: $0.project, sessions: $0.sessions) }
+        guard snapshot != savedGroups else { return }
+        savedGroups = snapshot
+        cache.saveSessionList(snapshot)
     }
 
     nonisolated private static func fetch(
