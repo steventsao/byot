@@ -160,6 +160,39 @@ struct OpenCodeAgentToggleTests {
     }
 
     @MainActor
+    @Test("A completed plan_exit hands an explicit plan pick back to the session's build turn")
+    func planExitFollowsBuild() async throws {
+        let (store, _, defaults) = try await makeStore(messages: [
+            Self.message("msg_1", role: "user", agent: "plan", created: 1),
+            Self.message("msg_2", role: "assistant", agent: "plan", created: 2),
+            Self.message("msg_3", role: "user", agent: "build", created: 3),
+        ])
+        defer { defaults.cleanUp() }
+        store.selectAgent("plan")
+        #expect(store.effectiveAgentID == "plan")
+
+        func planExit(_ id: String, status: String, sessionID: String = "ses_a") -> OpenCodeEvent {
+            OpenCodeEvent(id: UUID().uuidString, type: "message.part.updated", properties: ["part": .object([
+                "id": .string(id), "sessionID": .string(sessionID), "messageID": .string("msg_2"),
+                "type": .string("tool"), "tool": .string("plan_exit"), "callID": .string("call_1"),
+                "state": .object(["status": .string(status)]),
+            ])])
+        }
+        store.handle(planExit("prt_exit", status: "running"))
+        store.handle(planExit("prt_other", status: "completed", sessionID: "ses_other"))
+        #expect(store.explicitAgentID == "plan", "Only this session's completed plan_exit switches agents")
+
+        store.handle(planExit("prt_exit", status: "completed"))
+        #expect(store.explicitAgentID == nil)
+        #expect(store.effectiveAgentID == "build", "The next prompt continues the approved build turn")
+        #expect(store.currentAgentName == "Build")
+
+        store.selectAgent("plan")
+        store.handle(planExit("prt_exit", status: "completed"))
+        #expect(store.explicitAgentID == "plan", "A repeated update for the same call does not undo a new pick")
+    }
+
+    @MainActor
     @Test("A lone primary agent cannot be cycled")
     func singleAgent() async throws {
         let (store, _, defaults) = try await makeStore(

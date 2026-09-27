@@ -478,9 +478,10 @@ struct OpenCodeSessionComposerView: View {
         .sensoryFeedback(.selection, trigger: agentCycleCount)
         .accessibilityLabel("Agent")
         .accessibilityValue(store.currentAgentName)
-        .accessibilityHint(store.nextAgentInCycle.map {
-            "Switches to \($0.displayName). Touch and hold for all agents."
-        } ?? "Shows the available agents.")
+        // VoiceOver reaches the full list through the "Choose agent" action,
+        // not touch and hold, so the hint names only the tap's result.
+        .accessibilityHint(store.nextAgentInCycle.map { "Switches to \($0.displayName)." }
+            ?? "Shows the available agents.")
         .accessibilityAdjustableAction { direction in
             switch direction {
             case .increment: cycleAgent(.forward)

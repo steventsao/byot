@@ -79,6 +79,8 @@ final class OpenCodeSessionStore: ObservableObject {
     /// seeded for a session without its own pick; the session's own agent
     /// history then outranks it.
     private var isAgentSelectionExplicit: Bool
+    /// The completed `plan_exit` call this store already followed.
+    private var followedPlanExitPartID: String?
     private var submittedPrompts: [String: OpenCodeQueuedPrompt] = [:]
     private var persistedModelID: String?
     private var transcript = OpenCodeTranscriptReducer()
@@ -1053,6 +1055,21 @@ final class OpenCodeSessionStore: ObservableObject {
         else { defaults.removeObject(forKey: serverDefaultAgentKey) }
     }
 
+    /// The TUI switches to build when `plan_exit` completes. An earlier pick on
+    /// this device yields, so the chip and the next prompt follow the approved
+    /// plan's build turn instead of sending the plan agent back.
+    private func followCompletedPlanExit(_ event: OpenCodeEvent) {
+        guard event.type == "message.part.updated", let part = event.properties["part"]?.objectValue,
+              part["sessionID"]?.stringValue == session.id, part["tool"]?.stringValue == "plan_exit",
+              part["state"]?.objectValue?["status"]?.stringValue == "completed",
+              let id = part["id"]?.stringValue, id != followedPlanExitPartID else { return }
+        followedPlanExitPartID = id
+        guard isAgentSelectionExplicit, selectedAgentID != "build" else { return }
+        selectedAgentID = nil
+        isAgentSelectionExplicit = false
+        defaults.set("", forKey: agentSelectionKey)
+    }
+
     /// One-tap build/plan toggle: Tab-style cycling through primary agents.
     func cycleAgent(_ direction: OpenCodeAgentCycle.Direction = .forward) {
         guard composerCatalog.agents.count > 1,
@@ -1301,6 +1318,7 @@ final class OpenCodeSessionStore: ObservableObject {
             scheduleReconciliation()
         case "message.updated", "message.removed", "message.part.updated",
              "message.part.removed", "message.part.delta":
+            followCompletedPlanExit(event)
             if transcript.apply(event) {
                 transcriptMutationGeneration &+= 1
                 publishTranscript()
