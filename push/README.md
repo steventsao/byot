@@ -20,10 +20,16 @@ Setup stores credentials in `~/.config/byot-notify/config.json` with mode `0600`
 
 Disable categories in Notifications or mute an individual session from its menu. **Disconnect notifications** revokes the sender and deletes the active relay subscription. To remove the macOS service, run `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/app.byot.notify.plist`, then remove that plist and the companion’s local configuration if no longer needed. Disconnect each iPhone subscription first.
 
+## Responding from a notification
+
+Approval alerts offer **Allow once**, **Reject**, and **Review in byot**; question alerts offer **Reply** and **Open in byot**. Allow, Reject, and Reply require the iPhone to be unlocked. BYOT then re-reads the pending request from the saved OpenCode server with the saved password and answers only that exact request (never "always allow"). If the request was already answered, the alert does not identify one, or a question needs more than one quick reply, BYOT posts a generic follow-up that opens the session. Tapping the alert itself only opens the session.
+
+Actions need a 1.0.31 companion and relay: the companion puts the request ID inside the encrypted route and marks the event `actionable`, and the relay then adds the `BYOT_PERMISSION` or `BYOT_QUESTION` APNs category. Older companions keep sending open-only alerts. Re-run the setup command to update the companion, and redeploy the Worker (`npm run deploy`) before announcing the feature.
+
 ## What runs where
 
-- **iPhone:** requests permission, registers an APNs token, keeps owner/encryption keys in Keychain, manages preferences, decrypts notification routes, and opens sessions through the existing authenticated OpenCode client.
-- **Companion:** observes OpenCode v1 `/global/event` or v2 `/api/event`; fetches authoritative session context; encrypts session routes with AES-256-GCM; persists a bounded local retry queue. Initial legacy idle snapshots and child-session completions stay quiet.
+- **iPhone:** requests permission, registers an APNs token, keeps owner/encryption keys in Keychain, manages preferences, decrypts notification routes, opens sessions, and answers notification actions through the existing authenticated OpenCode client.
+- **Companion:** observes OpenCode v1 `/global/event` or v2 `/api/event`; fetches authoritative session context; encrypts session routes (including the pending request ID) with AES-256-GCM; persists a bounded local retry queue. Initial legacy idle snapshots and child-session completions stay quiet.
 - **Relay:** Cloudflare Worker + D1; separate hashed owner/sender credentials; 96-bit pairing codes valid for 10 minutes; one-time exchange; preferences and session mutes; delivery deduplication; Apple provider-token authentication. APNs private keys exist only in Worker secrets and the developer’s key store.
 
 The relay sees the alert category, timestamp, random identifiers, hashed session identifier, and an encrypted session route. It stores the APNs device token and subscription preferences. Generic alert text excludes prompts, code, titles, and passwords. The route key passes through D1 during pairing and is cleared after exchange or expiry; this is not a claim of cryptographic secrecy from the pairing relay. Delivery records expire after 24 hours. Hourly maintenance cleans expired deliveries and pairing data and unpaired registrations older than 24 hours. Cloudflare operational metadata/backups have platform retention. See [privacy policy](https://byot.app/privacy).

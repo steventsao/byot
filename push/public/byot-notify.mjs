@@ -225,6 +225,13 @@ export class EventTracker {
       eventID,
       kind,
       sessionID,
+      // byot answers this exact request from the notification after re-reading it from the server.
+      requestID:
+        (kind === 'permission' || kind === 'question') &&
+        typeof requestID === 'string' &&
+        /^[a-zA-Z0-9_-]{1,200}$/.test(requestID)
+          ? requestID
+          : undefined,
       directory: raw.directory ?? data.directory ?? data.location?.directory,
       workspace: data.location?.workspaceID ?? data.workspaceID,
       createdAt: Date.now(),
@@ -282,6 +289,7 @@ export async function notification(config, version, event) {
       '',
     workspace: info.location?.workspaceID ?? info.workspaceID ?? null,
   };
+  if (event.requestID) route.requestID = event.requestID;
   if (Buffer.byteLength(route.directory) > 1024)
     throw new Error('Session directory is too long for a notification.');
   return {
@@ -290,6 +298,8 @@ export async function notification(config, version, event) {
     createdAt: event.createdAt,
     thread: digest(config.subscriptionID.toLowerCase() + ':' + info.id),
     route: encryptRoute(route, config.routeKey),
+    // Only alerts that name their request get Allow once / Reject / Reply actions.
+    ...(route.requestID ? { actionable: true } : {}),
   };
 }
 // Serialize disk writes with mutations so a concurrent acknowledgement cannot overwrite a new event.

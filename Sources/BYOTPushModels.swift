@@ -18,11 +18,20 @@ struct BYOTPushRoute: Codable, Equatable, Sendable {
     let sessionID: String
     let directory: String
     let workspace: String?
+    /// The pending permission or question this alert was sent for. Companions
+    /// older than 1.0.31 omit it, so their alerts can only open the session.
+    var requestID: String? = nil
 
     var isValid: Bool {
-        sessionID.utf8.count <= 200 && (sessionID.isEmpty || sessionID.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") })
+        Self.isIdentifier(sessionID, allowsEmpty: true)
         && directory.utf8.count <= 1_024 && !directory.contains("\0")
         && (workspace?.utf8.count ?? 0) <= 200
+        && requestID.map { Self.isIdentifier($0, allowsEmpty: false) } ?? true
+    }
+
+    private static func isIdentifier(_ value: String, allowsEmpty: Bool) -> Bool {
+        value.utf8.count <= 200 && (allowsEmpty || !value.isEmpty)
+            && value.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }
     }
 
     func encrypted(key: String) throws -> String {

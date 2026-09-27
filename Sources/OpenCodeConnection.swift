@@ -141,7 +141,8 @@ final class OpenCodeProfileStore: ObservableObject {
     }
 
     private let defaults: UserDefaults
-    private let profilesKey = "byot.opencode.profiles.v1"
+    private let profilesKey = OpenCodeProfileStore.profilesKey
+    private static let profilesKey = "byot.opencode.profiles.v1"
     private let activeProfileKey = "byot.opencode.active-profile.v1"
 
     init(defaults: UserDefaults = .standard) {
@@ -165,6 +166,18 @@ final class OpenCodeProfileStore: ObservableObject {
 
     func password(for profile: OpenCodeServerProfile) -> String {
         KeychainStore.string(for: passwordKey(for: profile.id)) ?? ""
+    }
+
+    /// Reads one saved server without selecting it or touching the active profile,
+    /// for work that runs outside the UI such as notification actions.
+    static func savedServer(id: UUID) -> (profile: OpenCodeServerProfile, password: String)? {
+        guard let profile = savedProfiles(defaults: .standard).first(where: { $0.id == id }) else { return nil }
+        return (profile, KeychainStore.string(for: passwordKey(for: id)) ?? "")
+    }
+
+    private static func savedProfiles(defaults: UserDefaults) -> [OpenCodeServerProfile] {
+        defaults.data(forKey: profilesKey)
+            .flatMap { try? JSONDecoder().decode([OpenCodeServerProfile].self, from: $0) } ?? []
     }
 
     func save(_ profile: OpenCodeServerProfile, password: String) throws {
@@ -204,6 +217,10 @@ final class OpenCodeProfileStore: ObservableObject {
     }
 
     private func passwordKey(for id: UUID) -> String {
+        Self.passwordKey(for: id)
+    }
+
+    private static func passwordKey(for id: UUID) -> String {
         "byot.opencode.password.\(id.uuidString)"
     }
 }
