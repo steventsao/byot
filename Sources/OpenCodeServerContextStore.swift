@@ -18,7 +18,8 @@ enum OpenCodeContextSection<Value: Equatable & Sendable>: Equatable, Sendable {
 }
 
 /// Status of one project location: paths, branch and working-tree changes, MCP servers
-/// (with connect and disconnect), language servers, formatters and configuration.
+/// (with connect and disconnect), language servers, formatters and configuration, and
+/// whether the server's global settings can be edited.
 @MainActor
 final class OpenCodeServerContextStore: ObservableObject {
     @Published private(set) var paths: OpenCodeContextSection<OpenCodeProjectPaths> = .loading
@@ -29,6 +30,8 @@ final class OpenCodeServerContextStore: ObservableObject {
     @Published private(set) var formatters: OpenCodeContextSection<[OpenCodeFormatterStatus]> = .loading
     @Published private(set) var configuration: OpenCodeContextSection<OpenCodeServerConfiguration> = .loading
     @Published private(set) var canControlMCP = false
+    /// The server lets BYOT change its global settings.
+    @Published private(set) var canEditSettings = false
     /// MCP servers with a connect or disconnect in flight.
     @Published private(set) var switchingMCP: Set<String> = []
     @Published private(set) var mcpErrors: [String: String] = [:]
@@ -48,7 +51,7 @@ final class OpenCodeServerContextStore: ObservableObject {
 
     /// True once every section has settled and none of them has anything to show.
     var hasNothingToShow: Bool {
-        hasLoaded && connectionError == nil
+        hasLoaded && connectionError == nil && !canEditSettings
             && ![paths.isVisible, branch.isVisible, changes.isVisible, mcpServers.isVisible,
                  languageServers.isVisible, formatters.isVisible, configuration.isVisible].contains(true)
     }
@@ -73,6 +76,7 @@ final class OpenCodeServerContextStore: ObservableObject {
         connectionError = nil
         refreshError = nil
         canControlMCP = capabilities.mcp && capabilities.mcpControl
+        canEditSettings = capabilities.settings
         if !capabilities.paths { paths = .unsupported }
         if !capabilities.branch { branch = .unsupported }
         if !capabilities.changes { changes = .unsupported }

@@ -547,7 +547,7 @@ private actor FakeContextService: OpenCodeServerContextServicing {
     }
 }
 
-private final class ContextTestTransport: OpenCodeHTTPTransport, @unchecked Sendable {
+final class ContextTestTransport: OpenCodeHTTPTransport, @unchecked Sendable {
     struct Response {
         let data: Data
         let mime: String

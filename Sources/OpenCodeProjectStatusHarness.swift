@@ -4,7 +4,8 @@ import SwiftUI
 
 /// UI-test and screenshot harness: the project status screen over an in-memory server
 /// with a branch, uncommitted changes, MCP servers in every state, a language server,
-/// formatters, plugins and a configuration carrying secrets that must stay hidden.
+/// formatters, plugins, a configuration carrying secrets that must stay hidden, and
+/// editable server settings.
 struct OpenCodeProjectStatusHarness: View {
     var body: some View {
         NavigationStack {
@@ -24,7 +25,47 @@ actor OpenCodeProjectStatusFixtureService: OpenCodeServerContextServicing {
         OpenCodeMCPServer(name: "sentry", state: .disabled),
     ]
 
+    /// The global config as stored, so saved settings read back the way a server merges them.
+    private var globalConfig: [String: OpenCodeJSONValue] = [
+        "$schema": .string("https://opencode.ai/config.json"),
+        "model": .string("anthropic/claude-sonnet-4-5"),
+        "share": .string("manual"),
+        "provider": .object(["anthropic": .object(["options": .object(["apiKey": .string("sk-ant-fixture-secret")])])]),
+    ]
+
     func capabilities() async throws -> OpenCodeServerContextCapabilities { .v1 }
+
+    func serverSettings() async throws -> OpenCodeServerSettings { OpenCodeServerSettings(globalConfig) }
+
+    func updateServerSettings(_ patch: [String: OpenCodeJSONValue]) async throws -> OpenCodeServerSettings {
+        try await Task.sleep(for: .milliseconds(400))
+        for (key, value) in patch {
+            globalConfig[key] = value == .null || (key == "shell" && value == .string("")) ? nil : value
+        }
+        return OpenCodeServerSettings(globalConfig)
+    }
+
+    func serverSettingsOptions() async throws -> OpenCodeServerSettingsOptions {
+        func model(_ provider: String, _ providerName: String, _ id: String, _ name: String) -> OpenCodeModelOption {
+            OpenCodeModelOption(providerID: provider, providerName: providerName, modelID: id, modelName: name, status: nil)
+        }
+        return OpenCodeServerSettingsOptions(
+            providers: [
+                OpenCodeProviderModels(providerID: "anthropic", providerName: "Anthropic", models: [
+                    model("anthropic", "Anthropic", "claude-haiku-4-5", "Claude Haiku 4.5"),
+                    model("anthropic", "Anthropic", "claude-opus-4-1", "Claude Opus 4.1"),
+                    model("anthropic", "Anthropic", "claude-sonnet-4-5", "Claude Sonnet 4.5"),
+                ]),
+                OpenCodeProviderModels(providerID: "openai", providerName: "OpenAI", models: [
+                    model("openai", "OpenAI", "gpt-5", "GPT-5"),
+                    model("openai", "OpenAI", "gpt-5-mini", "GPT-5 mini"),
+                ]),
+            ],
+            agents: [
+                OpenCodeAgentOption(id: "build", name: "build", description: "Default agent with every tool"),
+                OpenCodeAgentOption(id: "plan", name: "plan", description: "Plans without editing files"),
+            ])
+    }
 
     func paths() async throws -> OpenCodeProjectPaths {
         OpenCodeProjectPaths(directory: "/Users/dev/byot", worktree: "/Users/dev/byot", home: "/Users/dev",

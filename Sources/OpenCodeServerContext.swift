@@ -217,12 +217,9 @@ struct OpenCodeFormatterStatus: Decodable, Identifiable, Equatable, Sendable {
 
 // MARK: - Configuration
 
-/// The configuration a project runs with, read-only. v1 `GET /config` returns the merged
-/// document; v2 `GET /api/config` returns each source from lowest to highest priority.
-///
-/// Editing is deliberately absent: v1 `PATCH /config` deep-merges its body into a
-/// `config.json` in the project directory, which project loading doesn't read, so a
-/// full-document round trip would copy global secrets into the project without effect.
+/// The configuration a project runs with, as the server merged it. v1 `GET /config` returns
+/// the merged document; v2 `GET /api/config` returns each source from lowest to highest
+/// priority. Server-wide defaults are edited separately, in `OpenCodeServerSettings`.
 struct OpenCodeServerConfiguration: Equatable, Sendable {
     struct Plugin: Identifiable, Equatable, Sendable {
         let name: String
@@ -482,9 +479,11 @@ struct OpenCodeServerContextCapabilities: Equatable, Sendable {
     var languageServers = false
     var formatters = false
     var configuration = false
+    /// Editing the server's global settings through `GET/PATCH /global/config`.
+    var settings = false
 
     static let v1 = Self(paths: true, branch: true, changes: true, mcp: true, mcpControl: true,
-                         languageServers: true, formatters: true, configuration: true)
+                         languageServers: true, formatters: true, configuration: true, settings: true)
 
     /// Current v2 has no language-server or formatter routes; those sections stay hidden.
     static func v2(_ connection: OpenCodeFeatureContext) -> Self {
@@ -495,11 +494,17 @@ struct OpenCodeServerContextCapabilities: Equatable, Sendable {
             mcp: connection.supports("/api/mcp"),
             mcpControl: connection.supports("/api/mcp/{server}/connect", method: "post")
                 && connection.supports("/api/mcp/{server}/disconnect", method: "post"),
-            configuration: connection.supports("/api/config")
+            configuration: connection.supports("/api/config"),
+            // No v2 beta publishes a config write yet; follow the schema if one ever does.
+            settings: settings(connection)
         )
     }
 
-    var any: Bool { paths || branch || changes || mcp || languageServers || formatters || configuration }
+    static func settings(_ connection: OpenCodeFeatureContext) -> Bool {
+        connection.supports("/global/config") && connection.supports("/global/config", method: "patch")
+    }
+
+    var any: Bool { paths || branch || changes || mcp || languageServers || formatters || configuration || settings }
 }
 
 // MARK: - Service
@@ -515,6 +520,21 @@ protocol OpenCodeServerContextServicing: Sendable {
     func languageServers() async throws -> [OpenCodeLSPServer]
     func formatters() async throws -> [OpenCodeFormatterStatus]
     func configuration() async throws -> OpenCodeServerConfiguration
+    /// The server's global defaults, from `GET /global/config`.
+    func serverSettings() async throws -> OpenCodeServerSettings
+    /// Deep-merges `patch` into the global config and returns the settings it now holds.
+    func updateServerSettings(_ patch: [String: OpenCodeJSONValue]) async throws -> OpenCodeServerSettings
+    /// Models and agents to choose from. Unsupported parts come back empty.
+    func serverSettingsOptions() async throws -> OpenCodeServerSettingsOptions
+}
+
+/// Servers and fixtures without settings hide the editor.
+extension OpenCodeServerContextServicing {
+    func serverSettings() async throws -> OpenCodeServerSettings { throw OpenCodeServerContextError.unsupported }
+    func updateServerSettings(_ patch: [String: OpenCodeJSONValue]) async throws -> OpenCodeServerSettings {
+        throw OpenCodeServerContextError.unsupported
+    }
+    func serverSettingsOptions() async throws -> OpenCodeServerSettingsOptions { OpenCodeServerSettingsOptions() }
 }
 
 enum OpenCodeServerContextError: LocalizedError, Equatable {
@@ -534,21 +554,29 @@ enum OpenCodeServerContextError: LocalizedError, Equatable {
 /// `/lsp`, `/formatter`, `/config`) and the v2 beta schema (`/api/location`, `/api/vcs`,
 /// `/api/vcs/status`, `/api/mcp`, `/api/mcp/{server}/connect|disconnect`, `/api/config`).
 /// v2 answers wrapped in `{location, data}` are checked against the requested location.
+/// Server settings use v1 `GET/PATCH /global/config`, wherever the server publishes it.
 struct OpenCodeServerContextService: OpenCodeServerContextServicing {
     let directory: String
     let workspace: String?
     let context: @Sendable () async throws -> OpenCodeFeatureContext
+    /// Connected providers' models for the settings pickers, from the protocol adapter.
+    let providerModels: @Sendable () async throws -> [OpenCodeProviderModels]
 
     init(client: OpenCodeClient, route: OpenCodeProjectStatusRoute) {
         self.init(directory: route.directory, workspace: route.workspace,
-                  context: { try await client.featureContext() })
+                  context: { try await client.featureContext() },
+                  providerModels: {
+                      try await client.connectedProviderModels(directory: route.directory, workspace: route.workspace)
+                  })
     }
 
     init(directory: String, workspace: String?,
-         context: @escaping @Sendable () async throws -> OpenCodeFeatureContext) {
+         context: @escaping @Sendable () async throws -> OpenCodeFeatureContext,
+         providerModels: @escaping @Sendable () async throws -> [OpenCodeProviderModels] = { [] }) {
         self.directory = directory
         self.workspace = workspace
         self.context = context
+        self.providerModels = providerModels
     }
 
     func capabilities() async throws -> OpenCodeServerContextCapabilities {
@@ -674,6 +702,56 @@ struct OpenCodeServerContextService: OpenCodeServerContextServicing {
             return .v2(try await get(connection, ["api", "config"]))
         }
         return .v1(try await get(connection, ["config"]))
+    }
+
+    // MARK: Server settings
+
+    func serverSettings() async throws -> OpenCodeServerSettings {
+        let connection = try await context()
+        try require(OpenCodeServerContextCapabilities.settings(connection))
+        let object: [String: OpenCodeJSONValue]
+        do {
+            object = try await connection.transport.get(["global", "config"], query: [])
+        } catch let error as OpenCodeConnectionError where error.isUnsupportedRoute || error.isUnexpectedContent {
+            throw OpenCodeServerContextError.unsupported
+        }
+        return OpenCodeServerSettings(object)
+    }
+
+    /// Answers with the merged global config. When anything changed the server then
+    /// reloads every project, so their next requests read the new defaults.
+    func updateServerSettings(_ patch: [String: OpenCodeJSONValue]) async throws -> OpenCodeServerSettings {
+        let connection = try await context()
+        try require(OpenCodeServerContextCapabilities.settings(connection))
+        let request = try connection.transport.makeRequest(
+            path: ["global", "config"], query: [], method: "PATCH", body: try JSONEncoder().encode(patch))
+        let object: [String: OpenCodeJSONValue] = try await connection.transport.perform(request)
+        return OpenCodeServerSettings(object)
+    }
+
+    /// Models and agents load independently; a failure in one leaves the other usable,
+    /// and only a double failure is reported.
+    func serverSettingsOptions() async throws -> OpenCodeServerSettingsOptions {
+        let connection = try await context()
+        let providerModels = providerModels
+        async let providers = Self.result { try await providerModels() }
+        async let agents = Self.result { try await agentOptions(connection) }
+        let (models, agentList) = await (providers, agents)
+        if case .failure(let error) = models, case .failure = agentList { throw error }
+        return OpenCodeServerSettingsOptions(providers: (try? models.get()) ?? [], agents: (try? agentList.get()) ?? [])
+    }
+
+    private static func result<Value: Sendable>(_ body: @Sendable () async throws -> Value) async -> Result<Value, any Error> {
+        do { return .success(try await body()) } catch { return .failure(error) }
+    }
+
+    /// Primary agents, the only kind `default_agent` accepts.
+    private func agentOptions(_ connection: OpenCodeFeatureContext) async throws -> [OpenCodeAgentOption] {
+        let v2 = connection.serverProtocol == .v2
+        if v2 { try require(connection.supports("/api/agent")) }
+        let value: OpenCodeJSONValue = try await get(connection, v2 ? ["api", "agent"] : ["agent"])
+        let list = v2 ? value.objectValue?["data"]?.arrayValue : value.arrayValue
+        return (list ?? []).compactMap(OpenCodeAgentOption.parse)
     }
 
     // MARK: Requests

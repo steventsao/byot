@@ -59,6 +59,76 @@ final class OpenCodeProjectStatusUITests: XCTestCase {
         attach("status-dark-largest-text-mcp")
     }
 
+    @MainActor func testServerSettingsEditing() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--project-status-fixture", "-byot.appearance", "light"]
+        app.launch()
+        let edit = app.buttons["status-edit-settings"]
+        XCTAssertTrue(app.descendants(matching: .any)["status-branch"].waitForExistence(timeout: 10), app.debugDescription)
+        for _ in 0..<8 where !edit.isHittable { app.swipeUp() }
+        XCTAssertTrue(edit.isHittable, app.debugDescription)
+        XCTAssertGreaterThanOrEqual(edit.frame.height, 44 - 0.01)
+        edit.tap()
+
+        let model = app.buttons["settings-model"]
+        XCTAssertTrue(model.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(model.value as? String, "Claude Sonnet 4.5")
+        let save = app.buttons["settings-save"]
+        XCTAssertFalse(save.isEnabled, "Nothing to save before an edit")
+        attach("settings-light")
+
+        // Pick another model from the connected providers.
+        model.tap()
+        let gpt = app.buttons["GPT-5, OpenAI"]
+        XCTAssertTrue(gpt.waitForExistence(timeout: 5), app.debugDescription)
+        attach("settings-model-picker")
+        gpt.tap()
+        XCTAssertTrue(model.waitForExistence(timeout: 5))
+        XCTAssertEqual(model.value as? String, "GPT-5")
+
+        let sharing = app.buttons["settings-sharing"]
+        sharing.tap()
+        let off = app.buttons["Off"]
+        XCTAssertTrue(off.waitForExistence(timeout: 5), app.debugDescription)
+        off.tap()
+        XCTAssertTrue(save.isEnabled)
+
+        // Saving asks first, since the server reloads its projects.
+        save.tap()
+        let confirm = app.buttons["settings-save-confirm"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), app.debugDescription)
+        confirm.tap()
+        XCTAssertTrue(edit.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(app.buttons["settings-save"].exists)
+
+        // Reopening reads back what the server stored.
+        edit.tap()
+        XCTAssertTrue(model.waitForExistence(timeout: 5))
+        XCTAssertEqual(model.value as? String, "GPT-5")
+        XCTAssertEqual(app.buttons["settings-sharing"].value as? String, "Off")
+    }
+
+    @MainActor func testServerSettingsDarkAtLargestTextSize() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--project-status-fixture", "-byot.appearance", "dark",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["status-branch"].waitForExistence(timeout: 10), app.debugDescription)
+        let edit = app.buttons["status-edit-settings"]
+        for _ in 0..<16 where !edit.isHittable { app.swipeUp() }
+        XCTAssertTrue(edit.isHittable, app.debugDescription)
+        edit.tap()
+        let model = app.buttons["settings-model"]
+        XCTAssertTrue(model.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertLessThanOrEqual(model.frame.maxX, app.frame.width)
+        attach("settings-dark-largest-text")
+        let shell = app.textFields["settings-shell"]
+        for _ in 0..<8 where !shell.isHittable { app.swipeUp() }
+        XCTAssertTrue(shell.isHittable, app.debugDescription)
+        XCTAssertLessThanOrEqual(shell.frame.maxX, app.frame.width)
+        attach("settings-dark-largest-text-lower")
+    }
+
     @MainActor private func attach(_ name: String) {
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = name; screenshot.lifetime = .keepAlways; add(screenshot)

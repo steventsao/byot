@@ -1861,6 +1861,16 @@
         }
       }
     },
+    "Automatic sharing creates a public link for every new session." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动分享会为每个新会话创建公开链接。"
+          }
+        }
+      }
+    },
     "Automatic · context limit reached" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2097,6 +2107,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更改"
+          }
+        }
+      }
+    },
+    "Changes the default model, agent, sharing and more for every project" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更改所有项目的默认模型、智能体、分享等设置"
           }
         }
       }
@@ -3295,12 +3315,32 @@
         }
       }
     },
+    "Couldn’t load models and agents. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法载入模型和智能体。%@"
+          }
+        }
+      }
+    },
     "Couldn’t load sessions" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法载入会话"
+          }
+        }
+      }
+    },
+    "Couldn’t load settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法载入设置"
           }
         }
       }
@@ -3545,6 +3585,16 @@
         }
       }
     },
+    "Couldn’t save. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法存储。%@"
+          }
+        }
+      }
+    },
     "Couldn’t send your response" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3675,6 +3725,16 @@
         }
       }
     },
+    "Current" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前"
+          }
+        }
+      }
+    },
     "Custom answer" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3735,6 +3795,16 @@
         }
       }
     },
+    "Default model" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认模型"
+          }
+        }
+      }
+    },
     "Default shell" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3751,6 +3821,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "默认大小"
+          }
+        }
+      }
+    },
+    "Defaults for every project on this server. A project’s own opencode.json can override them." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器上所有项目的默认设置。项目自己的 opencode.json 可以覆盖它们。"
           }
         }
       }
@@ -4031,6 +4111,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已停用"
+          }
+        }
+      }
+    },
+    "Discard changes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "放弃更改"
+          }
+        }
+      }
+    },
+    "Discard your changes?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要放弃更改吗？"
           }
         }
       }
@@ -4971,6 +5071,16 @@
         }
       }
     },
+    "Keep editing" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续编辑"
+          }
+        }
+      }
+    },
     "Keeps the words so far in your message." : {
       "localizations" : {
         "zh-Hans" : {
@@ -5047,6 +5157,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "留空以检查 byot 中保存的所有服务器。"
+          }
+        }
+      }
+    },
+    "Leave empty to use the login shell" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留空则使用登录 Shell"
           }
         }
       }
@@ -5319,6 +5439,16 @@
         }
       }
     },
+    "Loading settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入设置"
+          }
+        }
+      }
+    },
     "Loading subagents" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5365,6 +5495,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "本地网络，未加密"
+          }
+        }
+      }
+    },
+    "Login shell" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录 Shell"
           }
         }
       }
@@ -5455,6 +5595,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "手动"
+          }
+        }
+      }
+    },
+    "Manual sharing creates a link only when you share a session." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手动分享只在你分享会话时创建链接。"
           }
         }
       }
@@ -5556,6 +5706,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "模型变体"
+          }
+        }
+      }
+    },
+    "Models" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "模型"
           }
         }
       }
@@ -5750,6 +5910,16 @@
         }
       }
     },
+    "New sessions start with this agent. Automatic uses Build." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新会话使用此智能体开始。“自动”使用 Build。"
+          }
+        }
+      }
+    },
     "New terminal" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5886,6 +6056,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "本轮没有更改"
+          }
+        }
+      }
+    },
+    "No connected providers reported models. Type a model ID such as anthropic/claude-sonnet-4-5 in the search field." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接的提供商没有报告模型。请在搜索栏中输入模型 ID，例如 anthropic/claude-sonnet-4-5。"
           }
         }
       }
@@ -6186,6 +6366,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未连接"
+          }
+        }
+      }
+    },
+    "Not offered by a connected provider" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接的提供商未提供此模型"
           }
         }
       }
@@ -6634,6 +6824,16 @@
         }
       }
     },
+    "OpenCode chooses" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 OpenCode 选择"
+          }
+        }
+      }
+    },
     "OpenCode compacts the conversation automatically when the context is nearly full. You can also compact it yourself from the actions menu." : {
       "localizations" : {
         "zh-Hans" : {
@@ -6790,6 +6990,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "OpenCode 拒绝了用户名或密码。"
+          }
+        }
+      }
+    },
+    "OpenCode reloads every project on the server to apply them. Agents that are working may stop." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenCode 会重新载入服务器上的所有项目以应用设置。正在工作的智能体可能会停止。"
           }
         }
       }
@@ -8710,6 +8920,26 @@
         }
       }
     },
+    "Save and reload" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储并重新载入"
+          }
+        }
+      }
+    },
+    "Save server settings?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要存储服务器设置吗？"
+          }
+        }
+      }
+    },
     "Saved for byot" : {
       "localizations" : {
         "zh-Hans" : {
@@ -8726,6 +8956,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已保存在此 iPhone 上"
+          }
+        }
+      }
+    },
+    "Saving" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在存储"
           }
         }
       }
@@ -8826,6 +9066,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索模型"
+          }
+        }
+      }
+    },
+    "Search or type provider/model" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索或输入 提供商/模型"
           }
         }
       }
@@ -9142,6 +9392,26 @@
         }
       }
     },
+    "Server settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器设置"
+          }
+        }
+      }
+    },
+    "Server settings saved" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器设置已存储"
+          }
+        }
+      }
+    },
     "Server skill" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9328,6 +9598,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请先在此服务器的“通知”设置中设置电脑端配套程序。"
+          }
+        }
+      }
+    },
+    "Settings unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置不可用"
           }
         }
       }
@@ -9714,6 +9994,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "较小文字"
+          }
+        }
+      }
+    },
+    "Snapshots" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快照"
+          }
+        }
+      }
+    },
+    "Snapshots let you undo and revert the agent’s file changes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快照让你可以撤销和还原智能体对文件的更改。"
           }
         }
       }
@@ -10214,6 +10514,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tab"
+          }
+        }
+      }
+    },
+    "Table" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表格"
           }
         }
       }
@@ -10788,6 +11098,26 @@
         }
       }
     },
+    "The shell runs the agent’s commands and terminals. Leave it empty to use the login shell." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shell 用于运行智能体的命令和终端。留空则使用登录 Shell。"
+          }
+        }
+      }
+    },
+    "The small model writes session titles and summaries. Automatic lets OpenCode choose." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小模型用于生成会话标题和摘要。“自动”由 OpenCode 选择。"
+          }
+        }
+      }
+    },
     "The turn failed." : {
       "localizations" : {
         "zh-Hans" : {
@@ -10844,6 +11174,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此 OpenCode 2 服务器提供了不受支持的提示词 API。请更新服务器或 byot。"
+          }
+        }
+      }
+    },
+    "This OpenCode server doesn’t let apps change its settings." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 OpenCode 服务器不允许 App 更改其设置。"
           }
         }
       }
@@ -11034,6 +11374,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此配对码需要更新版本的 byot。"
+          }
+        }
+      }
+    },
+    "This project’s config starts sessions with the %@ agent." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此项目的配置使用 %@ 智能体开始会话。"
+          }
+        }
+      }
+    },
+    "This project’s config uses %@ as its model." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此项目的配置使用 %@ 作为模型。"
+          }
+        }
+      }
+    },
+    "This project’s config uses %@ as its small model." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此项目的配置使用 %@ 作为小模型。"
           }
         }
       }
@@ -11504,6 +11874,16 @@
         }
       }
     },
+    "Typed model ID" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输入的模型 ID"
+          }
+        }
+      }
+    },
     "Typography" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11784,6 +12164,16 @@
         }
       }
     },
+    "Use “%@”" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用“%@”"
+          }
+        }
+      }
+    },
     "Username" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11954,6 +12344,16 @@
         }
       }
     },
+    "What this project runs with. Server settings change the defaults for every project. Secrets such as API keys are hidden." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此项目运行时使用的配置。服务器设置会更改所有项目的默认值。API 密钥等机密信息已隐藏。"
+          }
+        }
+      }
+    },
     "Which project should OpenCode work in?" : {
       "localizations" : {
         "zh-Hans" : {
@@ -11996,6 +12396,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在此 OpenCode 实例保持活跃期间，这会允许此目录中的所有 %@ 请求。该规则保存在内存中，不会持久保存。"
+          }
+        }
+      }
+    },
+    "Without snapshots, undo and revert can’t restore the agent’s file changes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有快照时，撤销和还原无法恢复智能体对文件的更改。"
           }
         }
       }

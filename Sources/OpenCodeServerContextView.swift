@@ -2,13 +2,17 @@ import SwiftUI
 import UIKit
 
 /// What OpenCode is running with for one project: branch and uncommitted changes, MCP
-/// servers (switchable), language servers, formatters, plugins, configuration and paths.
-/// Mirrors the TUI's `/status` dialog and the web app's status popover.
+/// servers (switchable), language servers, formatters, plugins, configuration and paths,
+/// with an editor for the server's global settings. Mirrors the TUI's `/status` dialog,
+/// the web app's status popover and its server settings.
 struct OpenCodeProjectStatusScreen: View {
     let route: OpenCodeProjectStatusRoute
+    private let service: any OpenCodeServerContextServicing
     @StateObject private var store: OpenCodeServerContextStore
     @Environment(\.scenePhase) private var scenePhase
     @State private var isOnScreen = false
+    @State private var isEditingSettings = false
+    @State private var settingsReload: Task<Void, Never>?
 
     init(client: OpenCodeClient, route: OpenCodeProjectStatusRoute) {
         self.init(service: OpenCodeServerContextService(client: client, route: route), route: route)
@@ -16,6 +20,7 @@ struct OpenCodeProjectStatusScreen: View {
 
     init(service: any OpenCodeServerContextServicing, route: OpenCodeProjectStatusRoute) {
         self.route = route
+        self.service = service
         _store = StateObject(wrappedValue: OpenCodeServerContextStore(service: service))
     }
 
@@ -34,7 +39,7 @@ struct OpenCodeProjectStatusScreen: View {
                 OpenCodeStatusMCPSection(store: store)
                 OpenCodeStatusLanguageServerSection(store: store, directory: route.directory)
                 OpenCodeStatusFormatterSection(store: store)
-                OpenCodeStatusConfigurationSections(store: store)
+                OpenCodeStatusConfigurationSections(store: store) { isEditingSettings = true }
                 OpenCodeStatusPathsSection(store: store)
             }
         }
@@ -56,6 +61,18 @@ struct OpenCodeProjectStatusScreen: View {
             }
         }
         .task { await store.load() }
+        .sheet(isPresented: $isEditingSettings) {
+            OpenCodeServerSettingsSheet(service: service, effective: store.configuration.value) {
+                // The server answers before it finishes reloading its projects, so give
+                // it a moment; asking right away can read the configuration being replaced.
+                settingsReload?.cancel()
+                settingsReload = Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled else { return }
+                    await store.load()
+                }
+            }
+        }
         .onAppear { isOnScreen = true }
         .onDisappear { isOnScreen = false }
         .onChange(of: scenePhase) { _, phase in
@@ -524,9 +541,10 @@ private struct OpenCodeStatusFormatterSection: View {
 
 private struct OpenCodeStatusConfigurationSections: View {
     @ObservedObject var store: OpenCodeServerContextStore
+    let editSettings: () -> Void
 
     var body: some View {
-        if store.configuration.isVisible {
+        if store.configuration.isVisible || store.canEditSettings {
             Section {
                 switch store.configuration {
                 case .loading:
@@ -538,11 +556,34 @@ private struct OpenCodeStatusConfigurationSections: View {
                 case .unsupported:
                     EmptyView()
                 }
+                if store.canEditSettings {
+                    Button(action: editSettings) {
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            OpenCodeStatusIcon(systemName: "slider.horizontal.3", tint: BYOTBrand.accent)
+                            Text("Server settings").font(.cleanBody).foregroundStyle(BYOTBrand.ink)
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right")
+                                .font(.cleanCaptionSemibold)
+                                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                                .accessibilityHidden(true)
+                        }
+                        .frame(minHeight: 44)
+                        .contentShape(.rect)
+                    }
+                    .accessibilityHint("Changes the default model, agent, sharing and more for every project")
+                    .accessibilityIdentifier("status-edit-settings")
+                }
             } header: {
                 OpenCodeStatusSectionHeader(title: String(localized: "Configuration"), detail: nil)
             } footer: {
-                Text("Read-only. Change settings in opencode.json on the server. Secrets such as API keys are hidden.")
-                    .font(.cleanCaption)
+                Group {
+                    if store.canEditSettings {
+                        Text("What this project runs with. Server settings change the defaults for every project. Secrets such as API keys are hidden.")
+                    } else {
+                        Text("Read-only. Change settings in opencode.json on the server. Secrets such as API keys are hidden.")
+                    }
+                }
+                .font(.cleanCaption)
             }
             if let plugins = store.configuration.value?.plugins, !plugins.isEmpty {
                 Section {
