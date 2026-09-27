@@ -130,6 +130,11 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             ]]], "connected": ["anthropic"], "default": [:]] as [String: Any]
         case "/provider":
             body = ["all": [], "connected": [], "default": [:]] as [String: Any]
+        case "/command" where ProcessInfo.processInfo.arguments.contains("--usage"):
+            // OpenCode's built-in commands, which include the AGENTS.md setup.
+            body = [["name": "init", "description": "guided AGENTS.md setup", "source": "command", "hints": ["$ARGUMENTS"]],
+                    ["name": "review", "description": "review changes [commit|branch|pr], defaults to uncommitted",
+                     "source": "command", "subtask": true, "hints": ["$ARGUMENTS"]]]
         case let path where path.hasPrefix("/api/"):
             body = ["data": []] as [String: Any]
         default:

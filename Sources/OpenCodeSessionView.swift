@@ -64,6 +64,10 @@ struct OpenCodeSessionScreen: View {
     @State private var isShowingTasks = false
     @State private var isShowingUsage = false
     @State private var isShowingNewSession = false
+    @State private var isShowingExport = false
+    @State private var isShowingAgentsSetup = false
+    @State private var transcriptCopies = 0
+    @State private var showsTranscriptCopied = false
     @State private var nextSession: OpenCodeSessionRoute?
     private let client: OpenCodeClient
     private let serverName: String
@@ -407,6 +411,19 @@ struct OpenCodeSessionScreen: View {
                         }.disabled(store.actionUnavailableReason(action) != nil)
                             .accessibilityIdentifier("session-menu-\(action.rawValue)")
                     }
+                    Section {
+                        if store.supportsAgentsSetup {
+                            Button("Set up AGENTS.md…", systemImage: "doc.badge.gearshape") { isShowingAgentsSetup = true }
+                                .disabled(store.agentsSetupUnavailableReason != nil)
+                                .accessibilityIdentifier("session-menu-init")
+                        }
+                        Button("Export transcript…", systemImage: "square.and.arrow.up") { isShowingExport = true }
+                            .disabled(store.transcriptUnavailableReason != nil)
+                            .accessibilityIdentifier("session-menu-export")
+                        Button("Copy transcript", systemImage: "doc.on.doc", action: copyTranscript)
+                            .disabled(store.transcriptUnavailableReason != nil)
+                            .accessibilityIdentifier("session-menu-copy")
+                    }
                 } label: { Image(systemName: "ellipsis.circle") }
                 .tint(BYOTBrand.chromeTint)
                 .accessibilityLabel("Session actions")
@@ -435,6 +452,30 @@ struct OpenCodeSessionScreen: View {
         }
         .sheet(isPresented: $isShowingTasks) {
             OpenCodeTaskProgressView(progress: store.todoProgress, supportsSnapshot: store.sessionFeatures.todoSnapshot)
+        }
+        .sheet(isPresented: $isShowingExport) {
+            OpenCodeTranscriptExportView(export: store.transcriptExport)
+        }
+        .openCodeAgentsSetupAlert(isPresented: $isShowingAgentsSetup, store: store)
+        .overlay(alignment: .top) {
+            if showsTranscriptCopied {
+                Label("Transcript copied", systemImage: "checkmark.circle.fill")
+                    .font(.cleanCaptionBold)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay { Capsule().strokeBorder(BYOTBrand.hairline, lineWidth: 1) }
+                    .padding(.top, 8)
+                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("transcript-copied")
+            }
+        }
+        .task(id: transcriptCopies) {
+            guard transcriptCopies > 0 else { return }
+            try? await Task.sleep(for: .seconds(2.4))
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick)) { showsTranscriptCopied = false }
         }
         .navigationDestination(item: $nextSession) { route in
             OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory,
@@ -486,7 +527,12 @@ struct OpenCodeSessionScreen: View {
                 OpenCodeComposerAction(name: action.rawValue, title: action.title,
                     unavailableReason: store.actionUnavailableReason(action),
                     run: { Task { await store.performSessionAction(action) } })
-            },
+            } + [
+                OpenCodeComposerAction(name: "export", title: "Export transcript as Markdown",
+                    unavailableReason: store.transcriptUnavailableReason, run: { isShowingExport = true }),
+                OpenCodeComposerAction(name: "copy", title: "Copy transcript as Markdown",
+                    unavailableReason: store.transcriptUnavailableReason, run: copyTranscript),
+            ],
             restoredMessage: store.restoredPrompt?.message,
             onRestoreConsumed: { store.consumeRestoredPrompt() }
         )
@@ -507,6 +553,14 @@ struct OpenCodeSessionScreen: View {
         } else {
             OpenCodeMessageView(message: message)
         }
+    }
+
+    /// The TUI's `/copy`: the whole conversation as Markdown, with the
+    /// choices last made in Export transcript.
+    private func copyTranscript() {
+        OpenCodeTranscriptClipboard.copy(store.transcriptExport)
+        transcriptCopies += 1
+        withAnimation(reduceMotion ? nil : .spring(duration: BYOTBrand.Motion.composerResize)) { showsTranscriptCopied = true }
     }
 
     private func rememberAttention() {
