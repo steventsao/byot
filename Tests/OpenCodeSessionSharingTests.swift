@@ -169,6 +169,31 @@ struct OpenCodeSessionSharingTests {
         #expect(store.shareErrorMessage == nil)
     }
 
+    @Test("A publish rejected after the server config turned sharing off hides publishing and says why")
+    @MainActor
+    func publishFailureRereadsDisabledPolicy() async throws {
+        let service = ShareStoreService()
+        let store = makeStore(service)
+        await store.start()
+        defer { store.stop() }
+        await store.refreshSessionFeatures()
+        #expect(store.sharePolicy == .manual)
+
+        await service.setPolicy(.disabled)
+        await service.setShareFailure(OpenCodeSessionFeatureError(message: "Unexpected server error"))
+        #expect(await store.publishShareLink() == false)
+        #expect(store.sharePolicy == .disabled)
+        #expect(store.shareErrorMessage == "Sharing is turned off in this server’s OpenCode config.")
+        #expect(!store.sharePresentation.isAvailable)
+    }
+
+    @Test("A live rename keeps the list row's public indicator")
+    func renameKeepsShare() {
+        let renamed = sharingSession(share: OpenCodeSessionShare(url: "https://opncd.ai/share/abc")).retitled("Renamed")
+        #expect(renamed.title == "Renamed")
+        #expect(renamed.share?.link == URL(string: "https://opncd.ai/share/abc"))
+    }
+
     @Test("A disabled server hides publishing; a failed config read keeps it offered")
     @MainActor
     func storePolicy() async throws {
@@ -253,7 +278,7 @@ private actor ShareTransport: OpenCodeHTTPTransport {
 }
 
 private actor ShareStoreService: OpenCodeSessionServicing, OpenCodeSessionFeatureServicing {
-    private let policy: OpenCodeSessionSharePolicy?
+    private var policy: OpenCodeSessionSharePolicy?
     private var current = sharingSession()
     private var returnedURL = "https://opncd.ai/share/abc123"
     private var shareFailure: Error?
@@ -273,6 +298,7 @@ private actor ShareStoreService: OpenCodeSessionServicing, OpenCodeSessionFeatur
     func pauseDetails() { detailsPaused = true }
     func resumeDetails() { detailsPaused = false; detailsContinuation?.resume(); detailsContinuation = nil }
     func setShareFailure(_ error: Error?) { shareFailure = error }
+    func setPolicy(_ policy: OpenCodeSessionSharePolicy?) { self.policy = policy }
     func setReturnedURL(_ url: String) { returnedURL = url }
 
     func sessionFeatureSupport() async throws -> OpenCodeSessionFeatureSupport { OpenCodeSessionFeatureSupport(details: true, share: true) }

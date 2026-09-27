@@ -129,6 +129,6 @@ extension OpenCodeSession {
     func retitled(_ title: String) -> OpenCodeSession {
         OpenCodeSession(id: id, slug: slug, projectID: projectID, workspaceID: workspaceID, directory: directory,
                         parentID: parentID, summary: summary, title: title, agent: agent, version: version,
-                        time: time, forkSourceID: forkSourceID)
+                        time: time, forkSourceID: forkSourceID, share: share)
     }
 }

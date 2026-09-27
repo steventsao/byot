@@ -729,7 +729,10 @@ final class OpenCodeSessionStore: ObservableObject {
         let published = await updateShare {
             try await featureService.shareSession(sessionID: $0, directory: $1, workspace: $2)
         }
-        guard published else { return false }
+        guard published else {
+            await recheckSharePolicy(after: featureService)
+            return false
+        }
         guard session.share?.link != nil else {
             shareErrorMessage = "OpenCode didn’t return a link for this session. Sharing may be turned off on the server."
             return false
@@ -745,6 +748,19 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     func clearShareError() { shareErrorMessage = nil }
+
+    /// OpenCode rejects a publish on a server whose config says `share:
+    /// "disabled"` with an opaque server error. The config may have changed
+    /// since it was read, so read it again and explain rather than repeat it.
+    private func recheckSharePolicy(after featureService: any OpenCodeSessionFeatureServicing) async {
+        guard shareErrorMessage != nil,
+              let policy = try? await featureService.sessionSharePolicy(directory: directory, workspace: workspace)
+        else { return }
+        sharePolicy = policy
+        if policy == .disabled {
+            shareErrorMessage = "Sharing is turned off in this server’s OpenCode config."
+        }
+    }
 
     /// Sharing never touches history, so it leaves the composer and session
     /// actions available and only guards itself against a second request.

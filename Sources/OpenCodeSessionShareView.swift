@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// Publish, share, and unpublish a session's read-only web page, mirroring
 /// OpenCode's "Publish on web" popover. Every state change is an explicit tap.
@@ -37,7 +38,9 @@ struct OpenCodeSessionShareView: View {
                         ContentUnavailableView(
                             "Sharing unavailable",
                             systemImage: "globe",
-                            description: Text("This server can’t publish sessions on the web.")
+                            description: Text(presentation.isSupported
+                                              ? "Sharing is turned off in this server’s OpenCode config."
+                                              : "This server can’t publish sessions on the web.")
                         )
                     }
                 }
@@ -157,7 +160,8 @@ struct OpenCodeSessionShareView: View {
     private func copyButton(_ link: URL) -> some View {
         let copied = copiedLink == link
         return Button {
-            UIPasteboard.general.url = link
+            // Both forms, so the link pastes into plain text fields too.
+            UIPasteboard.general.items = [[UTType.url.identifier: link, UTType.plainText.identifier: link.absoluteString]]
             withAnimation(reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick)) { copiedLink = link }
             AccessibilityNotification.Announcement("Link copied").post()
             Task {
