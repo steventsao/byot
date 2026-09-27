@@ -100,6 +100,24 @@ struct OpenCodeSession: Codable, Identifiable, Equatable, Sendable {
     let time: OpenCodeSessionTime
     // Fork lineage differs from a subagent's parentID. Forks remain roots.
     var forkSourceID: String? = nil
+    /// Present while the session is published on the web; absent when private.
+    var share: OpenCodeSessionShare? = nil
+}
+
+/// A published session's public page. Only the server-returned URL is used;
+/// BYOT never builds share links itself.
+struct OpenCodeSessionShare: Codable, Equatable, Sendable {
+    let url: String
+
+    /// Nil unless the server returned an absolute web link. A server with
+    /// sharing turned off by environment answers with an empty URL.
+    var link: URL? {
+        guard let components = URLComponents(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = components.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              components.host?.isEmpty == false
+        else { return nil }
+        return components.url
+    }
 }
 
 struct OpenCodeSessionSummary: Codable, Equatable, Sendable {

@@ -146,6 +146,7 @@ struct OpenCodeSessionRow: View {
                     if let summary = session.summary, summary.files > 0 {
                         Text("\(summary.files) files · +\(summary.additions) −\(summary.deletions)")
                     }
+                    if session.share?.link != nil { OpenCodeSharedSessionBadge() }
                     updatedText
                 }
                 .font(.cleanCaption)
@@ -167,6 +168,7 @@ struct OpenCodeSessionRow: View {
                         Text("\(summary.files) files")
                         Text("+\(summary.additions) −\(summary.deletions)")
                     }
+                    if session.share?.link != nil { OpenCodeSharedSessionBadge() }
                     Spacer()
                     updatedText
                 }

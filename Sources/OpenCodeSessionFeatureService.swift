@@ -139,6 +139,28 @@ struct OpenCodeSessionFeatureService: Sendable {
         return try decodeDetails(value).session
     }
 
+    /// The instance config's `share` mode. OpenCode rejects a publish with an
+    /// opaque server error when it is `disabled`, so read it before offering one.
+    func sharePolicy(directory: String, workspace: String?) async throws -> OpenCodeSessionSharePolicy {
+        guard support.share else { return .disabled }
+        let config: OpenCodeJSONValue = try await context.transport.get(["config"], query: query(directory, workspace))
+        return OpenCodeSessionSharePolicy(config: config)
+    }
+
+    /// Both routes answer with the whole updated session, carrying `share.url`
+    /// once published and omitting it once private again.
+    func share(_ id: String, directory: String, workspace: String?) async throws -> OpenCodeSession {
+        try require(support.share, "Sharing")
+        let value: OpenCodeJSONValue = try await context.transport.postWithoutBody(path(id) + ["share"], query: query(directory, workspace))
+        return try decodeDetails(value).session
+    }
+
+    func unshare(_ id: String, directory: String, workspace: String?) async throws -> OpenCodeSession {
+        try require(support.share, "Sharing")
+        let request = try context.transport.makeRequest(path: path(id) + ["share"], query: query(directory, workspace), method: "DELETE", body: nil)
+        return try decodeDetails(try await context.transport.perform(request)).session
+    }
+
     private func cancelPendingUsers(_ id: String) async throws {
         // A staged boundary must not automatically consume a server-side user
         // prompt written against the previous history. Fail closed if the
@@ -213,5 +235,14 @@ extension OpenCodeClient: OpenCodeSessionFeatureServicing {
     }
     func forkSession(sessionID: String, directory: String, workspace: String?, beforeMessageID: String?) async throws -> OpenCodeSession {
         try await sessionFeatureService().fork(sessionID, directory: directory, workspace: workspace, beforeMessageID: beforeMessageID)
+    }
+    func sessionSharePolicy(directory: String, workspace: String?) async throws -> OpenCodeSessionSharePolicy {
+        try await sessionFeatureService().sharePolicy(directory: directory, workspace: workspace)
+    }
+    func shareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession {
+        try await sessionFeatureService().share(sessionID, directory: directory, workspace: workspace)
+    }
+    func unshareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession {
+        try await sessionFeatureService().unshare(sessionID, directory: directory, workspace: workspace)
     }
 }

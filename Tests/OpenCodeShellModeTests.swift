@@ -478,6 +478,13 @@ private actor ShellStoreService: OpenCodeSessionServicing, OpenCodeSessionFeatur
     func forkSession(sessionID: String, directory: String, workspace: String?, beforeMessageID: String?) async throws -> OpenCodeSession {
         OpenCodeShellModeTests.session
     }
+    func sessionSharePolicy(directory: String, workspace: String?) async throws -> OpenCodeSessionSharePolicy { .manual }
+    func shareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession {
+        OpenCodeShellModeTests.session
+    }
+    func unshareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession {
+        OpenCodeShellModeTests.session
+    }
     func capabilities() async throws -> OpenCodeProtocolCapabilities { .v1 }
     func connectedProviderModels(directory: String, workspace: String?) async throws -> [OpenCodeProviderModels] { [] }
     func messages(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeMessageEnvelope] { history }

@@ -1,4 +1,5 @@
 #if DEBUG
+import os
 import SwiftUI
 
 /// Exercises the real navigation and session views against a local, deterministic server fixture.
@@ -78,7 +79,17 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
 
         let body: Any
         var status = 200
+        let sharing = ProcessInfo.processInfo.arguments.contains("--share")
         switch path {
+        case "/session/ses_history/share" where sharing:
+            // OpenCode answers both publish and unpublish with the whole session.
+            let published = request.httpMethod == "POST"
+            Self.isHistoryShared.withLock { $0 = published }
+            body = Self.session("ses_history", title: "Long conversation", shared: published)
+        case "/session/ses_history" where sharing:
+            body = Self.session("ses_history", title: "Long conversation", shared: Self.isHistoryShared.withLock { $0 })
+        case "/config" where sharing:
+            body = ["share": "manual"]
         case "/session" where request.httpMethod == "POST":
             if ProcessInfo.processInfo.arguments.contains("--creation-error") {
                 status = 503
@@ -88,7 +99,7 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             }
         case "/session":
             body = [Self.session("ses_draft", title: "Draft session"),
-                    Self.session("ses_history", title: "Long conversation")]
+                    Self.session("ses_history", title: "Long conversation", shared: Self.isHistoryShared.withLock { $0 })]
         case "/session/status":
             body = [String: String]()
         case "/session/ses_history/message":
@@ -149,9 +160,13 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
         ]
     }
 
-    private static func session(_ id: String, title: String) -> [String: Any] {
-        ["id": id, "slug": id, "projectID": "pro_fixture", "directory": "/fixture",
-         "title": title, "version": "1.18.10", "time": ["created": 1000, "updated": 1000]]
+    private static let isHistoryShared = OSAllocatedUnfairLock(initialState: false)
+
+    private static func session(_ id: String, title: String, shared: Bool = false) -> [String: Any] {
+        var session: [String: Any] = ["id": id, "slug": id, "projectID": "pro_fixture", "directory": "/fixture",
+                                      "title": title, "version": "1.18.10", "time": ["created": 1000, "updated": 1000]]
+        if shared { session["share"] = ["url": "https://opncd.ai/share/fixture-history"] }
+        return session
     }
 }
 #endif

@@ -63,6 +63,10 @@ final class OpenCodeSessionStore: ObservableObject {
     /// A command OpenCode did not run, for the composer to take back.
     @Published private(set) var restoredShellCommand: String?
     @Published private(set) var didLoadSessionFeatures = false
+    /// The server's `share` config; nil until read, and after a failed read.
+    @Published private(set) var sharePolicy: OpenCodeSessionSharePolicy?
+    @Published private(set) var isUpdatingShare = false
+    @Published private(set) var shareErrorMessage: String?
     private let featureService: (any OpenCodeSessionFeatureServicing)?
     private let shellService: (any OpenCodeShellServicing)?
     private var shellTask: Task<Void, Never>?
@@ -487,9 +491,17 @@ final class OpenCodeSessionStore: ObservableObject {
             async let todosResult = Self.capture {
                 try await featureService.sessionTodos(sessionID: sessionID, directory: directory, workspace: workspace)
             }
-            let (details, todos) = await (detailsResult, todosResult)
+            // Config rarely changes, so read it once; a failed read leaves
+            // publishing offered and is retried on the next refresh.
+            let needsSharePolicy = support.share && sharePolicy == nil
+            async let sharePolicyResult = Self.capture { () -> OpenCodeSessionSharePolicy? in
+                guard needsSharePolicy else { return nil }
+                return try await featureService.sessionSharePolicy(directory: directory, workspace: workspace)
+            }
+            let (details, todos, policy) = await (detailsResult, todosResult, sharePolicyResult)
             try Task.checkCancellation()
             guard generation == featureRefreshGeneration else { return }
+            if case .success(let policy?) = policy { sharePolicy = policy }
             if mutation == featureMutationGeneration {
                 switch details {
                 case .success(let details):
@@ -699,6 +711,65 @@ final class OpenCodeSessionStore: ObservableObject {
             sessionDetailsError = nil
             return true
         } catch { sessionDetailsError = error.localizedDescription; return false }
+    }
+
+    var sharePresentation: OpenCodeSessionSharePresentation {
+        OpenCodeSessionSharePresentation(
+            link: session.share?.link,
+            isSupported: featureService != nil && sessionFeatures.share,
+            policy: sharePolicy,
+            isUpdating: isUpdatingShare
+        )
+    }
+
+    /// Publishes a read-only web copy of this conversation. Only an explicit
+    /// user action calls this; the link shown is always the server's own.
+    func publishShareLink() async -> Bool {
+        guard let featureService, sharePresentation.canPublish else { return false }
+        let published = await updateShare {
+            try await featureService.shareSession(sessionID: $0, directory: $1, workspace: $2)
+        }
+        guard published else { return false }
+        guard session.share?.link != nil else {
+            shareErrorMessage = "OpenCode didn’t return a link for this session. Sharing may be turned off on the server."
+            return false
+        }
+        return true
+    }
+
+    func unpublishShareLink() async -> Bool {
+        guard let featureService, sharePresentation.canUnpublish else { return false }
+        return await updateShare {
+            try await featureService.unshareSession(sessionID: $0, directory: $1, workspace: $2)
+        }
+    }
+
+    func clearShareError() { shareErrorMessage = nil }
+
+    /// Sharing never touches history, so it leaves the composer and session
+    /// actions available and only guards itself against a second request.
+    private func updateShare(
+        _ request: (String, String, String?) async throws -> OpenCodeSession
+    ) async -> Bool {
+        guard !isUpdatingShare else { return false }
+        isUpdatingShare = true
+        shareErrorMessage = nil
+        featureMutationGeneration &+= 1
+        defer { isUpdatingShare = false }
+        let sessionID = session.id
+        do {
+            let updated = try await request(sessionID, directory, workspace)
+            guard updated.id == session.id else { return false }
+            session = updated
+            // Reject a details snapshot requested before the server confirmed.
+            featureMutationGeneration &+= 1
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            shareErrorMessage = error.localizedDescription
+            return false
+        }
     }
 
     func deleteSession() async -> Bool {

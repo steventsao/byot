@@ -36,13 +36,17 @@ struct OpenCodeSessionFeatureSupport: Equatable, Sendable {
     var undoIncludesFileChanges = false
     /// Direct shell commands (`!` in OpenCode's composers), never an LLM prompt.
     var shell = false
+    /// Publishing a read-only web link (`/share`, `/unshare`).
+    var share = false
 
     static func negotiated(_ context: OpenCodeFeatureContext) -> Self {
         if context.serverProtocol == .v1 {
             return Self(details: true, rename: true, delete: true, archive: true, children: true,
                         todoSnapshot: true, undo: true, redo: true, compact: true,
-                        fork: true, compactRequiresModel: true, undoIncludesFileChanges: true, shell: true)
+                        fork: true, compactRequiresModel: true, undoIncludesFileChanges: true, shell: true,
+                        share: true)
         }
+        // The v2 session API has no publish operation; sharing stays hidden.
         let details = context.supports("/api/session/{sessionID}")
         let inbox = context.supports("/api/session/{sessionID}/inbox")
             && context.supports("/api/session/{sessionID}/inbox/{inboxID}", method: "delete")
@@ -114,6 +118,9 @@ protocol OpenCodeSessionFeatureServicing: Sendable {
     func commitSessionRevert(sessionID: String, directory: String, workspace: String?) async throws -> Bool
     func compactSession(sessionID: String, directory: String, workspace: String?, model: OpenCodeModelOption?) async throws
     func forkSession(sessionID: String, directory: String, workspace: String?, beforeMessageID: String?) async throws -> OpenCodeSession
+    func sessionSharePolicy(directory: String, workspace: String?) async throws -> OpenCodeSessionSharePolicy
+    func shareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession
+    func unshareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession
 }
 
 struct OpenCodeSessionFeatureError: LocalizedError {

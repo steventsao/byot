@@ -52,7 +52,8 @@ enum OpenCodeV2Normalization {
                 compacting: time?["compacting"]?.numberValue,
                 archived: time?["archived"]?.numberValue
             ),
-            forkSourceID: object["fork"]?.objectValue?["sessionID"]?.stringValue
+            forkSourceID: object["fork"]?.objectValue?["sessionID"]?.stringValue,
+            share: object["share"]?.objectValue?["url"]?.stringValue.map(OpenCodeSessionShare.init(url:))
         )
     }
 

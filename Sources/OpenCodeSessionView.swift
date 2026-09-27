@@ -4,6 +4,7 @@ struct OpenCodeSessionView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var store: OpenCodeSessionStore
     @State private var isShowingDiff = false
     @State private var isShowingQueue = false
@@ -15,6 +16,7 @@ struct OpenCodeSessionView: View {
     @State private var isShowingDetails = false
     @State private var isShowingTasks = false
     @State private var isShowingNewSession = false
+    @State private var isShowingShare = false
     @State private var nextSession: OpenCodeSessionRoute?
     private let client: OpenCodeClient
     private let serverName: String
@@ -336,6 +338,10 @@ struct OpenCodeSessionView: View {
                         .accessibilityIdentifier("session-queue")
                     Button("Session details", systemImage: "info.circle") { isShowingDetails = true }
                     Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
+                    if store.sharePresentation.isAvailable {
+                        Button(store.sharePresentation.menuTitle, systemImage: store.sharePresentation.menuSymbol) { isShowingShare = true }
+                            .accessibilityIdentifier("session-menu-share")
+                    }
                     if push.credentials[client.profile.id] != nil {
                         Button(push.isMuted(serverID: client.profile.id, sessionID: store.session.id) ? "Unmute notifications" : "Mute notifications", systemImage: "bell.slash") {
                             Task {
@@ -372,6 +378,9 @@ struct OpenCodeSessionView: View {
                 isShowingDetails = false
                 nextSession = OpenCodeSessionRoute(session: session)
             }
+        }
+        .sheet(isPresented: $isShowingShare) {
+            OpenCodeSessionShareView(store: store)
         }
         .sheet(isPresented: $isShowingTasks) {
             OpenCodeTaskProgressView(progress: store.todoProgress, supportsSnapshot: store.sessionFeatures.todoSnapshot)
@@ -461,12 +470,37 @@ struct OpenCodeSessionView: View {
     }
 
     private var sessionContext: some View {
-        Text("\(serverName) · \(URL(fileURLWithPath: store.directory).lastPathComponent)")
-            .font(.cleanCaption)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityLabel("Server \(serverName), project \(store.directory)")
+        // At accessibility sizes the badge takes its own line instead of
+        // squeezing the server and project name.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: BYOTBrand.Space.xs))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: BYOTBrand.Space.sm))
+        return layout {
+            Text("\(serverName) · \(URL(fileURLWithPath: store.directory).lastPathComponent)")
+                .font(.cleanCaption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("Server \(serverName), project \(store.directory)")
+            if store.sharePresentation.isPublished { sharedIndicator }
+        }
+    }
+
+    @ViewBuilder
+    private var sharedIndicator: some View {
+        if store.sharePresentation.isAvailable {
+            Button { isShowingShare = true } label: {
+                OpenCodeSharedSessionBadge()
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, -12)
+            .accessibilityHint("Shows the public link.")
+            .accessibilityIdentifier("session-shared-indicator")
+        } else {
+            OpenCodeSharedSessionBadge()
+        }
     }
 
     private var sessionStatus: some View {
