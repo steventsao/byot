@@ -1,0 +1,125 @@
+# Archive, sign, validate and upload a TestFlight build from GitHub, then add
+# it to a beta group with the notes in asc/testflight-notes.md. Signing uses a
+# temporary keychain and App Store profiles fetched by API; see docs/ci.md for
+# the one-time setup and the secrets this job reads.
+name: iOS release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Marketing version (blank uses MARKETING_VERSION in project.yml)
+        required: false
+        default: ""
+      group:
+        description: TestFlight beta group
+        required: true
+        default: Internal Testers
+      submit_beta_review:
+        description: Submit for external beta review
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ios-ci.yml
+
+  release:
+    name: Archive and upload to TestFlight
+    needs: test
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: testflight
+    env:
+      XCODE_APP: /Applications/Xcode_26.5.app
+      ASC_BYPASS_KEYCHAIN: "1"
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+
+      - name: Install XcodeGen and asc
+        run: brew install xcodegen asc
+
+      - name: Install App Store Connect API key
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          key_dir="$RUNNER_TEMP/private_keys"
+          mkdir -p "$key_dir"
+          chmod 700 "$key_dir"
+          key_path="$key_dir/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_PRIVATE_KEY" > "$key_path"
+          chmod 600 "$key_path"
+          echo "ASC_PRIVATE_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Install signing identity and profiles
+        env:
+          DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
+          DIST_CERT_P12_PASSWORD: ${{ secrets.DIST_CERT_P12_PASSWORD }}
+        run: scripts/ci/install-signing.sh
+
+      - name: Archive, validate and upload
+        env:
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+          BYOT_VERSION: ${{ inputs.version }}
+          BYOT_TESTFLIGHT_GROUP: ${{ inputs.group }}
+          BYOT_SUBMIT_BETA_REVIEW: ${{ inputs.submit_beta_review && '1' || '0' }}
+          BYOT_UPLOAD_TESTFLIGHT: "1"
+        run: |
+          if [[ -z "$BYOT_VERSION" ]]; then
+            BYOT_VERSION="$(sed -n 's/^ *MARKETING_VERSION: *//p' project.yml | head -n 1)"
+          fi
+          BYOT_BUILD="$(date -u +%Y%m%d%H%M%S)"
+          export BYOT_VERSION BYOT_BUILD
+          export BYOT_DERIVED_DATA_PATH="$RUNNER_TEMP/DerivedData"
+          echo "BYOT_VERSION=$BYOT_VERSION" >> "$GITHUB_ENV"
+          echo "BYOT_BUILD=$BYOT_BUILD" >> "$GITHUB_ENV"
+          scripts/asc-build-testflight.sh
+
+      - name: Record release
+        if: success()
+        env:
+          GROUP: ${{ inputs.group }}
+          SUBMITTED: ${{ inputs.submit_beta_review }}
+        run: |
+          {
+            echo "### TestFlight ${BYOT_VERSION} (${BYOT_BUILD})"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Version | \`${BYOT_VERSION}\` |"
+            echo "| Build | \`${BYOT_BUILD}\` |"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Ref | \`${GITHUB_REF_NAME}\` |"
+            echo "| Group | ${GROUP} |"
+            echo "| Beta review submitted | ${SUBMITTED} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload IPA and dSYMs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: byot-${{ env.BYOT_VERSION }}-${{ env.BYOT_BUILD }}
+          path: |
+            .asc/artifacts/BYOT.ipa
+            .asc/artifacts/BYOT.xcarchive/dSYMs
+          retention-days: 30
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          scripts/ci/remove-signing.sh
+          rm -rf "$RUNNER_TEMP/private_keys"

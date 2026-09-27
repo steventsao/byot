@@ -80,6 +80,10 @@ targets:
       base:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: Sources/BYOT.entitlements
+        # Empty unless CI signs manually (scripts/ci/install-signing.sh sets
+        # BYOT_PROFILE_APP, _WIDGETS and _SHARE). Each target reads its own
+        # variable, so one command-line value never lands on every target.
+        PROVISIONING_PROFILE_SPECIFIER: $(BYOT_PROFILE_APP)
         PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot
         PRODUCT_NAME: byot
         GENERATE_INFOPLIST_FILE: NO
@@ -115,6 +119,7 @@ targets:
       base:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: Widgets/BYOTWidgets.entitlements
+        PROVISIONING_PROFILE_SPECIFIER: $(BYOT_PROFILE_WIDGETS)
         PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot.widgets
         PRODUCT_NAME: BYOTWidgets
         GENERATE_INFOPLIST_FILE: NO
@@ -157,6 +162,7 @@ targets:
       base:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: ShareExtension/BYOTShare.entitlements
+        PROVISIONING_PROFILE_SPECIFIER: $(BYOT_PROFILE_SHARE)
         PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot.share
         PRODUCT_NAME: BYOTShare
         GENERATE_INFOPLIST_FILE: NO
