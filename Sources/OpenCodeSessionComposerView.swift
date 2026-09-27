@@ -28,8 +28,11 @@ struct OpenCodeSessionComposerView: View {
     @State private var isShowingModelPicker = false
     @State private var previewAttachment: OpenCodePromptAttachment?
     @State private var didRequestInitialFocus = false
+    @StateObject private var dictation = OpenCodeDictationController()
     @FocusState private var isFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
@@ -66,6 +69,14 @@ struct OpenCodeSessionComposerView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("attachment-import-progress")
             }
+            if let notice = dictation.notice, !inShellMode {
+                Text(notice)
+                    .font(.cleanCaption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 8)
+                    .accessibilityIdentifier("opencode-dictation-notice")
+            }
             if inShellMode { shellModeHeader }
             else { slashSuggestions }
             if !inShellMode, let files = store.remoteFiles {
@@ -88,6 +99,10 @@ struct OpenCodeSessionComposerView: View {
                 .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? 132 : 80)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel("Attachments")
+            }
+            if dictation.isActive, !inShellMode {
+                OpenCodeDictationStatusView(dictation: dictation) { dictation.finish() }
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
 
             HStack(alignment: .bottom, spacing: 4) {
@@ -115,14 +130,36 @@ struct OpenCodeSessionComposerView: View {
                         return .handled
                     }
                 if !isExpanded {
+                    if showsDictation { dictationButton }
                     sessionProgress
                     submitButton
                 }
+            }
+            .alert(dictation.blocked?.title ?? "", isPresented: Binding(
+                get: { dictation.blocked != nil },
+                set: { if !$0 { dictation.blocked = nil } }
+            ), presenting: dictation.blocked) { block in
+                if block.opensSettings {
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                    }
+                    Button("Not Now", role: .cancel) {}
+                } else {
+                    Button("OK", role: .cancel) {}
+                }
+            } message: { block in
+                Text(block.message)
             }
 
             if isExpanded { controlRow }
         }
         .animation(.smooth(duration: BYOTBrand.Motion.composerResize), value: isExpanded)
+        .animation(reduceMotion ? nil : .smooth(duration: BYOTBrand.Motion.quick), value: dictation.isActive)
+        .sensoryFeedback(trigger: dictation.phase) { old, new in
+            if new == .listening { return .start }
+            if old != .preparing, new == .idle { return .stop }
+            return nil
+        }
         .padding(10)
         .background(BYOTBrand.controlSurface, in: RoundedRectangle(cornerRadius: 26))
         .overlay {
@@ -140,8 +177,14 @@ struct OpenCodeSessionComposerView: View {
                 text = ""
                 setShellMode(true, refocus: true)
             }
+            dictation.noteEdit(text)
             saveDraft()
         }
+        // The microphone never stays open behind another app; the words so far remain.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { dictation.cancel() }
+        }
+        .onDisappear { dictation.cancel() }
         .onChange(of: isShellMode) { _, _ in saveDraft() }
         // A shell draft on a server without the operation becomes a message
         // draft once that is known, rather than a composer that can't send.
@@ -258,7 +301,8 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private var isExpanded: Bool {
-        inShellMode || Self.showsExpandedControls(
+        // Dictation keeps the full row so the microphone doesn't move while in use.
+        inShellMode || (dictation.isActive && showsDictation) || Self.showsExpandedControls(
             isFocused: isFocused, text: text,
             hasAttachments: !attachments.isEmpty || !remoteReferences.isEmpty
         )
@@ -302,6 +346,7 @@ struct OpenCodeSessionComposerView: View {
                     attachmentButton
                     if store.supportsShell { shellToggle }
                     Spacer(minLength: 8)
+                    if showsDictation { dictationButton }
                     sessionProgress
                     submitButton
                 }
@@ -319,6 +364,7 @@ struct OpenCodeSessionComposerView: View {
                 }
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                 .fixedSize(horizontal: false, vertical: true)
+                if showsDictation { dictationButton }
                 sessionProgress
                 submitButton
             }
@@ -403,6 +449,8 @@ struct OpenCodeSessionComposerView: View {
     /// keyboard traits. Focus writes land asynchronously, so callers say it.
     private func setShellMode(_ enabled: Bool, refocus: Bool) {
         guard enabled != isShellMode else { return }
+        // Commands are typed exactly, so shell mode has no dictation.
+        if enabled { dictation.cancel() }
         isShellMode = enabled
         if enabled {
             AccessibilityNotification.Announcement("Shell mode. Commands run on the server.").post()
@@ -412,6 +460,23 @@ struct OpenCodeSessionComposerView: View {
             await Task.yield()
             isFocused = true
         }
+    }
+
+    /// Dictation writes messages; shell commands are typed exactly.
+    private var showsDictation: Bool { dictation.isSupported && !inShellMode }
+
+    private var dictationButton: some View {
+        OpenCodeDictationButton(dictation: dictation) {
+            dictation.toggle(text: $text, vocabulary: dictationVocabulary)
+        }
+    }
+
+    /// Names the recognizer is unlikely to know on its own.
+    private var dictationVocabulary: [String] {
+        var terms = ["OpenCode", URL(fileURLWithPath: store.directory).lastPathComponent]
+        terms += store.composerCatalog.agents.map(\.displayName)
+        if let model = store.selectedModel?.modelName { terms.append(model) }
+        return terms.filter { !$0.isEmpty }
     }
 
     private var modelButton: some View {
@@ -585,6 +650,8 @@ struct OpenCodeSessionComposerView: View {
 
     private func send() {
         guard !isImportingAttachment else { return }
+        // What's been heard so far is what gets sent; nothing arrives afterwards.
+        dictation.cancel()
         // A command must never fall through to the model as a prompt.
         if isShellMode {
             guard inShellMode, store.runShell(text) else { return }
@@ -793,6 +860,7 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private func restore(_ message: OpenCodeMessageEnvelope) {
+        dictation.cancel()
         if let command = store.shellCommand(restoring: message) {
             text = command
             attachments = []

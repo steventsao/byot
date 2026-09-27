@@ -22,6 +22,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>byot listens only while you dictate a message, and only after you tap the microphone.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>byot turns what you dictate into message text. Speech is transcribed on this device when your language supports it; otherwise Apple transcribes it.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>OpenRunde-Bold.otf</string>
