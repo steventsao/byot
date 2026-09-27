@@ -583,9 +583,9 @@ struct OpenCodeConnectedView: View {
     }
 
     private var projects: [OpenCodeProject] {
-        // Until the server answers, name projects from the saved list.
-        var result = workspace.compatibility == nil && workspace.projects.isEmpty
-            ? browser.cachedProjects : workspace.projects
+        // Until the server lists its projects, use the saved list's. A failed first
+        // listing must not reload, and so re-save, the list without them.
+        var result = workspace.projects.isEmpty ? browser.cachedProjects : workspace.projects
         if let directory = client.profile.normalizedDirectory,
            !result.contains(where: { $0.worktree == directory }) {
             result.append(Self.project(directory: directory))

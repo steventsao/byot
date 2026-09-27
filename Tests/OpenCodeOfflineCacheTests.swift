@@ -294,6 +294,50 @@ struct OpenCodeOfflineCacheTests {
         #expect(store.offlineTranscript == nil)
     }
 
+    @Test("Events streamed before the server's transcript update the saved one instead of hiding it")
+    @MainActor
+    func transcriptOverlaysStreamedEvents() async throws {
+        let cache = OpenCodeOfflineCache(root: root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scope = OpenCodeOfflineCacheScope(cache: cache, profile: profile())
+        let saved = [message("u1", role: "user", created: 1), message("a1", role: "assistant", created: 2)]
+        scope.saveTranscript(saved, sessionID: "ses", directory: "/one", workspace: nil)
+        await cache.flush()
+        let service = OfflineTranscriptService(messages: [])
+        await service.setFailing(true)
+        let store = makeStore(service, cache: scope)
+        await store.start()
+        defer { store.stop() }
+        for _ in 0..<100 where store.offlineTranscript == nil { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(store.offlineTranscript != nil)
+
+        let more = OpenCodePart(id: "a1-more", sessionID: "ses", messageID: "a1", type: "text", text: "More",
+                                mime: nil, filename: nil, url: nil, callID: nil, tool: nil, state: nil,
+                                files: nil, description: nil, agent: nil)
+        store.handle(OpenCodeEvent(id: "e1", type: "message.part.updated", properties: ["part": try json(more)]))
+        store.handle(OpenCodeEvent(id: "e2", type: "message.updated", properties: ["info": try json(saved[1].info)]))
+        store.handle(OpenCodeEvent(id: "e3", type: "message.updated",
+                                   properties: ["info": try json(message("u2", role: "user", created: 3).info)]))
+        #expect(store.messages.map(\.id) == ["u1", "a1", "u2"])
+        #expect(store.messages[1].parts.map(\.id) == ["a1-text", "a1-more"])
+        #expect(store.offlineTranscript != nil)
+    }
+
+    @Test("An empty transcript from the server removes the saved copy")
+    @MainActor
+    func emptyServerTranscriptRemovesSavedCopy() async throws {
+        let cache = OpenCodeOfflineCache(root: root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scope = OpenCodeOfflineCacheScope(cache: cache, profile: profile())
+        scope.saveTranscript([message("stale", role: "user")], sessionID: "ses", directory: "/one", workspace: nil)
+        await cache.flush()
+        let store = makeStore(OfflineTranscriptService(messages: []), cache: scope)
+        await store.start()
+        store.stop()
+        await cache.flush()
+        #expect(await scope.transcript(sessionID: "ses", directory: "/one", workspace: nil) == nil)
+    }
+
     @Test("A session with nothing saved and no server shows no transcript")
     @MainActor
     func transcriptMissWithoutServer() async throws {
@@ -359,6 +403,10 @@ struct OpenCodeOfflineCacheTests {
             parts: [OpenCodePart(id: "\(id)-text", sessionID: "ses", messageID: id, type: "text", text: text,
                                  mime: nil, filename: nil, url: nil, callID: nil, tool: nil, state: nil,
                                  files: nil, description: nil, agent: nil)])
+    }
+
+    private func json(_ value: some Encodable) throws -> OpenCodeJSONValue {
+        try JSONDecoder().decode(OpenCodeJSONValue.self, from: JSONEncoder().encode(value))
     }
 
     @MainActor

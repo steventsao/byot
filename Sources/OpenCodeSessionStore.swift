@@ -77,6 +77,7 @@ final class OpenCodeSessionStore: ObservableObject {
     private var savedMessages: [OpenCodeMessageEnvelope]?
     private var offlineRestoreTask: Task<Void, Never>?
     private var offlineSaveTask: Task<Void, Never>?
+    private var offlineSavePendingSince: ContinuousClock.Instant?
     private var queueObservation: AnyCancellable?
     private let service: any OpenCodeSessionServicing
     private let defaults: UserDefaults
@@ -1343,9 +1344,9 @@ final class OpenCodeSessionStore: ObservableObject {
 
     private func publishTranscript() {
         if revertMessageID == nil { revertedUserMessages = [] }
-        // The saved transcript stands in only until the server or its events provide one.
-        if cachedMessages != nil, !transcript.messages.isEmpty { discardOfflineTranscript() }
-        let source = cachedMessages ?? transcript.messages
+        // The saved transcript stands in until the server's arrives. Events streamed
+        // before then update it rather than replace it, so history stays in view.
+        let source = cachedMessages.map { Self.overlay(transcript.messages, on: $0) } ?? transcript.messages
         if let revertMessageID, let boundary = source.firstIndex(where: { $0.id == revertMessageID }) {
             messages = Array(source.prefix(boundary))
         } else {
@@ -1363,13 +1364,13 @@ final class OpenCodeSessionStore: ObservableObject {
     /// reducer, so streamed events and the server's snapshot reconcile exactly as
     /// they would without it.
     private func restoreOfflineTranscript() {
-        guard let offlineCache, !hasServerTranscript, transcript.messages.isEmpty, cachedMessages == nil else { return }
+        guard let offlineCache, !hasServerTranscript, cachedMessages == nil else { return }
         let sessionID = session.id, directory = self.directory, workspace = self.workspace
         offlineRestoreTask?.cancel()
         offlineRestoreTask = Task { [weak self] in
             let saved = await offlineCache.transcript(sessionID: sessionID, directory: directory, workspace: workspace)
             guard let self, !Task.isCancelled, let saved, !saved.messages.isEmpty, isRunning,
-                  !hasServerTranscript, transcript.messages.isEmpty else { return }
+                  !hasServerTranscript else { return }
             cachedMessages = saved.messages
             savedMessages = saved.messages
             offlineTranscript = OpenCodeOfflineTranscriptInfo(savedAt: saved.savedAt, isTruncated: saved.isTruncated)
@@ -1389,12 +1390,42 @@ final class OpenCodeSessionStore: ObservableObject {
         if offlineTranscript != nil { offlineTranscript = nil }
     }
 
-    /// Streaming updates the transcript many times a second; save once it settles.
+    /// Streamed messages, applied over the saved ones: a message both hold keeps its
+    /// saved parts and takes the streamed ones, and a new message joins in order.
+    nonisolated static func overlay(
+        _ live: [OpenCodeMessageEnvelope], on saved: [OpenCodeMessageEnvelope]
+    ) -> [OpenCodeMessageEnvelope] {
+        guard !live.isEmpty else { return saved }
+        var merged = saved
+        for message in live {
+            guard let index = merged.firstIndex(where: { $0.id == message.id }) else {
+                merged.append(message)
+                continue
+            }
+            var parts = merged[index].parts
+            for part in message.parts {
+                if let partIndex = parts.firstIndex(where: { $0.id == part.id }) {
+                    parts[partIndex] = part
+                } else {
+                    parts.append(part)
+                }
+            }
+            merged[index] = OpenCodeMessageEnvelope(info: message.info, parts: parts)
+        }
+        return merged.sorted { ($0.info.time.created, $0.id) < ($1.info.time.created, $1.id) }
+    }
+
+    /// Streaming updates the transcript many times a second. Save once it has been
+    /// quiet for 2 seconds, and at least every 30 seconds while a long reply streams.
     private func scheduleOfflineTranscriptSave() {
-        guard offlineCache != nil, offlineSaveTask == nil else { return }
+        guard offlineCache != nil else { return }
+        let now = ContinuousClock.now
+        let pendingSince = offlineSavePendingSince ?? now
+        offlineSavePendingSince = pendingSince
+        let delay = max(.zero, min(.seconds(2), pendingSince + .seconds(30) - now))
+        offlineSaveTask?.cancel()
         offlineSaveTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
+            do { try await Task.sleep(for: delay) } catch { return }
             self?.saveOfflineTranscriptNow()
         }
     }
@@ -1404,9 +1435,15 @@ final class OpenCodeSessionStore: ObservableObject {
     func saveOfflineTranscriptNow() {
         offlineSaveTask?.cancel()
         offlineSaveTask = nil
+        offlineSavePendingSince = nil
         guard let offlineCache, hasServerTranscript, !didDeleteSession, transcript.messages != savedMessages else { return }
         savedMessages = transcript.messages
-        offlineCache.saveTranscript(transcript.messages, sessionID: session.id, directory: directory, workspace: workspace)
+        if transcript.messages.isEmpty {
+            // Nothing to show offline; an older copy would only mislead.
+            offlineCache.removeTranscript(sessionID: session.id, directory: directory, workspace: workspace)
+        } else {
+            offlineCache.saveTranscript(transcript.messages, sessionID: session.id, directory: directory, workspace: workspace)
+        }
     }
 
     private func applyReconciledStatus(_ value: OpenCodeSessionStatus) {
