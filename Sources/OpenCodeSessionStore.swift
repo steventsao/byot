@@ -82,6 +82,7 @@ final class OpenCodeSessionStore: ObservableObject {
     private var eventTask: Task<Void, Never>?
     private var reconciliationTask: Task<Void, Never>?
     private var messageRefreshTask: Task<Void, Never>?
+    private var turnSettlementTask: Task<Void, Never>?
     private var actionRefreshTask: Task<Void, Never>?
     private var modelTask: Task<Void, Never>?
     private var promptDispatchTask: Task<Void, Never>?
@@ -137,6 +138,7 @@ final class OpenCodeSessionStore: ObservableObject {
         eventTask?.cancel()
         reconciliationTask?.cancel()
         messageRefreshTask?.cancel()
+        turnSettlementTask?.cancel()
         actionRefreshTask?.cancel()
         modelTask?.cancel()
         promptDispatchTask?.cancel()
@@ -269,6 +271,7 @@ final class OpenCodeSessionStore: ObservableObject {
         reconciliationTask = nil
         messageRefreshTask?.cancel()
         messageRefreshTask = nil
+        cancelTurnSettlement()
         actionRefreshTask?.cancel()
         actionRefreshTask = nil
         modelTask?.cancel()
@@ -481,6 +484,8 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func handleSessionFeatureEvent(_ event: OpenCodeEvent) -> Bool {
+        // Current v2 servers publish revert events as session.next.revert.*.
+        let type = OpenCodeV2EventReducer.canonicalType(event.type)
         if event.type == "todo.updated", event.sessionID == session.id {
             if let todos: [OpenCodeTodo] = decode(event.properties["todos"]) {
                 todoMutationGeneration &+= 1
@@ -488,7 +493,7 @@ final class OpenCodeSessionStore: ObservableObject {
             }
             return true
         }
-        if event.type == "session.revert.staged", event.sessionID == session.id {
+        if type == "session.revert.staged", event.sessionID == session.id {
             featureMutationGeneration &+= 1
             revertMessageID = event.properties["revert"]?.objectValue?["messageID"]?.stringValue
             promptQueue.pausePendingPrompts()
@@ -496,14 +501,14 @@ final class OpenCodeSessionStore: ObservableObject {
             publishTranscript()
             return true
         }
-        if event.type == "session.revert.committed", event.sessionID == session.id {
-            if let boundary = event.properties["to"]?.stringValue ?? revertMessageID {
+        if type == "session.revert.committed", event.sessionID == session.id {
+            if let boundary = event.properties["to"]?.stringValue ?? event.properties["messageID"]?.stringValue ?? revertMessageID {
                 commitHistoryLocally(before: boundary)
             }
             scheduleReconciliation()
             return true
         }
-        if event.type == "session.revert.cleared", event.sessionID == session.id {
+        if type == "session.revert.cleared", event.sessionID == session.id {
             featureMutationGeneration &+= 1
             revertMessageID = nil
             publishTranscript()
@@ -1301,20 +1306,73 @@ final class OpenCodeSessionStore: ObservableObject {
             }
             settleTurnLocally(dismissingUnansweredPrompt: false)
             scheduleMessageRefresh()
-        case "session.retry.scheduled":
+        case "session.retry.scheduled", "session.next.retried":
             statusMutationGeneration &+= 1
             applyEventStatus(.retry(attempt: Int(event.properties["attempt"]?.numberValue ?? 1),
                 message: event.properties["error"]?.objectValue?["message"]?.stringValue ?? "Retrying", next: event.properties["at"]?.numberValue ?? 0))
-        default:
-            if transcript.apply(event) {
-                transcriptMutationGeneration &+= 1
-                publishTranscript()
-            } else {
-                // Unrecognized or out-of-order beta events reconcile from projection.
-                scheduleMessageRefresh()
+        case "session.next.step.started":
+            // Current v2 has no execution events on /api/event; a step is the
+            // first sign of work and a new step supersedes any pending settle.
+            cancelTurnSettlement()
+            if status != .busy {
+                statusMutationGeneration &+= 1
+                applyEventStatus(.busy)
             }
+            applyV2Transcript(event)
+        case "session.next.step.ended", "session.next.step.failed":
+            applyV2Transcript(event)
+            // A tool-calls finish is always followed by another step.
+            if event.properties["finish"]?.stringValue != "tool-calls" { scheduleTurnSettlement() }
+        default:
+            applyV2Transcript(event)
         }
     }
+
+    private func applyV2Transcript(_ event: OpenCodeEvent) {
+        switch transcript.applyV2(event) {
+        case .changed:
+            transcriptMutationGeneration &+= 1
+            publishTranscript()
+        case .unchanged:
+            break
+        case .unresolved:
+            // Unrecognized or out-of-order events reconcile from projection.
+            scheduleMessageRefresh()
+        }
+    }
+
+    /// Current v2 servers report no idle event, so after a final step the
+    /// store asks the authoritative active-session list with a short backoff.
+    private func scheduleTurnSettlement() {
+        cancelTurnSettlement()
+        let baseline = statusMutationGeneration
+        turnSettlementTask = Task { [weak self] in
+            for delay in Self.turnSettlementDelays {
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled, let store = self, store.isRunning else { return }
+                guard let statuses = try? await store.service.sessionStatuses(
+                    directory: store.directory, workspace: store.workspace
+                ) else { continue }
+                guard !Task.isCancelled, baseline == store.statusMutationGeneration else { return }
+                guard statuses[store.session.id]?.isActive != true else { continue }
+                store.turnSettlementTask = nil
+                store.statusMutationGeneration &+= 1
+                store.applyEventStatus(.idle)
+                store.scheduleMessageRefresh()
+                return
+            }
+            self?.turnSettlementTask = nil
+        }
+    }
+
+    private func cancelTurnSettlement() {
+        turnSettlementTask?.cancel()
+        turnSettlementTask = nil
+    }
+
+    nonisolated static let turnSettlementDelays: [Duration] = [
+        .milliseconds(150), .milliseconds(400), .seconds(1), .seconds(2), .seconds(4),
+    ]
 
     private func publishTranscript() {
         if revertMessageID == nil { revertedUserMessages = [] }
