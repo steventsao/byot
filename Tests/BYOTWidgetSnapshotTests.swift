@@ -63,6 +63,25 @@ struct BYOTWidgetSnapshotTests {
         #expect(snapshot.sessions.first?.sessionID == "waiting")
     }
 
+    @Test("A server byot has moved away from drops out instead of keeping the widget out of date")
+    func abandonedServer() {
+        var snapshot = BYOTWidgetSnapshot()
+        let old = UUID()
+        let recent = UUID()
+        let current = UUID()
+        let start = Date(timeIntervalSince1970: 1_000)
+        snapshot.replace(BYOTWidgetServer(serverID: old, name: "Old", refreshedAt: start,
+                                          sessions: [row("stuck", server: old, state: .running, updated: 1)]))
+        snapshot.replace(BYOTWidgetServer(serverID: recent, name: "Recent", refreshedAt: start + 20 * 60,
+                                          sessions: [row("recent", server: recent, state: .running, updated: 2)]))
+        let now = start + BYOTWidgetSnapshot.freshness + 60
+        snapshot.replace(BYOTWidgetServer(serverID: current, name: "Current", refreshedAt: now,
+                                          sessions: [row("live", server: current, state: .running, updated: 3)]))
+        #expect(snapshot.servers.map(\.name) == ["Current", "Recent"])
+        #expect(!snapshot.isStale(at: now))
+        #expect(snapshot.activeCount == 2)
+    }
+
     @Test("A live conversation updates only its own row")
     func upsert() {
         var snapshot = BYOTWidgetSnapshot()
@@ -151,6 +170,30 @@ struct BYOTWidgetSnapshotTests {
         #expect(Set(await transport.paths) == ["/permission", "/question"])
     }
 
+    @Test("A legacy server without a question route still reports waiting permissions")
+    func clientPendingWithoutQuestions() async throws {
+        let transport = PendingTransport(hasQuestions: false)
+        let client = OpenCodeClient(profile: OpenCodeServerProfile(name: "Fixture", baseURL: "https://fixture.invalid"),
+                                    transport: transport, serverProtocol: .v1)
+        let waiting = try await client.pendingResponseSessionIDs(directory: "/repo",
+                                                                 activeSessionIDs: ["approve", "answer"])
+        #expect(waiting == ["approve"])
+    }
+
+    @Test("OpenCode 2 checks each running session's permissions and questions")
+    func clientPendingV2() async throws {
+        let transport = PendingTransport()
+        let client = OpenCodeClient(profile: OpenCodeServerProfile(name: "Fixture", baseURL: "https://fixture.invalid"),
+                                    transport: transport, serverProtocol: .v2)
+        let waiting = try await client.pendingResponseSessionIDs(
+            directory: "/repo", activeSessionIDs: ["approve", "answer", "running", "broken"])
+        #expect(waiting == ["approve", "answer"])
+        let paths = Set(await transport.paths)
+        #expect(paths.isSuperset(of: ["/api/session/approve/permission", "/api/session/answer/question",
+                                      "/api/session/running/permission", "/api/session/broken/question"]))
+        #expect(!paths.contains("/permission") && !paths.contains("/question"))
+    }
+
     @Test("Widget links round-trip and open only well-formed session routes")
     func links() throws {
         let server = UUID()
@@ -216,6 +259,9 @@ private actor PendingBrowserService: OpenCodeSessionBrowsing {
 
 private actor PendingTransport: OpenCodeHTTPTransport {
     private(set) var paths: [String] = []
+    private let hasQuestions: Bool
+
+    init(hasQuestions: Bool = true) { self.hasQuestions = hasQuestions }
 
     nonisolated func makeRequest(path: [String], query: [URLQueryItem], method: String, body: Data?) throws -> URLRequest {
         URLRequest(url: URL(string: "https://fixture.invalid/" + path.joined(separator: "/"))!)
@@ -224,14 +270,25 @@ private actor PendingTransport: OpenCodeHTTPTransport {
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
         let path = request.url!.path
         paths.append(path)
+        let status = switch path {
+        case "/question" where !hasQuestions, "/api/session/broken/permission", "/api/session/broken/question": 500
+        default: 200
+        }
         let body: String = switch path {
+        case "/openapi.json":
+            #"{"paths":{"/api/session/{sessionID}/prompt":{"post":{"requestBody":{"content":{"application/json":"#
+                + #"{"schema":{"properties":{"text":{}}}}}}}}}}"#
+        case "/api/session/approve/permission":
+            #"{"data":[{"id":"per_1","sessionID":"approve","action":"bash","resources":["npm test"]}]}"#
+        case "/api/session/answer/question": #"{"data":[{"id":"que_1","sessionID":"answer","questions":[]}]}"#
+        case _ where path.hasPrefix("/api/"): #"{"data":[]}"#
         case "/permission":
             #"[{"id":"per_1","sessionID":"approve","permission":"bash","patterns":["npm test"],"metadata":{},"always":[]},"#
                 + #"{"id":"per_2","sessionID":"elsewhere","permission":"edit","patterns":[],"metadata":{},"always":[]}]"#
         case "/question": #"[{"id":"que_1","sessionID":"answer","questions":[]}]"#
         default: "[]"
         }
-        return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+        return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1",
                                                  headerFields: ["Content-Type": "application/json"])!)
     }
 

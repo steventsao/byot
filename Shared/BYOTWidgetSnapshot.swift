@@ -125,7 +125,12 @@ struct BYOTWidgetSnapshot: Codable, Hashable, Sendable {
             if lhs.state.rank != rhs.state.rank { return lhs.state.rank < rhs.state.rank }
             return lhs.updatedAt > rhs.updatedAt
         }.prefix(Self.sessionLimit))
-        servers.removeAll { $0.serverID == server.serverID }
+        // byot polls only the server that is open. One not refreshed within
+        // `freshness` of this refresh is one you've moved away from; keeping it
+        // would show its old rows as running and the whole widget as out of date.
+        servers.removeAll {
+            $0.serverID == server.serverID || server.refreshedAt.timeIntervalSince($0.refreshedAt) > Self.freshness
+        }
         servers.append(server)
         servers.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }

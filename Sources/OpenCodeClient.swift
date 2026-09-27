@@ -178,9 +178,11 @@ struct OpenCodeClient: Sendable {
         guard !activeSessionIDs.isEmpty else { return [] }
         let active = Set(activeSessionIDs)
         if try await connection.adapter().serverProtocol != .v2 {
-            async let permissions = actions.permissions(directory: directory)
-            async let questions = actions.questions(directory: directory)
-            let waiting = try await permissions.map(\.sessionID) + questions.map(\.sessionID)
+            // Older servers have no question route; that must not hide their permissions.
+            async let permissions = try? actions.permissions(directory: directory)
+            async let questions = try? actions.questions(directory: directory)
+            let (waitingPermissions, waitingQuestions) = await (permissions, questions)
+            let waiting = (waitingPermissions ?? []).map(\.sessionID) + (waitingQuestions ?? []).map(\.sessionID)
             return Set(waiting).intersection(active)
         }
         return await withTaskGroup(of: String?.self) { tasks in
