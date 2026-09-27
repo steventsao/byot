@@ -245,9 +245,10 @@ struct OpenCodePatchFile: Identifiable, Equatable, Sendable {
         return components.dropLast().joined(separator: "/")
     }
 
-    /// v1 patch parts list absolute paths under the worktree; v2 step files
-    /// are relative. Session diffs are relative to the project, so a file
-    /// matches the diff whose path it equals or ends with.
+    /// v1 patch parts list absolute paths under the worktree, which may sit
+    /// above the session directory; v2 step files are relative. Session
+    /// diffs are relative to the worktree, so a file matches the diff whose
+    /// path it equals or ends with, and then shows that shorter path.
     static func resolve(_ files: [String], directory: String, diffs: [OpenCodeDiff]) -> [OpenCodePatchFile] {
         let root = normalize(directory).replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
         let candidates = diffs.compactMap { diff in diff.file.map { (id: diff.id, path: normalize($0)) } }
@@ -255,10 +256,10 @@ struct OpenCodePatchFile: Identifiable, Equatable, Sendable {
         return files.compactMap { raw in
             let path = normalize(raw)
             guard !path.isEmpty, seen.insert(path).inserted else { return nil }
-            let display = !root.isEmpty && path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : path
-            let match = candidates.first { $0.path == display || $0.path == path }
+            let relative = !root.isEmpty && path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : nil
+            let match = candidates.first { $0.path == relative || $0.path == path }
                 ?? candidates.filter { path.hasSuffix("/" + $0.path) }.max { $0.path.count < $1.path.count }
-            return OpenCodePatchFile(path: path, displayPath: display, diffID: match?.id)
+            return OpenCodePatchFile(path: path, displayPath: relative ?? match?.path ?? path, diffID: match?.id)
         }
     }
 

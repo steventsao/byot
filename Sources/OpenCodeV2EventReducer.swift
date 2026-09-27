@@ -68,6 +68,7 @@ struct OpenCodeV2EventReducer: Sendable {
             var payload: [String: OpenCodeJSONValue] = ["id": .string(id), "type": .string("user"),
                 "text": prompt["text"] ?? .string(""), "time": .object(["created": .number(created)])]
             payload["files"] = prompt["files"]
+            payload["agents"] = prompt["agents"]
             payload["metadata"] = event.metadata.map(OpenCodeJSONValue.object)
             return upsertProjection(payload, sessionID: sessionID, in: &messages)
         case "session.context.updated", "session.synthetic":

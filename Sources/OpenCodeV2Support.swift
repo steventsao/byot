@@ -83,6 +83,16 @@ enum OpenCodeV2Normalization {
                     )
                 )
             }
+            // @agent mentions (Prompt.agents) render as the v1 agent part does.
+            for (index, agent) in (object["agents"]?.arrayValue ?? []).enumerated() {
+                guard let name = agent.objectValue?["name"]?.stringValue, !name.isEmpty else { continue }
+                var part = OpenCodePart(
+                    id: "\(id):agent:\(index)", sessionID: sessionID, messageID: id, type: "agent", text: nil,
+                    mime: nil, filename: nil, url: nil, callID: nil, tool: nil, state: nil, files: nil,
+                    description: nil, agent: nil)
+                part.name = name
+                parts.append(part)
+            }
             for (index, file) in (object["files"]?.arrayValue ?? []).enumerated() {
                 guard let file = file.objectValue else { continue }
                 let mime = file["mime"]?.stringValue ?? "application/octet-stream"

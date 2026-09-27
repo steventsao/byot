@@ -59,9 +59,9 @@ struct OpenCodeCompactionDivider: View {
                 Text("Summary")
                     .font(.cleanMono)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel("Compaction summary")
             }
             .disclosureGroupStyle(OpenCodeInlineDisclosureStyle())
-            .accessibilityLabel("Compaction summary")
         }
     }
 
@@ -122,7 +122,8 @@ struct OpenCodeAgentMentionChip: View {
     let presentation: OpenCodeSwitchPresentation
 
     var body: some View {
-        Label(presentation.title, systemImage: presentation.symbol)
+        // Reads as the mention the user typed, without the icon's gap.
+        Text("@" + presentation.title)
             .font(.cleanCaptionBold)
             .foregroundStyle(BYOTBrand.accent)
             .padding(.horizontal, 10)
@@ -273,14 +274,18 @@ struct OpenCodePatchPartView: View {
 // MARK: - Inline images
 
 /// Adjacent image parts as thumbnails; tapping one opens the full-screen viewer.
+/// An image that can't be loaded or decoded, for example because the server
+/// can't read files, falls back to the attachment row.
 struct OpenCodeInlineImageGallery: View {
     let parts: [OpenCodePart]
     @Environment(\.openCodeRemoteFiles) private var files
     @State private var selection: OpenCodeImageViewerSelection?
+    @State private var failed: Set<String> = []
 
     private var items: [OpenCodeInlineImageItem] {
         parts.compactMap { part in
-            OpenCodeInlineImage.resolve(part, scope: files?.scope).map {
+            guard !failed.contains(part.id) else { return nil }
+            return OpenCodeInlineImage.resolve(part, scope: files?.scope).map {
                 OpenCodeInlineImageItem(id: part.id, name: OpenCodeInlineImage.displayName(for: part), source: $0)
             }
         }
@@ -312,7 +317,9 @@ struct OpenCodeInlineImageGallery: View {
         Button {
             selection = OpenCodeImageViewerSelection(index: index)
         } label: {
-            OpenCodeInlineImageThumbnail(item: item, files: files, single: single)
+            OpenCodeInlineImageThumbnail(item: item, files: files, single: single) {
+                failed.insert(item.id)
+            }
         }
         .buttonStyle(.agentPressFeedback)
         .accessibilityLabel("Image, \(item.name)")
@@ -330,8 +337,8 @@ private struct OpenCodeInlineImageThumbnail: View {
     let item: OpenCodeInlineImageItem
     let files: OpenCodeRemoteFileStore?
     let single: Bool
+    let onFailure: () -> Void
     @State private var image: UIImage?
-    @State private var failed = false
 
     private static let tile: CGFloat = 88
     private static let maximum: CGFloat = 240
@@ -340,10 +347,12 @@ private struct OpenCodeInlineImageThumbnail: View {
         Group {
             if let image {
                 if single {
+                    // Small images such as icons keep their own size.
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
-                        .frame(maxWidth: Self.maximum, maxHeight: Self.maximum)
+                        .frame(maxWidth: min(Self.maximum, image.size.width),
+                               maxHeight: min(Self.maximum, image.size.height))
                 } else {
                     Image(uiImage: image)
                         .resizable()
@@ -366,7 +375,8 @@ private struct OpenCodeInlineImageThumbnail: View {
                     for: item, maxPixelSize: OpenCodeInlineImageLoader.thumbnailPixels, files: files)
             } catch is CancellationError {
             } catch {
-                failed = true
+                // Scrolling away cancels the load; only a real failure falls back.
+                if !Task.isCancelled { onFailure() }
             }
         }
     }
@@ -374,19 +384,7 @@ private struct OpenCodeInlineImageThumbnail: View {
     private var placeholder: some View {
         ZStack {
             BYOTBrand.surface
-            if failed {
-                VStack(spacing: 4) {
-                    Image(systemName: "photo.badge.exclamationmark")
-                        .font(.title3)
-                    if single {
-                        Text("Couldn’t load image")
-                            .font(.cleanCaption)
-                    }
-                }
-                .foregroundStyle(.secondary)
-            } else {
-                ProgressView()
-            }
+            ProgressView()
         }
         .frame(width: single ? 180 : Self.tile, height: single ? 135 : Self.tile)
     }

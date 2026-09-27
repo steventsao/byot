@@ -216,7 +216,7 @@ private struct OpenCodeZoomableImage: UIViewRepresentable {
         if view.imageView.image !== image {
             view.imageView.image = image
             view.setZoomScale(view.minimumZoomScale, animated: false)
-            view.setNeedsLayout()
+            view.refit()
         }
     }
 }
@@ -252,6 +252,12 @@ final class OpenCodeZoomingScrollView: UIScrollView, UIScrollViewDelegate {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// Fits a replaced image on the next layout pass.
+    func refit() {
+        fittedBounds = .zero
+        setNeedsLayout()
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()

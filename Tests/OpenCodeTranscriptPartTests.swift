@@ -197,11 +197,20 @@ struct OpenCodeTranscriptPartTests {
             ["/repo/app/Sources/App.swift", "/repo/app/README.md", "/repo/app/Sources/App.swift", "/elsewhere/x.txt",
              "./notes/todo.md", "C:\\repo\\app\\README.md"],
             directory: "/repo/app/", diffs: diffs)
-        #expect(files.map(\.displayPath) == ["Sources/App.swift", "README.md", "/elsewhere/x.txt", "notes/todo.md", "C:/repo/app/README.md"])
+        // A path outside the session directory shows the shorter diff path it matched.
+        #expect(files.map(\.displayPath) == ["Sources/App.swift", "README.md", "/elsewhere/x.txt", "notes/todo.md", "app/README.md"])
         #expect(files.map(\.diffID) == ["Sources/App.swift", "README.md", nil, nil, "app/README.md"])
         #expect(files[0].filename == "App.swift")
         #expect(files[0].folder == "Sources")
         #expect(files[1].folder == nil)
+    }
+
+    @Test("Worktree files above the session directory show their worktree path")
+    func patchFilesAboveDirectory() {
+        let diffs = [OpenCodeDiff(file: "lib/Util.swift", patch: "", additions: 1, deletions: 1, status: "modified")]
+        let files = OpenCodePatchFile.resolve(["/repo/lib/Util.swift"], directory: "/repo/app", diffs: diffs)
+        #expect(files.map(\.displayPath) == ["lib/Util.swift"])
+        #expect(files.map(\.diffID) == ["lib/Util.swift"])
     }
 
     // MARK: Images
@@ -312,6 +321,22 @@ struct OpenCodeTranscriptPartTests {
             sessionID: "s"))
         #expect(model.parts.map(\.type) == ["model"])
         #expect(model.parts.first?.name == "gpt-5")
+    }
+
+    @Test("v2 prompt agent mentions become agent parts, from the projection and live")
+    func v2AgentMentions() throws {
+        let user = try #require(OpenCodeV2Normalization.message(try json(
+            #"{"id":"m1","type":"user","text":"@explore look","agents":[{"name":"explore"},{"name":""}],"time":{"created":1}}"#),
+            sessionID: "s"))
+        #expect(user.parts.map(\.type) == ["text", "agent"])
+        #expect(user.parts.last?.name == "explore")
+        #expect(OpenCodeSwitchPresentation(part: try #require(user.parts.last), inPrompt: true)?.title == "explore")
+
+        var reducer = OpenCodeTranscriptReducer()
+        let raw = #"{"id":"e1","type":"session.next.prompted","data":{"sessionID":"s","timestamp":1,"messageID":"m1","prompt":{"text":"@explore look","agents":[{"name":"explore"}]}}}"#
+        #expect(reducer.applyV2(try JSONDecoder().decode(OpenCodeEvent.self, from: Data(raw.utf8))) == .changed)
+        #expect(reducer.messages.first?.parts.map(\.type) == ["text", "agent"])
+        #expect(reducer.messages.first?.parts.last?.name == "explore")
     }
 
     // MARK: Helpers
