@@ -264,6 +264,13 @@ struct BYOTSyntaxHighlighterTests {
         #expect(lines.map { $0.segments.first?.kind } == [.heading, .heading, .hunk, .deleted, .inserted, nil])
     }
 
+    @Test("A removed SQL or Lua comment is a deletion, not a file header")
+    func diffCommentLines() {
+        let lines = BYOTSyntaxHighlighter.lines("--- old note\n+-- new note\n--- a/x\n+++ b/x\n+++ added", language: .diff)
+
+        #expect(lines.map { $0.segments.first?.kind } == [.deleted, .inserted, .heading, .heading, .inserted])
+    }
+
     @Test("Markdown headings, list markers, inline code, and fences")
     func markdownTokens() {
         let lines = BYOTSyntaxHighlighter.lines("# Title\n- use `swift`\n```\n# not heading\n```", language: .markdown)

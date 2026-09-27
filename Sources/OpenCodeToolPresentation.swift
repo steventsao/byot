@@ -242,6 +242,13 @@ struct OpenCodeReadToolOutput: Equatable, Sendable {
             expected += 1
             index += 1
         }
+        // The numbered run must end cleanly (a blank line, the closing tag, or
+        // the end); anything else is an unfamiliar shape, so the whole output
+        // stays visible as plain text rather than losing lines.
+        if index < lines.count {
+            let next = lines[index].trimmingCharacters(in: .whitespaces)
+            guard next.isEmpty || next.hasPrefix("<") else { return nil }
+        }
 
         var footnote: String?
         while index < lines.count {

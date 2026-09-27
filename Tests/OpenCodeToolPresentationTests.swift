@@ -163,6 +163,13 @@ struct OpenCodeToolPresentationTests {
         #expect(grep.output == "12: match")
     }
 
+    @Test("A read result with an unfamiliar body stays plain instead of dropping lines")
+    func unfamiliarReadOutputStaysPlain() {
+        #expect(OpenCodeReadToolOutput("<path>/r/a.py</path>\n<content>\n1: a\n3: c\n</content>") == nil)
+        #expect(OpenCodeReadToolOutput("<path>/r/a.py</path>\n<content>\n1: a\nnot numbered\n</content>") == nil)
+        #expect(OpenCodeReadToolOutput("<path>/r/a.py</path>\n<content>\n1: a\n</content>")?.text == "a")
+    }
+
     @Test("Read output falls back to the path the server echoed")
     func readLanguageFromOutputPath() {
         let presentation = OpenCodeToolPresentation(

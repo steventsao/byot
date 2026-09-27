@@ -7,10 +7,16 @@ struct OpenCodeToolView: View {
     let name: String
     let state: OpenCodeToolState
 
+    /// Built once per state: it parses read results and edit diffs, which
+    /// every part of the body would otherwise repeat.
+    private let presentation: OpenCodeToolPresentation
+
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var presentation: OpenCodeToolPresentation {
-        OpenCodeToolPresentation(name: name, state: state)
+    init(name: String, state: OpenCodeToolState) {
+        self.name = name
+        self.state = state
+        presentation = OpenCodeToolPresentation(name: name, state: state)
     }
 
     var body: some View {

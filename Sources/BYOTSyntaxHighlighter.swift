@@ -648,13 +648,21 @@ struct BYOTSyntaxScanner {
     // MARK: Diff
 
     private mutating func scanDiff() {
-        let headers = ["+++ ", "--- ", "diff ", "index ", "*** ", "new file", "deleted file", "similarity", "rename "]
+        let headers = ["diff ", "index ", "*** ", "new file", "deleted file", "similarity", "rename "]
             .map { Array($0.utf8) }
+        let oldFile = Array("--- ".utf8)
+        let newFile = Array("+++ ".utf8)
+        // `--- a` / `+++ b` is a file header only as a pair; alone it is a
+        // removed `-- a` (a SQL or Lua comment) or an added `++ b`.
+        var previousWasOldFile = false
         while index < count {
             let start = index
             let end = lineEnd(from: index)
             let kind: BYOTSyntaxTokenKind?
-            if headers.contains(where: { matches($0, at: start) }) {
+            let isOldFile = matches(oldFile, at: start) && matches(newFile, at: end + 1)
+            let isNewFile = previousWasOldFile && matches(newFile, at: start)
+            previousWasOldFile = isOldFile
+            if isOldFile || isNewFile || headers.contains(where: { matches($0, at: start) }) {
                 kind = .heading
             } else {
                 switch bytes[start] {
