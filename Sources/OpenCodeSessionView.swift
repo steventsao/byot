@@ -576,7 +576,7 @@ private struct OpenCodeMessageView: View {
     private var isUser: Bool { message.info.role == "user" }
 
     var body: some View {
-        let items = OpenCodeTranscriptLayout.items(for: message.parts)
+        let items = OpenCodeTranscriptLayout.items(for: message.parts, inPrompt: isUser)
         let bubble = isUser ? items.filter { !$0.isBanner } : items
         let banners = isUser ? items.filter(\.isBanner) : []
         VStack(alignment: .leading, spacing: 12) {
@@ -632,7 +632,9 @@ private struct OpenCodePartView: View {
     var body: some View {
         switch part.type {
         case "text":
-            if let text = part.text, !text.isEmpty {
+            if let context = OpenCodeSyntheticContextPresentation(part: part) {
+                OpenCodeSyntheticContextView(presentation: context)
+            } else if part.synthetic != true, let text = part.text, !text.isEmpty {
                 AgentMarkdownText(text: text)
             }
         case "reasoning":

@@ -73,15 +73,17 @@ enum OpenCodeV2Normalization {
             let selectedModel = metadata?["model"]?.objectValue
             let text = metadata?["displayText"]?.stringValue ?? object["text"]?.stringValue ?? ""
             if !text.isEmpty {
-                parts.append(
-                    textPart(
-                        messageID: id,
-                        sessionID: sessionID,
-                        kind: "text",
-                        ordinal: 0,
-                        text: text
-                    )
+                var part = textPart(
+                    messageID: id,
+                    sessionID: sessionID,
+                    kind: "text",
+                    ordinal: 0,
+                    text: text
                 )
+                // System context updates and synthetic messages are context
+                // OpenCode added for the model, not words the agent wrote.
+                if type == "synthetic" || type == "system" { part.synthetic = true }
+                parts.append(part)
             }
             // @agent mentions (Prompt.agents) render as the v1 agent part does.
             for (index, agent) in (object["agents"]?.arrayValue ?? []).enumerated() {

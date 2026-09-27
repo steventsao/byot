@@ -74,6 +74,34 @@ struct OpenCodeCompactionDivider: View {
     }
 }
 
+// MARK: - Synthetic context
+
+/// Context OpenCode added for the model, collapsed behind a quiet label.
+struct OpenCodeSyntheticContextView: View {
+    let presentation: OpenCodeSyntheticContextPresentation
+
+    var body: some View {
+        DisclosureGroup {
+            Text(presentation.text)
+                .font(.cleanMono)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+                .padding(10)
+                .background(BYOTBrand.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.top, BYOTBrand.Space.xs)
+        } label: {
+            Text(presentation.title)
+                .font(.cleanMono)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(presentation.accessibilityLabel)
+                .accessibilityIdentifier("transcript-synthetic-context")
+        }
+        .disclosureGroupStyle(OpenCodeInlineDisclosureStyle())
+    }
+}
+
 // MARK: - Retry
 
 struct OpenCodeRetryNotice: View {

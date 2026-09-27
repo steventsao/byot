@@ -120,6 +120,12 @@ struct OpenCodeMessageEnvelope: Codable, Identifiable, Equatable, Sendable {
     var parts: [OpenCodePart]
 
     var id: String { info.id }
+
+    /// A v2 system or synthetic message: context OpenCode added for the
+    /// model. It is not a reply, so it never counts as the turn answering.
+    var isSyntheticContext: Bool {
+        !parts.isEmpty && parts.allSatisfy { $0.type.lowercased() == "text" && $0.synthetic == true }
+    }
 }
 
 struct OpenCodeMessageInfo: Codable, Identifiable, Equatable, Sendable {
@@ -169,8 +175,10 @@ struct OpenCodePart: Codable, Identifiable, Equatable, Sendable {
     // Fields of the remaining v1 part types (packages/schema/src/v1/session.ts):
     // agent `name`; compaction `auto`/`overflow`; retry `attempt`/`error`;
     // step-finish `reason`/`cost`/`tokens`; snapshot and step `snapshot`;
-    // patch `hash`. They decode leniently so an unfamiliar shape never drops
-    // the part, and default to nil so memberwise construction stays compact.
+    // patch `hash`; text `synthetic`/`ignored`, which mark context OpenCode
+    // added for the model rather than words the user typed. They decode
+    // leniently so an unfamiliar shape never drops the part, and default to
+    // nil so memberwise construction stays compact.
     var name: String? = nil
     var auto: Bool? = nil
     var overflow: Bool? = nil
@@ -181,6 +189,15 @@ struct OpenCodePart: Codable, Identifiable, Equatable, Sendable {
     var tokens: OpenCodeTokenUsage? = nil
     var snapshot: String? = nil
     var hash: String? = nil
+    var synthetic: Bool? = nil
+    var ignored: Bool? = nil
+
+    /// Text the user actually wrote, as upstream clients restore and resend
+    /// it: synthetic context (attached file contents, MCP resources,
+    /// reminders) and ignored text are left out.
+    var isAuthoredText: Bool {
+        type.lowercased() == "text" && synthetic != true && ignored != true
+    }
 }
 
 extension OpenCodePart {
@@ -210,6 +227,8 @@ extension OpenCodePart {
         tokens = try? c.decodeIfPresent(OpenCodeTokenUsage.self, forKey: .tokens)
         snapshot = try? c.decodeIfPresent(String.self, forKey: .snapshot)
         hash = try? c.decodeIfPresent(String.self, forKey: .hash)
+        synthetic = try? c.decodeIfPresent(Bool.self, forKey: .synthetic)
+        ignored = try? c.decodeIfPresent(Bool.self, forKey: .ignored)
     }
 }
 

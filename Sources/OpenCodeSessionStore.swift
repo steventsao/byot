@@ -176,7 +176,7 @@ final class OpenCodeSessionStore: ObservableObject {
         // or tool calls. A partially executed turn can still select a new model.
         guard messages.suffix(from: userIndex + 1).allSatisfy({ message in
             message.parts.allSatisfy { part in
-                part.type != "tool" && (part.text?.trimmedNonEmpty == nil)
+                part.type != "tool" && (part.synthetic == true || part.text?.trimmedNonEmpty == nil)
             }
         }) else { return nil }
         return recoverablePrompt(in: [messages[userIndex]])
@@ -1539,7 +1539,7 @@ final class OpenCodeSessionStore: ObservableObject {
             from: messages.index(after: latestUserIndex)
         )
         let hasAssistantEnvelope = messagesAfterUser.contains { message in
-            message.info.role.lowercased() == "assistant"
+            message.info.role.lowercased() == "assistant" && !message.isSyntheticContext
         }
         guard hasAssistantEnvelope == false else { return nil }
 
@@ -1567,7 +1567,7 @@ final class OpenCodeSessionStore: ObservableObject {
         guard (try? OpenCodePromptAttachment.validate(attachments)) != nil
         else { return nil }
         let text = userMessage.parts
-            .filter { $0.type.lowercased() == "text" }
+            .filter(\.isAuthoredText)
             .compactMap(\.text)
             .joined(separator: "\n\n")
         guard text.trimmedNonEmpty != nil || !attachments.isEmpty || !remoteReferences.isEmpty else { return nil }
@@ -1612,7 +1612,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let hasAssistantEnvelope = messages.suffix(
             from: messages.index(after: latestUserIndex)
         ).contains { message in
-            message.info.role.lowercased() == "assistant"
+            message.info.role.lowercased() == "assistant" && !message.isSyntheticContext
         }
         return hasAssistantEnvelope ? nil : messages[latestUserIndex].id
     }
@@ -1670,7 +1670,9 @@ final class OpenCodeSessionStore: ObservableObject {
             let isVisible: Bool
             switch part.type.lowercased() {
             case "text", "reasoning":
-                isVisible = part.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                // Context OpenCode injects for the model is not a reply.
+                isVisible = part.synthetic != true
+                    && part.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             case "tool":
                 isVisible = part.state != nil
             default:

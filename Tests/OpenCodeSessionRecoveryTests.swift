@@ -161,6 +161,39 @@ struct OpenCodeSessionRecoveryTests {
         #expect(store.canRetryUnansweredPrompt == false)
     }
 
+    @Test("Context OpenCode adds after a prompt does not count as an answer, and synthetic prompt text is not resent")
+    @MainActor
+    func syntheticContextKeepsRecovery() async throws {
+        var messages = try #require(JSONSerialization.jsonObject(with: Data(Self.userOnlyMessages.utf8)) as? [[String: Any]])
+        var parts = try #require(messages[0]["parts"] as? [[String: Any]])
+        parts.append(["id": "part-read", "sessionID": "ses-recovery", "messageID": "msg-user", "type": "text",
+                      "synthetic": true, "text": "Called the Read tool with the following input"])
+        messages[0]["parts"] = parts
+        messages.append(["info": ["id": "msg-context", "sessionID": "ses-recovery", "role": "assistant", "time": ["created": 2]],
+                         "parts": [["id": "part-context", "sessionID": "ses-recovery", "messageID": "msg-context",
+                                    "type": "text", "synthetic": true, "text": "Date changed."]]])
+        let harness = OpenCodeRecoveryStub.register(
+            messages: String(decoding: try JSONSerialization.data(withJSONObject: messages), as: UTF8.self),
+            statusCode: 200,
+            statusBody: "{}"
+        )
+        defer { harness.unregister() }
+        let store = makeStore(client: harness.client, sessionID: harness.sessionID)
+
+        await store.start()
+        defer { store.stop() }
+
+        #expect(store.hasRecoverableUnansweredPrompt)
+        #expect(await store.retryUnansweredPrompt())
+        for _ in 0..<50 where harness.promptBodies.isEmpty {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        let body = try #require(harness.promptBodies.first)
+        let prompt = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let texts = (prompt["parts"] as? [[String: Any]] ?? []).compactMap { $0["text"] as? String }
+        #expect(texts == ["Find accessible PDF labeling tools"])
+    }
+
     @Test(
         "Abort failure preserves the unknown-status escape hatch",
         .bug(id: "ASC-ANy3NA4eHNR2IR5fHp0S56U")

@@ -26,9 +26,9 @@ enum OpenCodeTranscriptItem: Identifiable, Equatable, Sendable {
 }
 
 enum OpenCodeTranscriptLayout {
-    static func items(for parts: [OpenCodePart]) -> [OpenCodeTranscriptItem] {
+    static func items(for parts: [OpenCodePart], inPrompt: Bool = false) -> [OpenCodeTranscriptItem] {
         var items: [OpenCodeTranscriptItem] = []
-        for part in parts where isVisible(part) {
+        for part in parts where isVisible(part, inPrompt: inPrompt) {
             if OpenCodeInlineImage.isInlineCandidate(part) {
                 if case .images(let run)? = items.last {
                     items[items.count - 1] = .images(run + [part])
@@ -43,8 +43,13 @@ enum OpenCodeTranscriptLayout {
     }
 
     /// Parts that would render nothing are dropped so they add no spacing.
-    static func isVisible(_ part: OpenCodePart) -> Bool {
+    /// A prompt shows only what the user wrote, as upstream clients do: the
+    /// synthetic text OpenCode adds for attached files and resources stays
+    /// out of the pill, since the attachment itself is already shown.
+    static func isVisible(_ part: OpenCodePart, inPrompt: Bool = false) -> Bool {
         switch part.type {
+        case "text" where inPrompt && part.synthetic == true: false
+        case "text" where part.synthetic == true: part.text?.trimmedNonEmpty != nil
         case "text", "reasoning": part.text?.isEmpty == false
         case "tool": part.state != nil
         case "patch": part.files?.isEmpty == false
@@ -82,6 +87,29 @@ struct OpenCodeCompactionPresentation: Equatable, Sendable {
             accessibilityLabel = "Context compacted"
         }
         summary = part.text?.trimmedNonEmpty
+    }
+}
+
+// MARK: - Synthetic context
+
+/// Context OpenCode added for the model outside a prompt: v2 system context
+/// updates and synthetic messages. It stays collapsed so it never reads as
+/// something the agent said.
+struct OpenCodeSyntheticContextPresentation: Equatable, Sendable {
+    let title: String
+    let text: String
+    let accessibilityLabel: String
+
+    /// Long context, such as a whole attached file, is cut short so the
+    /// expanded row stays quick to lay out.
+    static let characterLimit = 4_000
+
+    init?(part: OpenCodePart) {
+        guard part.type == "text", part.synthetic == true, let text = part.text?.trimmedNonEmpty else { return nil }
+        title = "Added context"
+        self.text = text.count > Self.characterLimit ? String(text.prefix(Self.characterLimit)) + "\n…" : text
+        let lines = text.split(whereSeparator: \.isNewline).count
+        accessibilityLabel = "Context OpenCode added for the model, \(lines) line\(lines == 1 ? "" : "s")"
     }
 }
 

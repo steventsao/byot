@@ -339,10 +339,84 @@ struct OpenCodeTranscriptPartTests {
         #expect(reducer.messages.first?.parts.last?.name == "explore")
     }
 
+    // MARK: Synthetic context
+
+    @Test("Prompts hide the synthetic text OpenCode adds for attachments and keep what the user wrote")
+    func promptsHideSyntheticText() throws {
+        let typed = try part(#""type":"text","text":"Summarize this file""#, id: "p1")
+        let read = try part(#""type":"text","synthetic":true,"text":"Called the Read tool with the following input: {\"filePath\":\"notes.txt\"}""#, id: "p2")
+        let contents = try part(#""type":"text","synthetic":true,"text":"1: hello""#, id: "p3")
+        let ignored = try part(#""type":"text","ignored":true,"text":"/compact""#, id: "p4")
+        let file = make("p5", "file", mime: "text/plain", url: "file:///repo/notes.txt")
+        #expect(read.synthetic == true)
+        #expect(ignored.ignored == true)
+        #expect(typed.synthetic == nil)
+
+        let prompt = OpenCodeTranscriptLayout.items(for: [typed, read, contents, ignored, file], inPrompt: true)
+        #expect(prompt.map(\.id) == ["p1", "p4", "p5"])
+
+        // Only authored text is restored into the composer or resent.
+        #expect([typed, read, contents, ignored, file].filter(\.isAuthoredText).map(\.id) == ["p1"])
+    }
+
+    @Test("Synthetic text outside a prompt is collapsed context, not agent prose")
+    func syntheticContextOutsidePrompt() throws {
+        let note = try part(#""type":"text","synthetic":true,"text":"<env>\ncwd: /repo\n</env>""#)
+        #expect(OpenCodeTranscriptLayout.items(for: [note]).count == 1)
+        let context = try #require(OpenCodeSyntheticContextPresentation(part: note))
+        #expect(context.title == "Added context")
+        #expect(context.text == "<env>\ncwd: /repo\n</env>")
+        #expect(context.accessibilityLabel == "Context OpenCode added for the model, 3 lines")
+
+        #expect(OpenCodeSyntheticContextPresentation(part: make("t", "text", text: "Plain reply")) == nil)
+        let blank = try part(#""type":"text","synthetic":true,"text":"  \n ""#)
+        #expect(OpenCodeTranscriptLayout.items(for: [blank]).isEmpty)
+
+        let long = try part(#""type":"text","synthetic":true,"text":"\#(String(repeating: "x", count: 5_000))""#)
+        let clipped = try #require(OpenCodeSyntheticContextPresentation(part: long))
+        #expect(clipped.text.count == OpenCodeSyntheticContextPresentation.characterLimit + 2)
+        #expect(clipped.text.hasSuffix("\n…"))
+    }
+
+    @Test("v2 system and synthetic messages become synthetic context; prompts stay authored")
+    func v2SyntheticMessages() throws {
+        for type in ["system", "synthetic"] {
+            let message = try #require(OpenCodeV2Normalization.message(try json(
+                #"{"id":"m1","type":"\#(type)","text":"Today is Monday.","time":{"created":1}}"#), sessionID: "s"))
+            #expect(message.parts.map(\.type) == ["text"])
+            #expect(message.parts.first?.synthetic == true)
+            #expect(message.parts.first?.isAuthoredText == false)
+            #expect(message.isSyntheticContext)
+        }
+        let user = try #require(OpenCodeV2Normalization.message(try json(
+            #"{"id":"m2","type":"user","text":"Hello","time":{"created":2}}"#), sessionID: "s"))
+        #expect(user.parts.first?.synthetic == nil)
+        #expect(user.parts.first?.isAuthoredText == true)
+        #expect(!user.isSyntheticContext)
+
+        var reducer = OpenCodeTranscriptReducer()
+        let raw = #"{"id":"e1","type":"session.next.context.updated","data":{"sessionID":"s","timestamp":1,"messageID":"m3","text":"Date changed."}}"#
+        #expect(reducer.applyV2(try JSONDecoder().decode(OpenCodeEvent.self, from: Data(raw.utf8))) == .changed)
+        #expect(reducer.messages.first?.parts.first?.synthetic == true)
+    }
+
+    @Test("Context OpenCode adds after a prompt does not count as the reply starting")
+    @MainActor
+    func syntheticContextIsNotActivity() throws {
+        let user = OpenCodeMessageEnvelope(
+            info: OpenCodeMessageInfo(id: "m1", sessionID: "s", role: "user", time: OpenCodeMessageTime(created: 1, completed: nil),
+                                      agent: nil, modelID: nil, providerID: nil, finish: nil, error: nil),
+            parts: [make("u", "text", text: "Go")])
+        let system = try #require(OpenCodeV2Normalization.message(try json(
+            #"{"id":"m2","type":"system","text":"Date changed.","time":{"created":2}}"#), sessionID: "s"))
+        #expect(OpenCodeSessionStore.hasVisibleAssistantActivityAfterLatestUserMessage(in: [user, system]) == false)
+        #expect(OpenCodeSessionStore.visibleAssistantActivityIDs(in: [user, system]).isEmpty)
+    }
+
     // MARK: Helpers
 
-    private func part(_ fields: String) throws -> OpenCodePart {
-        let raw = #"{"id":"p","sessionID":"s","messageID":"m",\#(fields)}"#
+    private func part(_ fields: String, id: String = "p") throws -> OpenCodePart {
+        let raw = #"{"id":"\#(id)","sessionID":"s","messageID":"m",\#(fields)}"#
         return try JSONDecoder().decode(OpenCodePart.self, from: Data(raw.utf8))
     }
 
