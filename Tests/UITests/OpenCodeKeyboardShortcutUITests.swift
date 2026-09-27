@@ -31,22 +31,24 @@ final class OpenCodeKeyboardShortcutUITests: XCTestCase {
         XCTAssertFalse(placeholder.exists)
         attach("split-session-selected")
 
-        // ⌘] moves down the list and wraps to the top; ⌘[ wraps back. The
-        // last row sits below the fold on an iPhone in landscape.
+        // ⌘] moves down the list, through the session in a worktree, and
+        // wraps to the top; ⌘[ wraps back. The last rows sit below the fold
+        // on an iPhone in landscape.
         let active = app.buttons["session-active"]
         XCTAssertTrue(press("]", in: app, until: app.navigationBars["Update documentation"]), app.debugDescription)
         XCTAssertTrue(app.staticTexts["This model is no longer available."].waitForExistence(timeout: 10),
                       app.debugDescription)
         XCTAssertFalse(retry.isSelected)
+        XCTAssertTrue(press("]", in: app, until: app.navigationBars["Polish sign-in"]), app.debugDescription)
         XCTAssertTrue(press("]", in: app, until: app.navigationBars["Fix checkout"]), app.debugDescription)
         XCTAssertTrue(active.isSelected, active.debugDescription)
-        XCTAssertTrue(press("[", in: app, until: app.navigationBars["Update documentation"]), app.debugDescription)
+        XCTAssertTrue(press("[", in: app, until: app.navigationBars["Polish sign-in"]), app.debugDescription)
         XCTAssertFalse(active.isSelected)
 
         // ⌘N opens the new-session form in the detail column, beside the list.
         XCTAssertTrue(press("n", in: app, until: app.buttons["new-session-server"]), app.debugDescription)
         XCTAssertTrue(retry.isHittable)
-        XCTAssertFalse(app.navigationBars["Update documentation"].exists)
+        XCTAssertFalse(app.navigationBars["Polish sign-in"].exists)
         attach("split-new-session")
 
         // ⌘K puts the cursor in the session search.

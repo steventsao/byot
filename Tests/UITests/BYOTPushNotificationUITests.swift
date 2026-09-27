@@ -23,7 +23,7 @@ final class BYOTPushNotificationUITests: XCTestCase {
         app.launchArguments = ["--session-browser-fixture", "--reset-browser", "--push-route-fixture", "--push-cold-launch"]
         app.launch()
         XCTAssertTrue(app.textFields["opencode-composer-message"].waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertTrue(app.staticTexts["Server Windows, project C:/work/byot"].exists, app.debugDescription)
+        XCTAssertTrue(windowsHeader(in: app).waitForExistence(timeout: 5), app.debugDescription)
     }
 
     @MainActor
@@ -36,8 +36,16 @@ final class BYOTPushNotificationUITests: XCTestCase {
         app.buttons["session-active"].tap()
         XCTAssertTrue(app.textFields["opencode-composer-message"].waitForExistence(timeout: 10))
         app.buttons["Simulate notification"].tap()
-        XCTAssertTrue(app.staticTexts["Server Windows, project C:/work/byot"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(windowsHeader(in: app).waitForExistence(timeout: 10), app.debugDescription)
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "notification-session-route"; shot.lifetime = .keepAlways; add(shot)
+    }
+
+    /// The session header names the server and project. Where the server has
+    /// a status screen it is a button, and it may also name the branch.
+    @MainActor
+    private func windowsHeader(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Server Windows, project C:/work/byot")).firstMatch
     }
 }

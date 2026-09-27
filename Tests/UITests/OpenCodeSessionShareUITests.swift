@@ -59,6 +59,8 @@ final class OpenCodeSessionShareUITests: XCTestCase {
         openConversation(app)
         app.buttons["session-actions"].tap()
         let menuItem = app.buttons["session-menu-share"]
+        // At the largest text size the session menu scrolls.
+        for _ in 0..<4 where !menuItem.waitForExistence(timeout: 2) || !menuItem.isHittable { app.swipeUp() }
         XCTAssertTrue(menuItem.waitForExistence(timeout: 5))
         menuItem.tap()
         let publish = app.buttons["session-share-publish"]

@@ -534,7 +534,7 @@ struct OpenCodeRootView: View {
     private var isPresentingSheet: Bool {
         isCovered || profileEditor != nil || notificationProfile != nil || sharePicker != nil
             || profilePendingRemoval != nil || profileRemovalError != nil || shares.notice != nil
-            || push.routingError != nil
+            || push.routingError != nil || pairingLinkError != nil
     }
 
     private var appCommands: OpenCodeAppCommandActions {
