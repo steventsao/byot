@@ -75,6 +75,10 @@ final class OpenCodeSessionStore: ObservableObject {
     private let serverDefaultModelKey: String
     private let agentSelectionKey: String
     private let serverDefaultAgentKey: String
+    /// False while `selectedAgentID` only carries the server-wide preference
+    /// seeded for a session without its own pick; the session's own agent
+    /// history then outranks it.
+    private var isAgentSelectionExplicit: Bool
     private var submittedPrompts: [String: OpenCodeQueuedPrompt] = [:]
     private var persistedModelID: String?
     private var transcript = OpenCodeTranscriptReducer()
@@ -129,7 +133,9 @@ final class OpenCodeSessionStore: ObservableObject {
         workspace = session.workspaceID
         agentSelectionKey = "byot.opencode.agent.\(serverID.uuidString).\(session.id)"
         serverDefaultAgentKey = "byot.opencode.agent.default.\(serverID.uuidString)"
-        selectedAgentID = defaults.string(forKey: agentSelectionKey)?.trimmedNonEmpty
+        let savedAgentID = defaults.string(forKey: agentSelectionKey)?.trimmedNonEmpty
+        selectedAgentID = savedAgentID
+        isAgentSelectionExplicit = savedAgentID != nil
         queueObservation = durableQueue?.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
@@ -517,6 +523,12 @@ final class OpenCodeSessionStore: ObservableObject {
             revertMessageID = info.objectValue?["revert"]?.objectValue?["messageID"]?.stringValue
             if revertMessageID != nil { promptQueue.pausePendingPrompts(); publishPromptQueue() }
             publishTranscript()
+            return true
+        }
+        // Another client (TUI, web, `plan_exit`) switched this v2 session's agent.
+        if event.type == "session.agent.switched" || event.type == "session.next.agent.switched",
+           event.sessionID == session.id, let agent = event.properties["agent"]?.stringValue {
+            composerCatalog.inheritedAgent = agent
             return true
         }
         if event.type == "session.renamed", event.sessionID == session.id {
@@ -977,12 +989,16 @@ final class OpenCodeSessionStore: ObservableObject {
             if catalog.unavailableReason == nil, let selectedAgentID,
                !catalog.agents.contains(where: { $0.id == selectedAgentID }) {
                 self.selectedAgentID = nil
+                isAgentSelectionExplicit = false
                 defaults.removeObject(forKey: agentSelectionKey)
             }
             if selectedAgentID == nil, defaults.object(forKey: agentSelectionKey) == nil,
                catalog.inheritedAgent == nil, session.agent == nil,
                let preferred = defaults.string(forKey: serverDefaultAgentKey),
-               catalog.agents.contains(where: { $0.id == preferred }) { selectedAgentID = preferred }
+               catalog.agents.contains(where: { $0.id == preferred }) {
+                selectedAgentID = preferred
+                isAgentSelectionExplicit = false
+            }
             // Commands and agent pickers can refresh this catalog directly.
             // An inherited model change must also reconcile its variant, using
             // the new model's saved preference or explicit Default.
@@ -991,22 +1007,58 @@ final class OpenCodeSessionStore: ObservableObject {
         catch { composerErrorMessage = error.localizedDescription }
     }
 
-    var effectiveAgentID: String? { selectedAgentID ?? composerCatalog.inheritedAgent ?? session.agent }
+    /// The agent sent with the next prompt. Without an explicit pick the
+    /// session keeps the agent it last ran, as the TUI does on entering a
+    /// session and after `plan_exit`; `nil` lets the server choose its default.
+    var effectiveAgentID: String? {
+        if isAgentSelectionExplicit, let selectedAgentID { return selectedAgentID }
+        return composerCatalog.inheritedAgent ?? session.agent ?? transcriptAgentID ?? selectedAgentID
+    }
 
-    var selectedAgentName: String {
-        if let selectedAgentID {
-            return composerCatalog.agents.first { $0.id == selectedAgentID }?.name ?? selectedAgentID
-        }
-        let inherited = composerCatalog.inheritedAgent ?? session.agent
-        return inherited.map { "Default (\($0))" } ?? "Default agent"
+    /// The agent this session's composer shows and cycles from.
+    var currentAgentID: String? { effectiveAgentID ?? composerCatalog.defaultAgentID }
+
+    /// This session's pick, excluding the server-wide preference seeded into it.
+    var explicitAgentID: String? { isAgentSelectionExplicit ? selectedAgentID : nil }
+
+    var currentAgent: OpenCodeAgentOption? {
+        composerCatalog.agents.first { $0.id == currentAgentID }
+    }
+
+    var currentAgentName: String {
+        if let currentAgent { return currentAgent.displayName }
+        return currentAgentID.map { OpenCodeAgentOption(id: $0, name: $0, description: nil).displayName } ?? "Default agent"
+    }
+
+    /// Where the next cycle lands, for the toggle's VoiceOver hint.
+    var nextAgentInCycle: OpenCodeAgentOption? {
+        guard composerCatalog.agents.count > 1 else { return nil }
+        return OpenCodeAgentCycle.next(after: currentAgentID, in: composerCatalog.agents)
+    }
+
+    // The latest user turn names the primary agent that last ran. Subagent
+    // names are ignored, matching the TUI's session sync.
+    private var transcriptAgentID: String? {
+        messages.last { message in
+            message.info.role == "user" && composerCatalog.agents.contains { $0.id == message.info.agent }
+        }?.info.agent
     }
 
     func selectAgent(_ id: String?) {
         guard id == nil || composerCatalog.agents.contains(where: { $0.id == id }) else { return }
         selectedAgentID = id
+        isAgentSelectionExplicit = id != nil
         defaults.set(id ?? "", forKey: agentSelectionKey)
         if let id { defaults.set(id, forKey: serverDefaultAgentKey) }
         else { defaults.removeObject(forKey: serverDefaultAgentKey) }
+    }
+
+    /// One-tap build/plan toggle: Tab-style cycling through primary agents.
+    func cycleAgent(_ direction: OpenCodeAgentCycle.Direction = .forward) {
+        guard composerCatalog.agents.count > 1,
+              let next = OpenCodeAgentCycle.next(after: currentAgentID, in: composerCatalog.agents,
+                                                 direction: direction) else { return }
+        selectAgent(next.id)
     }
 
     var availableVariants: [String] { selectedModel?.variants ?? [] }

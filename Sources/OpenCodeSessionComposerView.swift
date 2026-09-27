@@ -16,6 +16,7 @@ struct OpenCodeSessionComposerView: View {
     @State private var remoteReferences: [OpenCodePromptFileReference] = []
     @State private var isShowingRemoteFiles = false
     @State private var isShowingAgentPicker = false
+    @State private var agentCycleCount = 0
     @State private var attachments: [OpenCodePromptAttachment] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isShowingPhotoPicker = false
@@ -27,6 +28,7 @@ struct OpenCodeSessionComposerView: View {
     @State private var didRequestInitialFocus = false
     @FocusState private var isFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
         store: OpenCodeSessionStore,
@@ -239,7 +241,7 @@ struct OpenCodeSessionComposerView: View {
     private var controlRow: some View {
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 8) {
-                if !store.composerCatalog.agents.isEmpty { agentButton }
+                if !store.composerCatalog.agents.isEmpty { agentToggle }
                 if !store.availableVariants.isEmpty { variantMenu }
                 modelButton
                 HStack(spacing: 8) {
@@ -255,7 +257,7 @@ struct OpenCodeSessionComposerView: View {
                     HStack(spacing: 4) {
                         attachmentButton
                         modelButton
-                        if !store.composerCatalog.agents.isEmpty { agentButton }
+                        if !store.composerCatalog.agents.isEmpty { agentToggle }
                         if !store.availableVariants.isEmpty { variantMenu }
                     }
                 }
@@ -458,21 +460,78 @@ struct OpenCodeSessionComposerView: View {
         }
     }
 
-    private var agentButton: some View {
-        Button {
-            isFocused = false
-            isShowingAgentPicker = true
-        } label: {
-            Label(store.selectedAgentName, systemImage: "person.crop.circle")
-                .font(.cleanCaptionBold)
-                .lineLimit(1)
-                .padding(.horizontal, 8)
-                .frame(minHeight: 44)
+    // The TUI's Tab: one tap moves to the next primary agent (build <-> plan
+    // on a stock server) and the chip always names the agent this session will
+    // run. Touch and hold lists every agent; the sheet adds descriptions and
+    // the inherit-the-session choice.
+    @ViewBuilder
+    private var agentToggle: some View {
+        Group {
+            if store.composerCatalog.agents.count > 1 {
+                Menu { agentMenuContent } label: { agentToggleLabel } primaryAction: { cycleAgent(.forward) }
+            } else {
+                Menu { agentMenuContent } label: { agentToggleLabel }
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Choose agent")
-        .accessibilityValue(store.selectedAgentName)
+        .foregroundStyle(.primary)
+        // Only a tap on this device clicks; server-side switches stay silent.
+        .sensoryFeedback(.selection, trigger: agentCycleCount)
+        .accessibilityLabel("Agent")
+        .accessibilityValue(store.currentAgentName)
+        .accessibilityHint(store.nextAgentInCycle.map {
+            "Switches to \($0.displayName). Touch and hold for all agents."
+        } ?? "Shows the available agents.")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: cycleAgent(.forward)
+            case .decrement: cycleAgent(.backward)
+            @unknown default: break
+            }
+        }
+        .accessibilityAction(named: "Choose agent") { showAgentPicker() }
         .accessibilityIdentifier("opencode-agent-picker")
+    }
+
+    private var agentToggleLabel: some View {
+        Label {
+            Text(store.currentAgentName)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                .contentTransition(reduceMotion ? .identity : .opacity)
+        } icon: {
+            Image(systemName: OpenCodeAgentOption.systemImage(for: store.currentAgentID))
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+        }
+        .font(.cleanCaptionBold)
+        .padding(.horizontal, 8)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .animation(reduceMotion ? nil : .smooth(duration: BYOTBrand.Motion.quick), value: store.currentAgentID)
+    }
+
+    @ViewBuilder
+    private var agentMenuContent: some View {
+        Picker("Agent", selection: Binding(
+            get: { store.currentAgentID ?? "" },
+            set: { store.selectAgent($0) }
+        )) {
+            ForEach(store.composerCatalog.agents) { agent in
+                Label(agent.displayName, systemImage: agent.systemImage).tag(agent.id)
+            }
+        }
+        .pickerStyle(.inline)
+        Divider()
+        Button("All Agents…", systemImage: "list.bullet") { showAgentPicker() }
+    }
+
+    private func cycleAgent(_ direction: OpenCodeAgentCycle.Direction) {
+        let previous = store.currentAgentID
+        store.cycleAgent(direction)
+        if store.currentAgentID != previous { agentCycleCount &+= 1 }
+    }
+
+    private func showAgentPicker() {
+        isFocused = false
+        isShowingAgentPicker = true
     }
 
     private var variantMenu: some View {
