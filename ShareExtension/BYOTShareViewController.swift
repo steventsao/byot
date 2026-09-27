@@ -22,7 +22,7 @@ final class BYOTShareViewController: UIViewController {
         host.didMove(toParent: self)
 
         model.complete = { [weak self] in self?.extensionContext?.completeRequest(returningItems: nil) }
-        model.cancel = { [weak self] in
+        model.dismissCancelled = { [weak self] in
             self?.extensionContext?.cancelRequest(withError: CocoaError(.userCancelled))
         }
         model.openApp = { [weak self] url in self?.openContainingApp(url) ?? false }
@@ -63,11 +63,20 @@ final class BYOTShareExtensionModel: ObservableObject {
 
     @Published private(set) var phase = Phase.preparing
     var complete: () -> Void = {}
-    var cancel: () -> Void = {}
+    var dismissCancelled: () -> Void = {}
     var openApp: (URL) -> Bool = { _ in false }
+    /// Set by Cancel. Reading and saving keep going in the background, so
+    /// they check this before handing anything to byot.
+    private var isCancelled = false
+
+    func cancel() {
+        isCancelled = true
+        dismissCancelled()
+    }
 
     func run(_ items: [NSExtensionItem]) async {
         let result = await BYOTShareImport.load(items)
+        guard !isCancelled else { return }
         guard !result.isEmpty else {
             phase = .failed(result.notes.first ?? BYOTShareInboxError.empty.localizedDescription)
             return
@@ -80,6 +89,10 @@ final class BYOTShareExtensionModel: ObservableObject {
             let item = try await Task.detached(priority: .userInitiated) {
                 try inbox.save(text: result.text, attachments: result.attachments, notes: result.notes)
             }.value
+            guard !isCancelled else {
+                inbox.remove(item.id)
+                return
+            }
             if openApp(BYOTShareLink(shareID: item.id).url) { complete() } else { phase = .saved }
         } catch {
             phase = .failed(error.localizedDescription)
@@ -109,7 +122,7 @@ struct BYOTShareExtensionView: View {
                 ToolbarItem(placement: .principal) { BYOTWordmark() }
                 ToolbarItem(placement: model.phase == .preparing ? .cancellationAction : .confirmationAction) {
                     if model.phase == .preparing {
-                        Button("Cancel", action: model.cancel)
+                        Button("Cancel") { model.cancel() }
                     } else {
                         Button("Done", action: model.complete)
                     }

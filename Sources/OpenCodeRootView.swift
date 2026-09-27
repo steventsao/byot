@@ -114,7 +114,7 @@ struct OpenCodeRootView: View {
                 content: content, profiles: profileStore.profiles, activeProfileID: profileStore.activeProfileID,
                 errorMessage: shares.deliveryError,
                 loadSessions: { (try? await BYOTIntentService.live.recentSessions(limit: 15)) ?? [] },
-                choose: { destination in Task { await openShare(content, at: destination) } },
+                choose: { destination in await openShare(content, at: destination) },
                 discard: { shares.discard(content) })
         }
         .task(id: shares.incoming?.id) { await presentSharePicker() }
@@ -265,7 +265,9 @@ struct OpenCodeRootView: View {
     }
 
     /// Opens the chosen destination with the share in its composer. The share
-    /// stays in the inbox until it is written into a draft.
+    /// stays in the inbox until it is written into a draft. An existing
+    /// session is loaded before the picker closes, so a slow or offline server
+    /// shows progress there and leaves you free to choose again.
     private func openShare(_ content: BYOTShareContent, at destination: BYOTShareDestination) async {
         let serverID = switch destination {
         case .newSession(let serverID): serverID
@@ -275,30 +277,43 @@ struct OpenCodeRootView: View {
             shares.release(content, error: "This server was removed from byot. Choose another.")
             return
         }
+        var session: OpenCodeSession?
+        if case .session(let target) = destination {
+            do {
+                let client = makeClient(profile, profileStore.password(for: profile))
+                let details = try await client.sessionDetails(sessionID: target.sessionID, directory: target.directory,
+                                                              workspace: target.workspace)
+                guard details.session.id == target.sessionID else { throw BYOTPushError.invalidNotification }
+                session = details.session
+            } catch {
+                guard shares.incoming?.id == content.id else { return }
+                shares.release(content, error: "Couldn’t open “\(target.title)”. It may have been deleted, or the "
+                    + "server may be offline. Choose another session or try again.")
+                return
+            }
+            // Another share may have replaced this one while the session loaded.
+            guard shares.incoming?.id == content.id else { return }
+        }
         shares.claim(content)
         profileEditor = nil
         notificationProfile = nil
         path = NavigationPath()
         pathServerID = profile.id
         profileStore.select(profile)
-        guard case .session(let target) = destination else {
+        guard let session else {
             path.append(OpenCodeNewSessionRoute(share: content))
             return
         }
         do {
-            let client = makeClient(profile, profileStore.password(for: profile))
-            let details = try await client.sessionDetails(sessionID: target.sessionID, directory: target.directory,
-                                                          workspace: target.workspace)
-            guard details.session.id == target.sessionID else { throw BYOTPushError.invalidNotification }
             try shares.deliver(content, into: OpenCodeComposerDraftStore(
-                serverID: profile.id, sessionID: details.session.id,
-                directory: details.session.directory, workspace: details.session.workspaceID))
-            guard profileStore.activeProfileID == profile.id else { return }
-            path.append(BYOTPushSessionRoute(serverID: profile.id, session: details.session, focusesComposer: true))
+                serverID: profile.id, sessionID: session.id, directory: session.directory,
+                workspace: session.workspaceID))
         } catch {
-            shares.release(content, error: "Couldn’t open “\(target.title)”. It may have been deleted, or the server "
-                + "may be offline. Choose another session or try again.")
+            shares.release(content, error: "byot couldn’t add this to that session’s message. Choose another "
+                + "session or try again.")
+            return
         }
+        path.append(BYOTPushSessionRoute(serverID: profile.id, session: session, focusesComposer: true))
     }
 
     private func edit(_ profile: OpenCodeServerProfile?) {

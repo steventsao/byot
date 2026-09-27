@@ -9,10 +9,13 @@ struct BYOTShareDestinationView: View {
     let activeProfileID: UUID?
     let errorMessage: String?
     let loadSessions: @MainActor () async -> [BYOTIntentSession]
-    let choose: (BYOTShareDestination) -> Void
+    /// Returns once byot has opened the destination, or failed to.
+    let choose: @MainActor (BYOTShareDestination) async -> Void
     let discard: () -> Void
     /// Nil while loading.
     @State private var sessions: [BYOTIntentSession]? = nil
+    /// The destination byot is opening; the sheet stays up until it has.
+    @State private var opening: BYOTShareDestination?
 
     var body: some View {
         NavigationStack {
@@ -44,9 +47,12 @@ struct BYOTShareDestinationView: View {
                 } else {
                     Section("New session") {
                         ForEach(orderedProfiles) { profile in
-                            Button { choose(.newSession(serverID: profile.id)) } label: {
-                                destinationRow(symbol: "plus.bubble", title: "New session", subtitle: profile.name)
+                            let destination = BYOTShareDestination.newSession(serverID: profile.id)
+                            Button { open(destination) } label: {
+                                destinationRow(symbol: "plus.bubble", title: "New session", subtitle: profile.name,
+                                               isOpening: opening == destination)
                             }
+                            .disabled(opening != nil)
                             .accessibilityHint("Choose a project, then finish the message.")
                             .accessibilityIdentifier("share-new-session-\(profile.name)")
                         }
@@ -66,6 +72,7 @@ struct BYOTShareDestinationView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: discard)
+                        .disabled(opening != nil)
                         .accessibilityHint("Discards what you shared.")
                         .accessibilityIdentifier("share-destination-cancel")
                 }
@@ -77,6 +84,14 @@ struct BYOTShareDestinationView: View {
         }
         // Swiping away would silently drop the share; Cancel says so.
         .interactiveDismissDisabled()
+    }
+
+    private func open(_ destination: BYOTShareDestination) {
+        opening = destination
+        Task {
+            await choose(destination)
+            opening = nil
+        }
     }
 
     /// The server you're looking at comes first.
@@ -93,7 +108,10 @@ struct BYOTShareDestinationView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(sessions) { session in
-                    Button { choose(.session(session)) } label: { sessionRow(session) }
+                    Button { open(.session(session)) } label: {
+                        sessionRow(session, isOpening: opening == .session(session))
+                    }
+                        .disabled(opening != nil)
                         .accessibilityHint("Opens this session with what you shared in the message.")
                 }
             }
@@ -109,7 +127,7 @@ struct BYOTShareDestinationView: View {
         }
     }
 
-    private func destinationRow(symbol: String, title: String, subtitle: String) -> some View {
+    private func destinationRow(symbol: String, title: String, subtitle: String, isOpening: Bool) -> some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
                 .font(.cleanBodySemibold)
@@ -125,13 +143,15 @@ struct BYOTShareDestinationView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+            if isOpening { ProgressView() }
         }
         .frame(minHeight: 44)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+        .accessibilityValue(isOpening ? "Opening" : "")
     }
 
-    private func sessionRow(_ session: BYOTIntentSession) -> some View {
+    private func sessionRow(_ session: BYOTIntentSession, isOpening: Bool) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Image(systemName: session.state?.symbol ?? "bubble.left")
                 .font(.cleanCaptionBold)
@@ -149,10 +169,12 @@ struct BYOTShareDestinationView: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
+            if isOpening { ProgressView() }
         }
         .frame(minHeight: 44)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+        .accessibilityValue(isOpening ? "Opening" : "")
     }
 
     private func detail(_ session: BYOTIntentSession) -> String {
