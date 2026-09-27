@@ -87,7 +87,10 @@ if [[ "$(printf '%s' "$IDENTITIES" | grep -c . || true)" != "1" ]]; then
 fi
 IDENTITY_SHA1="${IDENTITIES%%$'\t'*}"
 IDENTITY_NAME="${IDENTITIES#*$'\t'}"
-echo "Signing identity: $IDENTITY_NAME"
+# The certificate name carries the account holder's name, and the repo's logs
+# are public. Mask it everywhere, including xcodebuild's signing output.
+echo "::add-mask::$IDENTITY_NAME"
+echo "::add-mask::${IDENTITY_NAME#*: }"
 CERT_SERIAL="$(security find-certificate -a -Z -p "$KEYCHAIN" |
   awk -v sha="$IDENTITY_SHA1" '/^SHA-1 hash:/ { keep = ($3 == sha) } keep' |
   openssl x509 -noout -serial | sed 's/^serial=//')"
