@@ -22,6 +22,16 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleURLName: app.byot.pair
+            CFBundleURLSchemes:
+              - byot
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSBonjourServices:
+          - _http._tcp
+        NSCameraUsageDescription: byot uses the camera only to scan the pairing code for your OpenCode server.
+        NSLocalNetworkUsageDescription: byot finds OpenCode servers on your network and connects to the ones you add by local address.
         NSMicrophoneUsageDescription: byot listens only while you dictate a message, and only after you tap the microphone.
         NSSpeechRecognitionUsageDescription: byot turns what you dictate into message text. Speech is transcribed on this device when your language supports it; otherwise Apple transcribes it.
         UIAppFonts:

@@ -6,6 +6,10 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
     var baseURL: String
     var username: String
     var directory: String
+    /// Set only for servers added from a nearby (Bonjour) result or a pairing
+    /// code. Such profiles may use plain HTTP, and only to a numeric
+    /// local-network address; everything else stays HTTPS-only.
+    var allowsLocalHTTP: Bool
     var compatibility: OpenCodeCompatibilitySummary?
 
     init(
@@ -14,6 +18,7 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
         baseURL: String,
         username: String = "opencode",
         directory: String = "",
+        allowsLocalHTTP: Bool = false,
         compatibility: OpenCodeCompatibilitySummary? = nil
     ) {
         self.id = id
@@ -21,7 +26,27 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
         self.baseURL = baseURL
         self.username = username
         self.directory = directory
+        self.allowsLocalHTTP = allowsLocalHTTP
         self.compatibility = compatibility
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, baseURL, username, directory, allowsLocalHTTP, compatibility
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        baseURL = try container.decode(String.self, forKey: .baseURL)
+        username = try container.decode(String.self, forKey: .username)
+        directory = try container.decode(String.self, forKey: .directory)
+        // Profiles saved before local discovery existed are HTTPS-only.
+        allowsLocalHTTP = try container.decodeIfPresent(Bool.self, forKey: .allowsLocalHTTP) ?? false
+        compatibility = try container.decodeIfPresent(
+            OpenCodeCompatibilitySummary.self,
+            forKey: .compatibility
+        )
     }
 
     var normalizedURL: URL? {
@@ -39,12 +64,28 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
               components.password == nil,
               components.query == nil,
               components.fragment == nil,
-              components.scheme?.lowercased() == "https",
-              components.host?.isEmpty == false
+              let scheme = components.scheme?.lowercased(),
+              scheme == "https" || scheme == "http",
+              let host = components.host, !host.isEmpty
         else {
             throw OpenCodeConnectionError.invalidProfile(
                 "Enter a complete HTTPS server URL."
             )
+        }
+        if scheme == "http" {
+            let isLocalAddress = OpenCodeLocalEndpointPolicy.isLocalHost(host)
+            guard allowsLocalHTTP else {
+                throw OpenCodeConnectionError.invalidProfile(
+                    isLocalAddress
+                        ? "Plain HTTP is only used for servers found nearby or added with a pairing code. Use HTTPS, or scan the server’s pairing code."
+                        : "Enter a complete HTTPS server URL."
+                )
+            }
+            guard isLocalAddress else {
+                throw OpenCodeConnectionError.invalidProfile(
+                    "Plain HTTP works only with a local network IP address. Use HTTPS for any other address."
+                )
+            }
         }
         components.path = components.path.replacingOccurrences(
             of: "/+$",

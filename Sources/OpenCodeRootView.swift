@@ -3,9 +3,13 @@ import SwiftUI
 struct OpenCodeRootView: View {
     let openAppNavigation: () -> Void
     private let makeClient: (OpenCodeServerProfile, String) -> OpenCodeClient
+    /// A `byot://pair` link opened from outside the app, such as a QR code
+    /// scanned with the Camera app. Consumed (set back to nil) once handled.
+    @Binding private var pairingLink: URL?
 
     init(
         openAppNavigation: @escaping () -> Void,
+        pairingLink: Binding<URL?> = .constant(nil),
         profileStore: OpenCodeProfileStore? = nil,
         push: BYOTPushNotifications = .shared,
         makeClient: @escaping (OpenCodeServerProfile, String) -> OpenCodeClient = {
@@ -13,6 +17,7 @@ struct OpenCodeRootView: View {
         }
     ) {
         self.openAppNavigation = openAppNavigation
+        _pairingLink = pairingLink
         self.makeClient = makeClient
         _profileStore = StateObject(wrappedValue: profileStore ?? OpenCodeProfileStore())
         _push = ObservedObject(wrappedValue: push)
@@ -26,10 +31,13 @@ struct OpenCodeRootView: View {
     private struct ProfileEditor: Identifiable {
         let id = UUID()
         let profile: OpenCodeServerProfile?
+        var start: OpenCodeServerSetupRoute?
+        var pairing: OpenCodePairingPayload?
     }
     @State private var profileEditor: ProfileEditor?
     @State private var profilePendingRemoval: OpenCodeServerProfile?
     @State private var profileRemovalError: String?
+    @State private var pairingLinkError: String?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -42,16 +50,38 @@ struct OpenCodeRootView: View {
                         )
                         .id("\(profileFingerprint(profile))|\(profileStore.connectionGeneration)")
                     } else {
-                        ContentUnavailableView {
-                            Label("Connect your server", systemImage: "network")
-                        } description: {
-                            Text("Add the HTTPS address of your OpenCode server.")
-                        } actions: {
-                            Button("Add server", systemImage: "plus") {
-                                edit(nil)
+                        // Scrolls so the setup choices stay reachable at accessibility text sizes.
+                        GeometryReader { geometry in
+                            ScrollView {
+                                ContentUnavailableView {
+                                    Label("Connect your server", systemImage: "network")
+                                } description: {
+                                    Text("Scan the pairing code from your computer, find OpenCode on this network, or enter its HTTPS address.")
+                                } actions: {
+                                    VStack(spacing: BYOTBrand.Space.sm) {
+                                        Button("Scan pairing code", systemImage: "qrcode.viewfinder") {
+                                            profileEditor = ProfileEditor(profile: nil, start: .scan)
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .foregroundStyle(BYOTBrand.accentInk)
+                                        .accessibilityIdentifier("scan-pairing-code")
+                                        Button("Find nearby", systemImage: "wifi") {
+                                            profileEditor = ProfileEditor(profile: nil, start: .nearby)
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .accessibilityIdentifier("find-nearby-servers")
+                                        Button { edit(nil) } label: {
+                                            Label("Add server", systemImage: "plus")
+                                                .frame(minHeight: 44)
+                                                .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.borderless)
+                                    }
+                                    .controlSize(.large)
+                                }
+                                .frame(minHeight: geometry.size.height)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .foregroundStyle(BYOTBrand.accentInk)
+                            .scrollBounceBehavior(.basedOnSize)
                         }
                     }
                 }
@@ -113,10 +143,35 @@ struct OpenCodeRootView: View {
         .sheet(item: $profileEditor) { editor in
             OpenCodeProfileEditorView(
                 profile: editor.profile,
-                existingPassword: editor.profile.map(profileStore.password(for:)) ?? ""
+                existingPassword: editor.profile.map(profileStore.password(for:)) ?? "",
+                savedProfiles: profileStore.profiles,
+                savedPassword: profileStore.password(for:),
+                start: editor.start,
+                pairing: editor.pairing
             ) { profile, password in
                 try profileStore.save(profile, password: password)
             }
+        }
+        .onChange(of: pairingLink, initial: true) { _, link in
+            guard let link else { return }
+            pairingLink = nil
+            do {
+                let payload = try OpenCodePairingPayload(code: link.absoluteString)
+                profileEditor = ProfileEditor(profile: nil, pairing: payload)
+            } catch {
+                pairingLinkError = error.localizedDescription
+            }
+        }
+        .alert(
+            "Couldn’t use pairing link",
+            isPresented: Binding(
+                get: { pairingLinkError != nil },
+                set: { if !$0 { pairingLinkError = nil } }
+            )
+        ) {
+            Button("OK") { pairingLinkError = nil }
+        } message: {
+            Text(pairingLinkError ?? "")
         }
         .confirmationDialog(
             "Remove this server?",
@@ -188,6 +243,9 @@ struct OpenCodeRootView: View {
             Button("Add server", systemImage: "plus") {
                 edit(nil)
             }
+            Button("Scan pairing code", systemImage: "qrcode.viewfinder") {
+                profileEditor = ProfileEditor(profile: nil, start: .scan)
+            }
         }
     }
 
@@ -223,7 +281,7 @@ struct OpenCodeRootView: View {
     }
 
     private func profileFingerprint(_ profile: OpenCodeServerProfile) -> String {
-        [profile.id.uuidString, profile.baseURL, profile.username, profile.directory]
+        [profile.id.uuidString, profile.baseURL, profile.username, profile.directory, "\(profile.allowsLocalHTTP)"]
             .joined(separator: "|")
     }
 }
@@ -236,6 +294,12 @@ private struct OpenCodeProfileEditorView: View {
     @State private var username: String
     @State private var password: String
     @State private var directory: String
+    @State private var allowsLocalHTTP: Bool
+    @State private var isEditingSavedProfile: Bool
+    @State private var setupPath: [OpenCodeServerSetupRoute]
+    @State private var pendingPairing: OpenCodePairingPayload?
+    @State private var isFromLink: Bool
+    @FocusState private var isPasswordFocused: Bool
     @State private var isTesting = false
     @State private var isSaving = false
     @State private var statusMessage: String?
@@ -244,11 +308,17 @@ private struct OpenCodeProfileEditorView: View {
     @State private var probedFingerprint: String?
     @State private var copyConfirmations = 0
 
+    let savedProfiles: [OpenCodeServerProfile]
+    let savedPassword: (OpenCodeServerProfile) -> String
     let save: (OpenCodeServerProfile, String) throws -> Void
 
     init(
         profile: OpenCodeServerProfile?,
         existingPassword: String,
+        savedProfiles: [OpenCodeServerProfile] = [],
+        savedPassword: @escaping (OpenCodeServerProfile) -> String = { _ in "" },
+        start: OpenCodeServerSetupRoute? = nil,
+        pairing: OpenCodePairingPayload? = nil,
         save: @escaping (OpenCodeServerProfile, String) throws -> Void
     ) {
         _id = State(initialValue: profile?.id ?? UUID())
@@ -257,6 +327,13 @@ private struct OpenCodeProfileEditorView: View {
         _username = State(initialValue: profile?.username ?? "opencode")
         _password = State(initialValue: existingPassword)
         _directory = State(initialValue: profile?.directory ?? "")
+        _allowsLocalHTTP = State(initialValue: profile?.allowsLocalHTTP ?? false)
+        _isEditingSavedProfile = State(initialValue: profile != nil)
+        _setupPath = State(initialValue: start.map { [$0] } ?? [])
+        _pendingPairing = State(initialValue: pairing)
+        _isFromLink = State(initialValue: pairing != nil)
+        self.savedProfiles = savedProfiles
+        self.savedPassword = savedPassword
         _compatibilitySummary = State(initialValue: profile?.compatibility)
         if let profile, profile.compatibility != nil {
             _probedFingerprint = State(
@@ -272,9 +349,22 @@ private struct OpenCodeProfileEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $setupPath) {
             Form {
-                Section("Server") {
+                Section {
+                    NavigationLink(value: OpenCodeServerSetupRoute.scan) {
+                        Label("Scan pairing code", systemImage: "qrcode.viewfinder")
+                    }
+                    .accessibilityIdentifier("editor-scan-pairing-code")
+                    NavigationLink(value: OpenCodeServerSetupRoute.nearby) {
+                        Label("Find nearby", systemImage: "wifi")
+                    }
+                    .accessibilityIdentifier("editor-find-nearby")
+                } footer: {
+                    Text("Fill in the form from your computer’s pairing code or a server on this Wi-Fi network.")
+                }
+
+                Section {
                     TextField("Name", text: $name)
                         .textContentType(.name)
                     TextField("https://your-mac.example.ts.net", text: $baseURL)
@@ -288,6 +378,33 @@ private struct OpenCodeProfileEditorView: View {
                         .autocorrectionDisabled()
                     SecureField("Server password", text: $password)
                         .textContentType(.password)
+                        .focused($isPasswordFocused)
+                } header: {
+                    Text("Server")
+                } footer: {
+                    if isFromLink {
+                        // Links can come from anywhere, not only your own computer.
+                        Text("Filled in from a pairing link. Check that this is your server before you save.")
+                    }
+                }
+
+                if isLocalHTTP {
+                    Section {
+                        Label {
+                            VStack(alignment: .leading, spacing: BYOTBrand.Space.xs) {
+                                Text("Local network, not encrypted")
+                                    .font(.cleanBodySemibold)
+                                Text("This server uses plain HTTP, so the password and your sessions can be read by others on this network. Use HTTPS, such as Tailscale Serve, on shared Wi-Fi.")
+                                    .font(.cleanCaption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "lock.open")
+                                .foregroundStyle(.orange)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("local-http-notice")
+                    }
                 }
 
                 Section {
@@ -352,6 +469,23 @@ private struct OpenCodeProfileEditorView: View {
             .onChange(of: directory) { _, _ in statusMessage = nil }
             .navigationTitle("OpenCode server")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: OpenCodeServerSetupRoute.self) { route in
+                switch route {
+                case .scan:
+                    OpenCodePairingScannerView { payload in
+                        apply(payload, source: .pairingCode)
+                    }
+                case .nearby:
+                    OpenCodeDiscoveryView { server in
+                        apply(server.pairingPayload, source: .nearby)
+                    }
+                }
+            }
+            .task {
+                guard let pairing = pendingPairing else { return }
+                pendingPairing = nil
+                apply(pairing, source: .link)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -375,8 +509,51 @@ private struct OpenCodeProfileEditorView: View {
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             baseURL: baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
             username: username.trimmingCharacters(in: .whitespacesAndNewlines),
-            directory: directory.trimmingCharacters(in: .whitespacesAndNewlines)
+            directory: directory.trimmingCharacters(in: .whitespacesAndNewlines),
+            allowsLocalHTTP: allowsLocalHTTP
         )
+    }
+
+    private var isLocalHTTP: Bool {
+        allowsLocalHTTP
+            && baseURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("http://")
+    }
+
+    /// A scanned code tests the server right away; a nearby server has no
+    /// password yet, and a link opened from outside waits for the person to
+    /// check the address before byot contacts it.
+    private enum SetupSource { case pairingCode, link, nearby }
+
+    /// Fills the form from a pairing code or nearby server and returns to it.
+    /// Nothing is saved until the person taps Save.
+    private func apply(_ payload: OpenCodePairingPayload, source: SetupSource) {
+        let draft = OpenCodePairing.draft(
+            applying: payload,
+            to: OpenCodeServerDraft(profile: profile, password: password),
+            isEditingSavedProfile: isEditingSavedProfile,
+            savedProfiles: savedProfiles,
+            savedPassword: savedPassword
+        )
+        id = draft.profile.id
+        name = draft.profile.name
+        baseURL = draft.profile.baseURL
+        username = draft.profile.username
+        password = draft.password
+        directory = draft.profile.directory
+        allowsLocalHTTP = draft.profile.allowsLocalHTTP
+        compatibilitySummary = nil
+        probedFingerprint = nil
+        isEditingSavedProfile = savedProfiles.contains { $0.id == draft.profile.id }
+        setupPath = []
+        Task { @MainActor in
+            // Let the pop and the field updates settle before focusing or testing.
+            try? await Task.sleep(for: .milliseconds(450))
+            if password.isEmpty {
+                isPasswordFocused = true
+            } else if source == .pairingCode {
+                testConnection()
+            }
+        }
     }
 
     private var connectionFingerprint: String {
