@@ -203,7 +203,7 @@ final class OpenCodeTerminalSession: ObservableObject, Identifiable {
             guard !Task.isCancelled, current == generation else { return }
             attempt += 1
             if attempt > OpenCodeTerminalBackoff.maximumAttempts {
-                finish(.failed("Lost the connection to the terminal."))
+                finish(.failed(String(localized: "Lost the connection to the terminal.")))
                 return
             }
             state = .reconnecting(attempt: attempt)
@@ -387,7 +387,7 @@ final class OpenCodeTerminalStore: ObservableObject {
             phase = .ready
         } catch is CancellationError {
         } catch {
-            actionError = "Couldn’t open a terminal: \(error.localizedDescription)"
+            actionError = String(localized: "Couldn’t open a terminal: \(error.localizedDescription)")
         }
     }
 
@@ -402,7 +402,7 @@ final class OpenCodeTerminalStore: ObservableObject {
         do {
             try await service.remove(session.id)
         } catch {
-            actionError = "Couldn’t close “\(session.pty.title)”: \(error.localizedDescription)"
+            actionError = String(localized: "Couldn’t close “\(session.pty.title)”: \(error.localizedDescription)")
             terminals.insert(session, at: min(index, terminals.count))
             if isVisible { session.start() }
         }
@@ -416,7 +416,7 @@ final class OpenCodeTerminalStore: ObservableObject {
             try await service.update(session.id, title: title, size: nil)
         } catch {
             session.rename(to: previous)
-            actionError = "Couldn’t rename the terminal: \(error.localizedDescription)"
+            actionError = String(localized: "Couldn’t rename the terminal: \(error.localizedDescription)")
         }
     }
 

@@ -149,7 +149,7 @@ struct OpenCodeWorktreesScreen<SessionView: View>: View {
                 ContentUnavailableView("Worktrees aren’t available", systemImage: "arrow.triangle.branch",
                                        description: Text("This OpenCode server doesn’t manage worktrees."))
             } else if !store.hasLoaded {
-                BYOTActivityView(.loading, title: "Loading worktrees", layout: .blocking)
+                BYOTActivityView(.loading, title: String(localized: "Loading worktrees"), layout: .blocking)
             } else {
                 ContentUnavailableView {
                     Label("No worktrees", systemImage: "arrow.triangle.branch")
@@ -300,25 +300,25 @@ private struct OpenCodeWorktreeRow: View {
     }
 
     private var progressTitle: String? {
-        if isPreparing { return "Preparing…" }
+        if isPreparing { return String(localized: "Preparing…") }
         switch operation {
-        case .resetting: return "Resetting…"
-        case .removing: return "Deleting…"
-        case .startingSession: return "Starting…"
+        case .resetting: return String(localized: "Resetting…")
+        case .removing: return String(localized: "Deleting…")
+        case .startingSession: return String(localized: "Starting…")
         case nil: return nil
         }
     }
 
     private var detail: String {
-        guard let summary else { return "Checking…" }
+        guard let summary else { return String(localized: "Checking…") }
         let parts = [summary.changes.map(OpenCodeWorktreeCopy.changes),
                      summary.sessions.map(OpenCodeWorktreeCopy.sessions)].compactMap { $0 }
-        return parts.isEmpty ? "Details unavailable" : parts.joined(separator: " · ")
+        return parts.isEmpty ? String(localized: "Details unavailable") : parts.joined(separator: " · ")
     }
 
     private var accessibilityLabel: String {
-        var parts = ["Worktree \(worktree.name)"]
-        if let branch { parts.append("branch \(branch)") }
+        var parts = [String(localized: "Worktree \(worktree.name)")]
+        if let branch { parts.append(String(localized: "branch \(branch)")) }
         parts.append(detail)
         if let progressTitle { parts.append(progressTitle) }
         return parts.joined(separator: ", ")

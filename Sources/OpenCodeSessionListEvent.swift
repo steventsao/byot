@@ -56,7 +56,7 @@ enum OpenCodeSessionListEvent: Equatable, Sendable {
             let error = properties["error"]?.objectValue
             self = .status(sessionID: sessionID, .retry(
                 attempt: Int(properties["attempt"]?.numberValue ?? 1),
-                message: error?["message"]?.stringValue ?? properties["message"]?.stringValue ?? "Retrying",
+                message: error?["message"]?.stringValue ?? properties["message"]?.stringValue ?? String(localized: "Retrying"),
                 next: properties["at"]?.numberValue ?? properties["next"]?.numberValue ?? 0))
         case "session.error":
             let error = properties["error"]?.objectValue
@@ -67,11 +67,11 @@ enum OpenCodeSessionListEvent: Equatable, Sendable {
                     .displayMessage.trimmedNonEmpty
             }
             // A failure without details still needs flagging; an empty message would clear it.
-            self = .failed(sessionID: sessionID, message: message ?? "The last turn failed.")
+            self = .failed(sessionID: sessionID, message: message ?? String(localized: "The last turn failed."))
         case "session.execution.failed", "session.next.step.failed":
             let error = properties["error"]?.objectValue
             self = .failed(sessionID: sessionID,
-                           message: OpenCodeFailure(message: "The turn failed.", details: error).message)
+                           message: OpenCodeFailure(message: String(localized: "The turn failed."), details: error).message)
         case "permission.asked", "permission.v2.asked", "question.asked", "question.v2.asked", "form.created":
             guard let requestID = Self.requestID(properties) else { return nil }
             self = .inputRequested(sessionID: sessionID, requestID: requestID)

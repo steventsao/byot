@@ -1,0 +1,83 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Ask OpenCode in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Ask OpenCode in ${applicationName}",
+              "Start an OpenCode session in ${applicationName}",
+              "New ${applicationName} session",
+              "Ask OpenCode on ${server} in ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在 ${applicationName} 中询问 OpenCode",
+              "在 ${applicationName} 中开始 OpenCode 会话",
+              "新建 ${applicationName} 会话",
+              "在 ${applicationName} 中向 ${server} 询问 OpenCode"
+            ]
+          }
+        }
+      }
+    },
+    "Open a session in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Open a session in ${applicationName}",
+              "Open an OpenCode session in ${applicationName}"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在 ${applicationName} 中打开会话",
+              "在 ${applicationName} 中打开 OpenCode 会话"
+            ]
+          }
+        }
+      }
+    },
+    "What needs me in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "What needs me in ${applicationName}",
+              "Check ${applicationName} sessions",
+              "Which ${applicationName} sessions need attention",
+              "Check ${applicationName} sessions on ${server}"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName} 里有什么需要我处理",
+              "查看 ${applicationName} 会话",
+              "哪些 ${applicationName} 会话需要处理",
+              "查看 ${server} 上的 ${applicationName} 会话"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

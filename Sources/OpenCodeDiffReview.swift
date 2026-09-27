@@ -16,19 +16,19 @@ enum OpenCodeDiffSource: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .turn: "Turn"
-        case .session: "Session"
-        case .uncommitted: "Uncommitted"
-        case .branch: "Branch"
+        case .turn: String(localized: "Turn")
+        case .session: String(localized: "Session")
+        case .uncommitted: String(localized: "Uncommitted")
+        case .branch: String(localized: "Branch")
         }
     }
 
     var emptyTitle: String {
         switch self {
-        case .turn: "No changes in this turn"
-        case .session: "No session changes"
-        case .uncommitted: "Working tree is clean"
-        case .branch: "No branch changes"
+        case .turn: String(localized: "No changes in this turn")
+        case .session: String(localized: "No session changes")
+        case .uncommitted: String(localized: "Working tree is clean")
+        case .branch: String(localized: "No branch changes")
         }
     }
 }
@@ -55,7 +55,7 @@ struct OpenCodeDiffAvailability: Equatable, Sendable {
     var branch: OpenCodeVcsBranch?
     var unavailableReason: String?
 
-    static let none = Self(unavailableReason: "This server does not provide file changes for review.")
+    static let none = Self(unavailableReason: String(localized: "This server does not provide file changes for review."))
 }
 
 enum OpenCodeDiffFileStatus: String, Equatable, Sendable {
@@ -63,9 +63,9 @@ enum OpenCodeDiffFileStatus: String, Equatable, Sendable {
 
     var title: String {
         switch self {
-        case .added: "Added"
-        case .deleted: "Deleted"
-        case .modified: "Modified"
+        case .added: String(localized: "Added")
+        case .deleted: String(localized: "Deleted")
+        case .modified: String(localized: "Modified")
         }
     }
 
@@ -96,9 +96,9 @@ struct OpenCodeDiffFile: Identifiable, Equatable, Sendable {
 
     var accessibilitySummary: String {
         var parts = [name, status.title]
-        if let folder { parts.append("in \(folder)") }
-        parts.append("\(additions) \(additions == 1 ? "addition" : "additions")")
-        parts.append("\(deletions) \(deletions == 1 ? "deletion" : "deletions")")
+        if let folder { parts.append(String(localized: "in \(folder)")) }
+        parts.append(additions == 1 ? String(localized: "1 addition") : String(localized: "\(additions) additions"))
+        parts.append(deletions == 1 ? String(localized: "1 deletion") : String(localized: "\(deletions) deletions"))
         return parts.joined(separator: ", ")
     }
 
@@ -112,7 +112,7 @@ struct OpenCodeDiffFile: Identifiable, Equatable, Sendable {
             let parsed = needsPatch ? diff.patch.map(OpenCodeUnifiedDiff.parse) : nil
             guard var path = diff.file?.trimmedNonEmpty ?? parsed?.path else {
                 // A path-less entry cannot be matched or navigated; keep it reviewable.
-                return OpenCodeDiffFile(path: "Changed file \(index + 1)", status: .modified,
+                return OpenCodeDiffFile(path: String(localized: "Changed file \(index + 1)"), status: .modified,
                                         additions: diff.additions, deletions: diff.deletions, patch: diff.patch)
             }
             if !root.isEmpty, path.hasPrefix(root + "/") { path = String(path.dropFirst(root.count + 1)) }
@@ -376,9 +376,9 @@ enum OpenCodeDiffReviewError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unsupported(let source): "This server does not provide \(source.title.lowercased()) changes."
-        case .missingTurn: "Send a prompt first. Changes appear here after OpenCode edits files."
-        case .wrongLocation: "The server returned changes for a different project. Refresh the session and try again."
+        case .unsupported(let source): String(localized: "This server does not provide \(source.title.lowercased()) changes.")
+        case .missingTurn: String(localized: "Send a prompt first. Changes appear here after OpenCode edits files.")
+        case .wrongLocation: String(localized: "The server returned changes for a different project. Refresh the session and try again.")
         }
     }
 }
@@ -416,7 +416,7 @@ struct OpenCodeDiffReviewService: OpenCodeDiffReviewServicing {
             return .init(turn: true, uncommitted: branch?.isRepository == true, branch: branch)
         }
         guard connection.supports("/api/vcs/diff") else {
-            return .init(unavailableReason: "This OpenCode 2 server does not provide file changes yet.")
+            return .init(unavailableReason: String(localized: "This OpenCode 2 server does not provide file changes yet."))
         }
         let branch = connection.supports("/api/vcs") ? try? await vcsBranch(connection) : nil
         return .init(turn: false, uncommitted: branch?.isRepository ?? true, branch: branch)

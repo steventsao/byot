@@ -79,7 +79,7 @@ struct OpenCodeModelPickerView: View {
 
                 if store.isLoadingModels && store.providerModels.isEmpty {
                     Section {
-                        BYOTActivityView(.loading, title: "Loading models", layout: .inline)
+                        BYOTActivityView(.loading, title: String(localized: "Loading models"), layout: .inline)
                     }
                 } else if !store.isLoadingModels,
                           store.providerModels.isEmpty,
@@ -146,7 +146,7 @@ struct OpenCodeModelPickerView: View {
 
     private var automaticMatchesSearch: Bool {
         normalizedSearchText.isEmpty
-            || "automatic server default".contains(normalizedSearchText)
+            || String(localized: "automatic server default").contains(normalizedSearchText)
     }
 
     private func modelStatus(_ status: String) -> some View {

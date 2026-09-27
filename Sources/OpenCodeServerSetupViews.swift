@@ -127,27 +127,27 @@ struct OpenCodePairingScannerView: View {
         case .notDetermined:
             cameraPanel(
                 systemImage: "camera",
-                title: "Allow camera access",
-                detail: "byot uses the camera only to read the pairing code."
+                title: String(localized: "Allow camera access"),
+                detail: String(localized: "byot uses the camera only to read the pairing code.")
             )
         case .denied:
             cameraPanel(
                 systemImage: "camera.fill",
-                title: "Camera access is off",
-                detail: "Allow camera access in Settings, or choose a photo of the code below.",
+                title: String(localized: "Camera access is off"),
+                detail: String(localized: "Allow camera access in Settings, or choose a photo of the code below."),
                 opensSettings: true
             )
         case .restricted:
             cameraPanel(
                 systemImage: "camera.fill",
-                title: "Camera is restricted",
-                detail: "Choose a photo of the code or paste the pairing link below."
+                title: String(localized: "Camera is restricted"),
+                detail: String(localized: "Choose a photo of the code or paste the pairing link below.")
             )
         case .unavailable, .authorized:
             cameraPanel(
                 systemImage: "camera",
-                title: "No camera available",
-                detail: "Choose a photo of the code or paste the pairing link below."
+                title: String(localized: "No camera available"),
+                detail: String(localized: "Choose a photo of the code or paste the pairing link below.")
             )
         }
     }
@@ -183,14 +183,14 @@ struct OpenCodePairingScannerView: View {
                 photo = nil
             }
             guard let data = try? await item.loadTransferable(type: Data.self) else {
-                show("That photo couldn’t be opened. Try another one.")
+                show(String(localized: "That photo couldn’t be opened. Try another one."))
                 return
             }
             let codes = await Task.detached(priority: .userInitiated) {
                 OpenCodeQRCode.messages(inImageData: data)
             }.value
             guard !codes.isEmpty else {
-                show("No QR code found in that photo. Crop it to the code and try again.")
+                show(String(localized: "No QR code found in that photo. Crop it to the code and try again."))
                 return
             }
             let code = codes.first { (try? OpenCodePairingPayload(code: $0)) != nil } ?? codes[0]
@@ -315,8 +315,8 @@ struct OpenCodeDiscoveryView: View {
                 if store.isSearching {
                     BYOTActivityView(
                         .loading,
-                        title: "Looking nearby",
-                        detail: "Searching this network for OpenCode servers.",
+                        title: String(localized: "Looking nearby"),
+                        detail: String(localized: "Searching this network for OpenCode servers."),
                         layout: .blocking
                     )
                 } else {

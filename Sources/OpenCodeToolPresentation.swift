@@ -45,34 +45,34 @@ struct OpenCodeToolPresentation: Equatable, Sendable {
 
     private static func displayTitle(for name: String) -> String {
         switch name.lowercased() {
-        case "bash", "shell": "Shell command"
-        case "read": "Read file"
-        case "write": "Write file"
-        case "edit": "Edit file"
-        case "glob": "Find files"
-        case "grep": "Search files"
-        case "list": "List files"
-        case "task": "Subtask"
-        case "webfetch": "Fetch webpage"
-        case "todoread": "Read tasks"
-        case "todowrite": "Update tasks"
-        case "question": "Question"
-        case "lsp": "Code intelligence"
+        case "bash", "shell": String(localized: "Shell command")
+        case "read": String(localized: "Read file")
+        case "write": String(localized: "Write file")
+        case "edit": String(localized: "Edit file")
+        case "glob": String(localized: "Find files")
+        case "grep": String(localized: "Search files")
+        case "list": String(localized: "List files")
+        case "task": String(localized: "Subtask")
+        case "webfetch": String(localized: "Fetch webpage")
+        case "todoread": String(localized: "Read tasks")
+        case "todowrite": String(localized: "Update tasks")
+        case "question": String(localized: "Question")
+        case "lsp": String(localized: "Code intelligence")
         default:
             name
                 .replacingOccurrences(of: "_", with: " ")
                 .replacingOccurrences(of: "-", with: " ")
                 .capitalized
-                .trimmedNonEmpty ?? "Tool"
+                .trimmedNonEmpty ?? String(localized: "Tool")
         }
     }
 
     private static func statusLabel(for status: String) -> String {
         switch status.lowercased() {
-        case "pending": "Queued"
-        case "running": "Running"
-        case "completed": "Completed"
-        case "error": "Failed"
+        case "pending": String(localized: "Queued")
+        case "running": String(localized: "Running")
+        case "completed": String(localized: "Completed")
+        case "error": String(localized: "Failed")
         default: status.capitalized
         }
     }
@@ -153,11 +153,11 @@ struct OpenCodeToolPresentation: Equatable, Sendable {
         switch toolName.lowercased() {
         case "bash", "shell":
             guard let command = input["command"]?.stringValue?.trimmedNonEmpty else { return nil }
-            return (OpenCodeToolCode(title: "Command", text: command, language: .shell), ["command"])
+            return (OpenCodeToolCode(title: String(localized: "Command"), text: command, language: .shell), ["command"])
         case "write":
             guard let content = input["content"]?.stringValue, !content.isEmpty else { return nil }
             let code = OpenCodeToolCode(
-                title: "Content",
+                title: String(localized: "Content"),
                 text: content,
                 language: BYOTSyntaxLanguage(path: filePath(in: input)),
                 firstLineNumber: 1
@@ -168,17 +168,17 @@ struct OpenCodeToolPresentation: Equatable, Sendable {
                   !(old.isEmpty && new.isEmpty) else { return nil }
             let replacesAll = input["replaceAll"] == .bool(true)
             let code = OpenCodeToolCode(
-                title: "Change",
+                title: String(localized: "Change"),
                 text: editDiff(old: old, new: new),
                 language: .diff,
-                footnote: replacesAll ? "Replaces every occurrence" : nil
+                footnote: replacesAll ? String(localized: "Replaces every occurrence") : nil
             )
             return (code, ["oldString", "newString", "replaceAll"])
         case "apply_patch", "patch":
             guard let patch = (input["patchText"] ?? input["patch"])?.stringValue?.trimmedNonEmpty else {
                 return nil
             }
-            return (OpenCodeToolCode(title: "Patch", text: patch, language: .diff), ["patchText", "patch"])
+            return (OpenCodeToolCode(title: String(localized: "Patch"), text: patch, language: .diff), ["patchText", "patch"])
         default:
             return nil
         }
@@ -200,7 +200,7 @@ struct OpenCodeToolPresentation: Equatable, Sendable {
         guard toolName.lowercased() == "read", let output,
               let file = OpenCodeReadToolOutput(output) else { return nil }
         return OpenCodeToolCode(
-            title: "Output",
+            title: String(localized: "Output"),
             text: file.text,
             language: BYOTSyntaxLanguage(path: filePath(in: input) ?? file.path),
             firstLineNumber: file.firstLineNumber,

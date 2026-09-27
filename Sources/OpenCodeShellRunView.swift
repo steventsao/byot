@@ -79,7 +79,7 @@ struct OpenCodeShellRunView: View {
     private var problem: String? {
         switch run.status {
         case .notRun(let message), .unconfirmed(let message): message
-        case .timedOut: "OpenCode stopped the command when it ran too long."
+        case .timedOut: String(localized: "OpenCode stopped the command when it ran too long.")
         case .running, .exited, .stopped: nil
         }
     }
@@ -98,7 +98,7 @@ struct OpenCodeShellRunView: View {
             let shown = Self.visibleOutput(lines, expanded: showsFullOutput)
             VStack(alignment: .leading, spacing: BYOTBrand.Space.xs) {
                 if shown.hiddenLeadingLines > 0 {
-                    Text("\(shown.hiddenLeadingLines) earlier line\(shown.hiddenLeadingLines == 1 ? "" : "s") hidden")
+                    Text(shown.hiddenLeadingLines == 1 ? "1 earlier line hidden" : "\(shown.hiddenLeadingLines) earlier lines hidden")
                         .font(.cleanCaption)
                         .foregroundStyle(.secondary)
                 }

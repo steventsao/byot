@@ -304,7 +304,7 @@ private struct AgentCodeBlockView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Text(language?.lowercased() ?? "code")
+                Text(language?.lowercased() ?? String(localized: "code"))
                     .font(.cleanMono)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)

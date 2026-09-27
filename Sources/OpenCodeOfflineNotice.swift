@@ -8,8 +8,8 @@ struct OpenCodeOfflineNotice: View {
 
         var phrase: String {
             switch self {
-            case .sessions: "sessions saved"
-            case .transcript: "this conversation as saved"
+            case .sessions: String(localized: "sessions saved")
+            case .transcript: String(localized: "this conversation as saved")
             }
         }
     }
@@ -73,7 +73,7 @@ struct OpenCodeOfflineNotice: View {
 
     private var summary: String {
         let age = savedAt.formatted(.relative(presentation: .named))
-        let shown = "Showing \(subject.phrase) \(age)."
-        return isTruncated ? "\(shown) Earlier messages load once the server is back." : shown
+        let shown = String(localized: "Showing \(subject.phrase) \(age).")
+        return isTruncated ? String(localized: "\(shown) Earlier messages load once the server is back.") : shown
     }
 }

@@ -173,19 +173,19 @@ struct OpenCodeContextMeterPresentation: Equatable, Sendable {
             if let percent = context.percent, let limit = context.limit {
                 label = "\(percent)%"
                 fill = min(max(context.fraction ?? 0, 0), 1)
-                accessibilityValue = "\(percent) percent used, \(used) of "
-                    + "\(OpenCodeStepSummary.full(Double(limit), locale: locale)) tokens"
+                let total = OpenCodeStepSummary.full(Double(limit), locale: locale)
+                accessibilityValue = String(localized: "\(percent) percent used, \(used) of \(total) tokens")
             } else {
                 label = OpenCodeStepSummary.compact(context.used, locale: locale)
                 fill = 0
-                accessibilityValue = "\(used) tokens. The model's context size is unknown"
+                accessibilityValue = String(localized: "\(used) tokens. The model's context size is unknown")
             }
             level = context.level
         } else if usage.isCompacted {
-            label = "Compacted"
+            label = String(localized: "Compacted")
             fill = 0
             level = .normal
-            accessibilityValue = "Compacted. Usage updates after the next reply"
+            accessibilityValue = String(localized: "Compacted. Usage updates after the next reply")
         } else {
             return nil
         }
@@ -201,9 +201,9 @@ struct OpenCodeUsageRow: Identifiable, Equatable, Sendable {
     /// Input and output always appear; the rest only when a model used them.
     static func breakdown(_ tokens: OpenCodeTokenUsage, locale: Locale = .current) -> [OpenCodeUsageRow] {
         let rows: [(String, Double, Bool)] = [
-            ("Input", tokens.input, true), ("Output", tokens.output, true),
-            ("Reasoning", tokens.reasoning, false), ("Cache read", tokens.cacheRead, false),
-            ("Cache write", tokens.cacheWrite, false),
+            (String(localized: "Input"), tokens.input, true), (String(localized: "Output"), tokens.output, true),
+            (String(localized: "Reasoning"), tokens.reasoning, false), (String(localized: "Cache read"), tokens.cacheRead, false),
+            (String(localized: "Cache write"), tokens.cacheWrite, false),
         ]
         return rows.filter { $0.2 || $0.1 > 0 }.map {
             OpenCodeUsageRow(label: $0.0, value: OpenCodeStepSummary.full($0.1, locale: locale))

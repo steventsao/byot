@@ -95,7 +95,7 @@ struct OpenCodeSessionDetailsView: View {
                         .font(.cleanCaption).foregroundStyle(.secondary)
                 }
                 if let error = store.sessionDetailsError ?? store.actionErrorMessage {
-                    Section { ErrorBanner(message: error, actionTitle: "Refresh") {
+                    Section { ErrorBanner(message: error, actionTitle: String(localized: "Refresh")) {
                         Task { await store.refreshSessionFeatures(); await store.loadRelatedSessions() }
                     } }
                 }
@@ -159,7 +159,7 @@ struct OpenCodeTaskProgressView: View {
                                 .foregroundStyle(item.status == "completed" ? BYOTBrand.accent : .secondary)
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(item.content).font(.cleanBody)
-                                Text([item.statusLabel, item.priority.map { "\($0.capitalized) priority" }].compactMap { $0 }.joined(separator: " · "))
+                                Text([item.statusLabel, item.priority.map { String(localized: "\($0.capitalized) priority") }].compactMap { $0 }.joined(separator: " · "))
                                     .font(.cleanCaption).foregroundStyle(.secondary)
                             }
                         }

@@ -95,7 +95,7 @@ final class OpenCodeRemoteFileStore: ObservableObject {
     /// prompt referenced. Independent of the reader's published content.
     func data(path: String) async throws -> Data {
         let content = try await service.read(path: path)
-        guard let data = content.data, !data.isEmpty else { throw OpenCodeRemoteFileError.unsupported("file previews") }
+        guard let data = content.data, !data.isEmpty else { throw OpenCodeRemoteFileError.unsupported(String(localized: "file previews")) }
         return data
     }
 

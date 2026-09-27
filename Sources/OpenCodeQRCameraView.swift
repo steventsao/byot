@@ -42,8 +42,8 @@ final class OpenCodeQRCameraController: UIViewController, AVCaptureMetadataOutpu
         super.viewDidLoad()
         view.backgroundColor = .black
         view.isAccessibilityElement = true
-        view.accessibilityLabel = "Camera viewfinder"
-        view.accessibilityHint = "Point the camera at the pairing code on your computer."
+        view.accessibilityLabel = String(localized: "Camera viewfinder")
+        view.accessibilityHint = String(localized: "Point the camera at the pairing code on your computer.")
         guard configure() else {
             onFailure?()
             return

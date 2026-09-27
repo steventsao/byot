@@ -43,7 +43,7 @@ enum OpenCodeV2Normalization {
                 ?? "",
             parentID: object["parentID"]?.stringValue,
             summary: nil,
-            title: object["title"]?.stringValue ?? "Untitled session",
+            title: object["title"]?.stringValue ?? String(localized: "Untitled session"),
             agent: object["agent"]?.stringValue,
             version: object["version"]?.stringValue ?? "2",
             time: OpenCodeSessionTime(

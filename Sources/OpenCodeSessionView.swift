@@ -46,7 +46,7 @@ struct OpenCodeSessionView: View {
             guard next.id != session.id else { return }
             didReplaceSession = true
             session = next
-            AccessibilityNotification.Announcement("Showing \(OpenCodeSubagentTitle.displayTitle(of: next))").post()
+            AccessibilityNotification.Announcement(String(localized: "Showing \(OpenCodeSubagentTitle.displayTitle(of: next))")).post()
         }
         .id(session.id)
     }
@@ -156,7 +156,7 @@ struct OpenCodeSessionScreen: View {
                     } else if let errorMessage = store.errorMessage, hasConversationContent {
                         ErrorBanner(
                             message: errorMessage,
-                            actionTitle: "Refresh",
+                            actionTitle: String(localized: "Refresh"),
                             action: refreshSession
                         )
                     }
@@ -166,7 +166,7 @@ struct OpenCodeSessionScreen: View {
                        eventErrorMessage != store.errorMessage {
                         ErrorBanner(
                             message: eventErrorMessage,
-                            actionTitle: "Refresh",
+                            actionTitle: String(localized: "Refresh"),
                             action: refreshSession
                         )
                     }
@@ -176,7 +176,7 @@ struct OpenCodeSessionScreen: View {
                        actionErrorMessage != store.eventErrorMessage {
                         ErrorBanner(
                             message: actionErrorMessage,
-                            actionTitle: "Refresh",
+                            actionTitle: String(localized: "Refresh"),
                             action: refreshSession
                         )
                     }
@@ -238,8 +238,8 @@ struct OpenCodeSessionScreen: View {
 
                     if store.canRetryUnansweredPrompt {
                         ErrorBanner(
-                            message: "OpenCode returned to idle without a reply. Choose another model if needed, then retry the last message.",
-                            actionTitle: "Retry last message"
+                            message: String(localized: "OpenCode returned to idle without a reply. Choose another model if needed, then retry the last message."),
+                            actionTitle: String(localized: "Retry last message")
                         ) {
                             Task { await store.retryUnansweredPrompt() }
                         }
@@ -274,7 +274,7 @@ struct OpenCodeSessionScreen: View {
                     if store.isLoading && store.messages.isEmpty {
                         BYOTActivityView(
                             .loading,
-                            title: "Loading transcript",
+                            title: String(localized: "Loading transcript"),
                             layout: .blocking
                         )
                             .frame(maxWidth: .infinity)
@@ -379,7 +379,7 @@ struct OpenCodeSessionScreen: View {
             .onChange(of: store.pendingActionCount) { oldValue, newValue in
                 guard newValue > oldValue else { return }
                 AccessibilityNotification.Announcement(
-                    "Response required"
+                    String(localized: "Response required")
                 ).post()
                 scrollToConversationBottomIfNeeded(proxy)
             }
@@ -390,13 +390,13 @@ struct OpenCodeSessionScreen: View {
                 switch newValue.phase {
                 case .sending: break
                 case .failed(let message):
-                    AccessibilityNotification.Announcement("Command didn’t run. \(message)").post()
+                    AccessibilityNotification.Announcement(String(localized: "Command didn’t run. \(message)")).post()
                 case .unconfirmed:
-                    AccessibilityNotification.Announcement("Command result unconfirmed").post()
+                    AccessibilityNotification.Announcement(String(localized: "Command result unconfirmed")).post()
                 }
             }
             .onChange(of: store.queueAnnouncementRevision) { _, _ in
-                AccessibilityNotification.Announcement("Message queued").post()
+                AccessibilityNotification.Announcement(String(localized: "Message queued")).post()
                 proxy.scrollTo("opencode-queued-prompts", anchor: .bottom)
             }
         }
@@ -654,9 +654,9 @@ struct OpenCodeSessionScreen: View {
                     unavailableReason: store.actionUnavailableReason(action),
                     run: { Task { await store.performSessionAction(action) } })
             } + [
-                OpenCodeComposerAction(name: "export", title: "Export transcript as Markdown",
+                OpenCodeComposerAction(name: "export", title: String(localized: "Export transcript as Markdown"),
                     unavailableReason: store.transcriptUnavailableReason, run: { isShowingExport = true }),
-                OpenCodeComposerAction(name: "copy", title: "Copy transcript as Markdown",
+                OpenCodeComposerAction(name: "copy", title: String(localized: "Copy transcript as Markdown"),
                     unavailableReason: store.transcriptUnavailableReason, run: copyTranscript),
             ],
             restoredMessage: store.restoredPrompt?.message,
@@ -790,7 +790,7 @@ struct OpenCodeSessionScreen: View {
         BYOTLiveActivityController.shared.drive(
             BYOTTurnActivityAttributes(
                 serverID: profile.id, serverName: serverName, sessionID: session.id,
-                sessionTitle: session.title.trimmedWidgetText ?? "Untitled session",
+                sessionTitle: session.title.trimmedWidgetText ?? String(localized: "Untitled session"),
                 projectName: URL(fileURLWithPath: session.directory).lastPathComponent,
                 directory: session.directory, workspace: session.workspaceID),
             snapshot: turn, canStart: scenePhase == .active)
@@ -830,7 +830,7 @@ struct OpenCodeSessionScreen: View {
         .foregroundStyle(.secondary)
         .lineLimit(2)
         .fixedSize(horizontal: false, vertical: true)
-        let accessibilityLabel = "Server \(serverName), project \(store.directory)" + (branch.map { ", branch \($0)" } ?? "")
+        let accessibilityLabel = String(localized: "Server \(serverName), project \(store.directory)") + (branch.map { String(localized: ", branch \($0)") } ?? "")
         if canOpenStatus {
             // The padding grows the tap target to 44pt without making the header taller.
             Button(action: openStatus) {
@@ -928,7 +928,7 @@ struct OpenCodeSessionScreen: View {
     private var sessionActivityTitle: String? {
         switch store.status {
         case .retry(let attempt, _, _) where store.pendingActionCount == 0:
-            "Retrying · attempt \(attempt)"
+            String(localized: "Retrying · attempt \(attempt)")
         default:
             nil
         }
@@ -1073,7 +1073,7 @@ private struct OpenCodeMessageView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(isUser ? "You" : message.info.agent ?? "OpenCode")
+        .accessibilityLabel(isUser ? String(localized: "You") : message.info.agent ?? "OpenCode")
     }
 }
 
@@ -1125,7 +1125,7 @@ private struct OpenCodePartView: View {
             if let task = OpenCodeSubagentTask(part: part) {
                 OpenCodeSubagentTaskCard(task: task)
             } else if let state = part.state {
-                OpenCodeToolView(name: part.tool ?? "Tool", state: state)
+                OpenCodeToolView(name: part.tool ?? String(localized: "Tool"), state: state)
             }
         case "file":
             OpenCodeRemoteFilePartView(part: part)
@@ -1135,7 +1135,7 @@ private struct OpenCodePartView: View {
             }
         case "subtask":
             VStack(alignment: .leading, spacing: 4) {
-                Label(part.description ?? "Subtask", systemImage: "arrow.triangle.branch")
+                Label(part.description ?? String(localized: "Subtask"), systemImage: "arrow.triangle.branch")
                     .font(.cleanCaptionBold)
                 if let agent = part.agent {
                     Text(agent)

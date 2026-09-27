@@ -63,8 +63,8 @@ struct AgentSelectableText: UIViewRepresentable {
         view.backgroundColor = .systemBackground
         view.textContainerInset = UIEdgeInsets(top: 16, left: 16, bottom: 24, right: 16)
         view.accessibilityIdentifier = "response-selection-text"
-        view.accessibilityLabel = "Response text"
-        view.accessibilityHint = "Touch and hold a word, then adjust the selection handles to copy part of the response."
+        view.accessibilityLabel = String(localized: "Response text")
+        view.accessibilityHint = String(localized: "Touch and hold a word, then adjust the selection handles to copy part of the response.")
         return view
     }
 }

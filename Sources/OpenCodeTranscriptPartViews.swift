@@ -253,7 +253,7 @@ struct OpenCodePatchPartView: View {
             }
             .padding(.top, 2)
         } label: {
-            Text("Changed \(resolved.count) file\(resolved.count == 1 ? "" : "s")")
+            Text(resolved.count == 1 ? "Changed 1 file" : "Changed \(resolved.count) files")
                 .font(.cleanMono)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("transcript-patch")

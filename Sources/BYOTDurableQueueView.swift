@@ -118,7 +118,7 @@ struct BYOTQueueSummary: View {
                 }.accessibilityIdentifier("queue-summary")
                 ForEach(queue.pending.prefix(3)) { entry in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.prompt.text.isEmpty ? "Attachments" : entry.prompt.text).lineLimit(2)
+                        Text(entry.prompt.text.isEmpty ? String(localized: "Attachments") : entry.prompt.text).lineLimit(2)
                         Text(entry.title).font(.caption).foregroundStyle(.secondary)
                     }
                 }

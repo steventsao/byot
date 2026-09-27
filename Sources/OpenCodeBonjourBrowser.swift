@@ -123,7 +123,7 @@ final class OpenCodeBonjourBrowser: NSObject,
         guard callbackGeneration.accepts(browser: browser) else { return }
         emptyWindowTask?.cancel()
         emptyWindowTask = nil
-        onUpdate?(.failure("byot can’t search this network. Allow Local Network access for byot in Settings, then try again."))
+        onUpdate?(.failure(String(localized: "byot can’t search this network. Allow Local Network access for byot in Settings, then try again.")))
     }
 
     func netServiceDidResolveAddress(_ sender: NetService) {

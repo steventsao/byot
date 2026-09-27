@@ -24,10 +24,10 @@ extension OpenCodeSessionStore {
     }
 
     var agentsSetupUnavailableReason: String? {
-        guard supportsAgentsSetup else { return "This server does not offer AGENTS.md setup." }
-        guard canSubmitPrompt else { return "Wait for the session to connect." }
+        guard supportsAgentsSetup else { return String(localized: "This server does not offer AGENTS.md setup.") }
+        guard canSubmitPrompt else { return String(localized: "Wait for the session to connect.") }
         // Sending now would discard the undone turns without asking.
-        if revertMessageID != nil { return "Redo or send your revised prompt first." }
+        if revertMessageID != nil { return String(localized: "Redo or send your revised prompt first.") }
         return nil
     }
 
@@ -59,7 +59,7 @@ struct OpenCodeAgentsSetupAlert: ViewModifier {
             }
             .accessibilityIdentifier("agents-setup-start")
         } message: {
-            Text("OpenCode studies this project, then creates or updates AGENTS.md with guidance for future sessions. It runs as a turn with \(store.selectedModel?.modelName ?? "the session’s model").")
+            Text("OpenCode studies this project, then creates or updates AGENTS.md with guidance for future sessions. It runs as a turn with \(store.selectedModel?.modelName ?? String(localized: "the session’s model")).")
         }
     }
 }

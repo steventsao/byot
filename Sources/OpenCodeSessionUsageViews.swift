@@ -159,29 +159,30 @@ struct OpenCodeSessionUsageSections: View {
     }
 
     private var contextHeadline: String {
-        guard let context = usage.context else { return "Context compacted" }
-        if let percent = context.percent { return "\(percent)% of context used" }
-        return "\(OpenCodeStepSummary.full(context.used, locale: .current)) tokens in context"
+        guard let context = usage.context else { return String(localized: "Context compacted") }
+        if let percent = context.percent { return String(localized: "\(percent)% of context used") }
+        return String(localized: "\(OpenCodeStepSummary.full(context.used, locale: .current)) tokens in context")
     }
 
     private var contextDetail: String? {
-        guard let context = usage.context else { return "Usage updates after the next reply." }
+        guard let context = usage.context else { return String(localized: "Usage updates after the next reply.") }
         guard let limit = context.limit else { return nil }
-        return "\(OpenCodeStepSummary.full(context.used, locale: .current)) of "
-            + "\(OpenCodeStepSummary.full(Double(limit), locale: .current)) tokens"
+        let used = OpenCodeStepSummary.full(context.used, locale: .current)
+        let total = OpenCodeStepSummary.full(Double(limit), locale: .current)
+        return String(localized: "\(used) of \(total) tokens")
     }
 
     private var contextFooter: String {
         guard let context = usage.context else {
-            return "Earlier messages were summarized to free the context window."
+            return String(localized: "Earlier messages were summarized to free the context window.")
         }
         if context.limit == nil {
-            return "The server's model catalog doesn't list a context size for this model."
+            return String(localized: "The server's model catalog doesn't list a context size for this model.")
         }
         if context.level != .normal {
-            return "OpenCode compacts the conversation automatically when the context is nearly full. You can also compact it yourself from the actions menu."
+            return String(localized: "OpenCode compacts the conversation automatically when the context is nearly full. You can also compact it yourself from the actions menu.")
         }
-        return "The latest reply's input, output, reasoning and cached tokens, measured against the model's context window."
+        return String(localized: "The latest reply's input, output, reasoning and cached tokens, measured against the model's context window.")
     }
 }
 

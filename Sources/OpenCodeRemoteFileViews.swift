@@ -312,7 +312,7 @@ struct OpenCodeRemoteFileReader: View {
         }
         .buttonStyle(.plain)
         .disabled(files.capabilities?.lineSelection != true)
-        .accessibilityLabel(files.capabilities?.lineSelection == true ? "Line \(number): \(text)" : text)
+        .accessibilityLabel(files.capabilities?.lineSelection == true ? String(localized: "Line \(String(number)): \(text)") : text)
         .accessibilityIdentifier("remote-file-line-\(number)")
         .accessibilityAddTraits(isSelected(number) ? [.isSelected] : [])
     }

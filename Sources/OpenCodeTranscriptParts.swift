@@ -71,20 +71,20 @@ struct OpenCodeCompactionPresentation: Equatable, Sendable {
     let accessibilityLabel: String
 
     init(part: OpenCodePart) {
-        title = "Context compacted"
+        title = String(localized: "Context compacted")
         switch (part.auto, part.overflow) {
         case (true?, true?):
-            detail = "Automatic · context limit reached"
-            accessibilityLabel = "Context compacted automatically because the context limit was reached"
+            detail = String(localized: "Automatic · context limit reached")
+            accessibilityLabel = String(localized: "Context compacted automatically because the context limit was reached")
         case (true?, _):
-            detail = "Automatic"
-            accessibilityLabel = "Context compacted automatically"
+            detail = String(localized: "Automatic")
+            accessibilityLabel = String(localized: "Context compacted automatically")
         case (false?, _):
-            detail = "Requested"
-            accessibilityLabel = "Context compacted on request"
+            detail = String(localized: "Requested")
+            accessibilityLabel = String(localized: "Context compacted on request")
         default:
             detail = nil
-            accessibilityLabel = "Context compacted"
+            accessibilityLabel = String(localized: "Context compacted")
         }
         summary = part.text?.trimmedNonEmpty
     }
@@ -106,10 +106,12 @@ struct OpenCodeSyntheticContextPresentation: Equatable, Sendable {
 
     init?(part: OpenCodePart) {
         guard part.type == "text", part.synthetic == true, let text = part.text?.trimmedNonEmpty else { return nil }
-        title = "Added context"
+        title = String(localized: "Added context")
         self.text = text.count > Self.characterLimit ? String(text.prefix(Self.characterLimit)) + "\n…" : text
         let lines = text.split(whereSeparator: \.isNewline).count
-        accessibilityLabel = "Context OpenCode added for the model, \(lines) line\(lines == 1 ? "" : "s")"
+        accessibilityLabel = lines == 1
+            ? String(localized: "Context OpenCode added for the model, 1 line")
+            : String(localized: "Context OpenCode added for the model, \(lines) lines")
     }
 }
 
@@ -121,13 +123,14 @@ struct OpenCodeRetryPresentation: Equatable, Sendable {
     let accessibilityLabel: String
 
     init(part: OpenCodePart) {
-        let attempt = part.attempt.map { " · attempt \($0)" } ?? ""
-        title = "Retried after an error" + attempt
+        title = part.attempt.map { String(localized: "Retried after an error · attempt \($0)") }
+            ?? String(localized: "Retried after an error")
         let status = part.error?.data?["statusCode"]?.numberValue.map { "HTTP \(Int($0))" }
         let message = part.error.map(\.displayMessage)?.trimmedNonEmpty
         detail = [status, message].compactMap { $0 }.joined(separator: " · ").trimmedNonEmpty
         accessibilityLabel = [
-            part.attempt.map { "Retried after an error, attempt \($0)" } ?? "Retried after an error",
+            part.attempt.map { String(localized: "Retried after an error, attempt \($0)") }
+                ?? String(localized: "Retried after an error"),
             detail,
         ].compactMap { $0 }.joined(separator: ". ")
     }
@@ -147,15 +150,15 @@ struct OpenCodeSwitchPresentation: Equatable, Sendable {
         case "agent" where inPrompt:
             symbol = "at"
             title = name
-            accessibilityLabel = "Sent to the \(name) agent"
+            accessibilityLabel = String(localized: "Sent to the \(name) agent")
         case "agent":
             symbol = "person.crop.circle"
-            title = "Switched to \(name)"
-            accessibilityLabel = "Switched to the \(name) agent"
+            title = String(localized: "Switched to \(name)")
+            accessibilityLabel = String(localized: "Switched to the \(name) agent")
         case "model":
             symbol = "cpu"
-            title = "Switched to \(name)"
-            accessibilityLabel = "Switched to model \(name)"
+            title = String(localized: "Switched to \(name)")
+            accessibilityLabel = String(localized: "Switched to model \(name)")
         default:
             return nil
         }
@@ -182,7 +185,7 @@ struct OpenCodeStepSummary: Equatable, Sendable {
     /// shows how much of the window the step filled.
     init?(part: OpenCodePart, contextLimit: Int? = nil, locale: Locale = .current) {
         guard part.type == "step-finish" else { return nil }
-        self.init(kind: "Step", tokens: part.tokens, cost: part.cost, reason: part.reason,
+        self.init(kind: String(localized: "Step"), tokens: part.tokens, cost: part.cost, reason: part.reason,
                   contextLimit: contextLimit, locale: locale)
     }
 
@@ -192,7 +195,7 @@ struct OpenCodeStepSummary: Equatable, Sendable {
         guard message.info.role == "assistant",
               !message.parts.contains(where: { $0.type == "step-finish" && Self(part: $0) != nil })
         else { return nil }
-        self.init(kind: "Reply", tokens: message.info.tokens, cost: message.info.cost, reason: message.info.finish,
+        self.init(kind: String(localized: "Reply"), tokens: message.info.tokens, cost: message.info.cost, reason: message.info.finish,
                   contextLimit: contextLimit, locale: locale)
     }
 
@@ -205,32 +208,39 @@ struct OpenCodeStepSummary: Equatable, Sendable {
         var spoken: [String] = []
         var details: [Detail] = []
         if let tokens, tokens.total > 0 {
-            headline.append("\(Self.compact(tokens.total, locale: locale)) tokens")
-            spoken.append("\(Self.full(tokens.total, locale: locale)) tokens")
-            let rows: [(String, Double)] = [
-                ("Input", tokens.input), ("Output", tokens.output), ("Reasoning", tokens.reasoning),
-                ("Cache read", tokens.cacheRead), ("Cache write", tokens.cacheWrite),
+            let compact = Self.compact(tokens.total, locale: locale)
+            let full = Self.full(tokens.total, locale: locale)
+            headline.append(String(localized: "\(compact) tokens"))
+            spoken.append(String(localized: "\(full) tokens"))
+            // Input and output always show; the rest only when the step used them.
+            let rows: [(String, Double, Bool)] = [
+                (String(localized: "Input"), tokens.input, true), (String(localized: "Output"), tokens.output, true),
+                (String(localized: "Reasoning"), tokens.reasoning, false),
+                (String(localized: "Cache read"), tokens.cacheRead, false),
+                (String(localized: "Cache write"), tokens.cacheWrite, false),
             ]
-            for (label, value) in rows where value > 0 || label == "Input" || label == "Output" {
+            for (label, value, alwaysShown) in rows where value > 0 || alwaysShown {
                 details.append(Detail(label: label, value: Self.full(value, locale: locale)))
             }
             if let contextLimit, contextLimit > 0, tokens.contextTokens > 0 {
                 let percent = OpenCodeContextUsage.percent(tokens.contextTokens / Double(contextLimit))
-                details.append(Detail(label: "Context",
-                    value: "\(percent)% of \(Self.compact(Double(contextLimit), locale: locale))"))
+                let window = Self.compact(Double(contextLimit), locale: locale)
+                details.append(Detail(label: String(localized: "Context"),
+                    value: String(localized: "\(percent)% of \(window)")))
             }
         }
         if cost > 0 {
             let formatted = Self.cost(cost, locale: locale)
             headline.append(formatted)
-            spoken.append("cost \(formatted)")
-            details.append(Detail(label: "Cost", value: formatted))
+            spoken.append(String(localized: "cost \(formatted)"))
+            details.append(Detail(label: String(localized: "Cost"), value: formatted))
         }
         outcome = Self.outcome(reason)
-        if let outcome { details.append(Detail(label: "Finish", value: outcome)) }
+        if let outcome { details.append(Detail(label: String(localized: "Finish"), value: outcome)) }
         title = ([kind] + headline).joined(separator: " · ")
         self.details = details
-        accessibilityLabel = (["\(kind) used " + spoken.joined(separator: ", ")] + [outcome].compactMap { $0 })
+        let used = spoken.joined(separator: ", ")
+        accessibilityLabel = ([String(localized: "\(kind) used \(used)")] + [outcome].compactMap { $0 })
             .joined(separator: ". ")
     }
 
@@ -238,9 +248,9 @@ struct OpenCodeStepSummary: Equatable, Sendable {
         guard let reason = reason?.trimmedNonEmpty?.lowercased() else { return nil }
         switch reason {
         case "stop", "tool-calls", "tool_calls", "unknown", "other": return nil
-        case "length", "max-tokens", "max_tokens": return "Stopped at the output limit"
-        case "content-filter", "content_filter": return "Stopped by the content filter"
-        case "error": return "Ended with an error"
+        case "length", "max-tokens", "max_tokens": return String(localized: "Stopped at the output limit")
+        case "content-filter", "content_filter": return String(localized: "Stopped by the content filter")
+        case "error": return String(localized: "Ended with an error")
         default:
             let words = reason.replacingOccurrences(of: "[-_]+", with: " ", options: .regularExpression)
             return words.prefix(1).uppercased() + words.dropFirst()
@@ -272,8 +282,8 @@ struct OpenCodeSnapshotPresentation: Equatable, Sendable {
     init?(part: OpenCodePart) {
         guard let hash = part.snapshot?.trimmedNonEmpty else { return nil }
         let short = String(hash.prefix(7))
-        title = "Checkpoint · \(short)"
-        accessibilityLabel = "Workspace checkpoint \(short)"
+        title = String(localized: "Checkpoint · \(short)")
+        accessibilityLabel = String(localized: "Workspace checkpoint \(short)")
     }
 }
 
@@ -360,7 +370,7 @@ enum OpenCodeInlineImage: Equatable, Sendable {
            let last = URLComponents(string: url)?.path.split(separator: "/").last {
             return String(last)
         }
-        return "Image"
+        return String(localized: "Image")
     }
 }
 

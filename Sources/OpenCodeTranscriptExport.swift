@@ -212,6 +212,6 @@ extension OpenCodeSessionStore {
     }
 
     var transcriptUnavailableReason: String? {
-        messages.isEmpty ? "Nothing to export yet." : nil
+        messages.isEmpty ? String(localized: "Nothing to export yet.") : nil
     }
 }

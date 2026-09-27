@@ -74,7 +74,7 @@ final class OpenCodeInlineImageLoader {
 enum OpenCodeInlineImageError: LocalizedError {
     case undecodable
 
-    var errorDescription: String? { "This image couldn’t be displayed." }
+    var errorDescription: String? { String(localized: "This image couldn’t be displayed.") }
 }
 
 /// Full-screen, zoomable viewer for a message's images, paged when there
@@ -136,8 +136,8 @@ struct OpenCodeImageViewer: View {
     }
 
     private var title: String {
-        guard let current else { return "Image" }
-        return items.count > 1 ? "\(index + 1) of \(items.count)" : current.name
+        guard let current else { return String(localized: "Image") }
+        return items.count > 1 ? String(localized: "\(index + 1) of \(items.count)") : current.name
     }
 }
 

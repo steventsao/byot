@@ -25,9 +25,9 @@ enum OpenCodeSessionSort: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .recent: "Recent activity"
-        case .status: "Session status"
-        case .name: "Name"
+        case .recent: String(localized: "Recent activity")
+        case .status: String(localized: "Session status")
+        case .name: String(localized: "Name")
         }
     }
 
@@ -336,7 +336,7 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
         }
         switch statuses {
         case .success(let statuses): loaded.group.statuses = statuses.merging(worktrees.statuses) { current, _ in current }
-        case .failure(let error): errors.append("Status unavailable: \(error.localizedDescription)")
+        case .failure(let error): errors.append(String(localized: "Status unavailable: \(error.localizedDescription)"))
         }
         // Pending input is an enhancement: without a snapshot the list keeps
         // what live events told it and cannot flag anything new.

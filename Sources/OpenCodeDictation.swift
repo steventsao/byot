@@ -125,17 +125,17 @@ enum OpenCodeDictationBlock: String, Identifiable, Equatable {
 
     var title: String {
         switch self {
-        case .microphoneDenied: "Allow Microphone Access"
-        case .speechDenied: "Allow Speech Recognition"
-        case .restricted: "Dictation Unavailable"
+        case .microphoneDenied: String(localized: "Allow Microphone Access")
+        case .speechDenied: String(localized: "Allow Speech Recognition")
+        case .restricted: String(localized: "Dictation Unavailable")
         }
     }
 
     var message: String {
         switch self {
-        case .microphoneDenied: "To dictate messages, turn on Microphone for byot in Settings."
-        case .speechDenied: "To turn your speech into message text, turn on Speech Recognition for byot in Settings."
-        case .restricted: "Speech recognition or the microphone is restricted on this device."
+        case .microphoneDenied: String(localized: "To dictate messages, turn on Microphone for byot in Settings.")
+        case .speechDenied: String(localized: "To turn your speech into message text, turn on Speech Recognition for byot in Settings.")
+        case .restricted: String(localized: "Speech recognition or the microphone is restricted on this device.")
         }
     }
 
@@ -181,13 +181,13 @@ enum OpenCodeDictationFailure: Error, Equatable, Sendable {
     /// The composer's inline note, or nil when there is nothing worth saying.
     func message(capturedSpeech: Bool) -> String? {
         switch self {
-        case .noSpeech: capturedSpeech ? nil : "Didn’t hear anything. Tap the microphone and try again."
+        case .noSpeech: capturedSpeech ? nil : String(localized: "Didn’t hear anything. Tap the microphone and try again.")
         case .canceled: nil
-        case .unavailable: "Speech recognition isn’t available right now. Check your connection and try again."
-        case .noMicrophone: "No microphone is available. End any call or recording using it, then try again."
+        case .unavailable: String(localized: "Speech recognition isn’t available right now. Check your connection and try again.")
+        case .noMicrophone: String(localized: "No microphone is available. End any call or recording using it, then try again.")
         case .failed: capturedSpeech
-            ? "Dictation stopped early. The words so far are in your message."
-            : "Dictation couldn’t start. Try again."
+            ? String(localized: "Dictation stopped early. The words so far are in your message.")
+            : String(localized: "Dictation couldn’t start. Try again.")
         }
     }
 }
@@ -484,7 +484,7 @@ final class OpenCodeDictationController: ObservableObject {
     /// so listening starts once a short cue has been spoken.
     static func letVoiceOverFinish() async {
         guard UIAccessibility.isVoiceOverRunning else { return }
-        AccessibilityNotification.Announcement("Listening").post()
+        AccessibilityNotification.Announcement(String(localized: "Listening")).post()
         try? await Task.sleep(for: .milliseconds(900))
     }
 }

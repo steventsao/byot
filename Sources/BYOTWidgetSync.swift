@@ -81,7 +81,7 @@ final class BYOTWidgetSync {
                                 state: BYOTWidgetSessionState) -> BYOTWidgetSession {
         BYOTWidgetSession(
             serverID: profile.id, serverName: profile.name, sessionID: session.id,
-            title: session.title.trimmedWidgetText ?? "Untitled session",
+            title: session.title.trimmedWidgetText ?? String(localized: "Untitled session"),
             projectName: URL(fileURLWithPath: session.directory).lastPathComponent,
             directory: session.directory, workspace: session.workspaceID, state: state,
             updatedAt: Date(timeIntervalSince1970: session.time.updated / 1000))

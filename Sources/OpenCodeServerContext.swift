@@ -104,12 +104,12 @@ struct OpenCodeMCPServer: Identifiable, Equatable, Sendable {
 
         var title: String {
             switch self {
-            case .connected: "Connected"
-            case .pending: "Connecting…"
-            case .disabled: "Disabled"
-            case .failed: "Failed"
-            case .needsAuthentication: "Needs sign-in"
-            case .needsClientRegistration: "Needs client registration"
+            case .connected: String(localized: "Connected")
+            case .pending: String(localized: "Connecting…")
+            case .disabled: String(localized: "Disabled")
+            case .failed: String(localized: "Failed")
+            case .needsAuthentication: String(localized: "Needs sign-in")
+            case .needsClientRegistration: String(localized: "Needs client registration")
             case .other(let raw): raw.replacingOccurrences(of: "_", with: " ").capitalized
             }
         }
@@ -177,7 +177,7 @@ struct OpenCodeLSPServer: Decodable, Identifiable, Equatable, Sendable {
     func displayRoot(relativeTo directory: String) -> String {
         let root = root.hasSuffix("/") && root.count > 1 ? String(root.dropLast()) : root
         let base = directory.hasSuffix("/") && directory.count > 1 ? String(directory.dropLast()) : directory
-        if root.isEmpty || root == base { return "Project root" }
+        if root.isEmpty || root == base { return String(localized: "Project root") }
         if root.hasPrefix(base + "/") { return String(root.dropFirst(base.count + 1)) }
         return root
     }
@@ -242,10 +242,10 @@ struct OpenCodeServerConfiguration: Equatable, Sendable {
 
             var title: String {
                 switch self {
-                case .document: "Config file"
-                case .directory: "Config directory"
-                case .agents: "Agents directory"
-                case .claude: "Claude directory"
+                case .document: String(localized: "Config file")
+                case .directory: String(localized: "Config directory")
+                case .agents: String(localized: "Agents directory")
+                case .claude: String(localized: "Claude directory")
                 }
             }
         }
@@ -282,7 +282,7 @@ struct OpenCodeServerConfiguration: Equatable, Sendable {
     static func v1(_ object: [String: OpenCodeJSONValue]) -> Self {
         var configuration = Self()
         configuration.apply(object, v2: false)
-        configuration.documents = [Document(title: "Effective configuration", path: nil,
+        configuration.documents = [Document(title: String(localized: "Effective configuration"), path: nil,
                                             json: redacted(.object(object)), index: 0)]
         return configuration
     }
@@ -298,7 +298,7 @@ struct OpenCodeServerConfiguration: Equatable, Sendable {
             guard kind == .document, let info = object["info"]?.objectValue else { continue }
             configuration.apply(info, v2: true)
             configuration.documents.append(Document(
-                title: path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Configuration",
+                title: path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? String(localized: "Configuration"),
                 path: path, json: redacted(.object(info)), index: index))
         }
         return configuration
@@ -342,9 +342,9 @@ struct OpenCodeServerConfiguration: Equatable, Sendable {
 
     static func shareTitle(_ raw: String) -> String {
         switch raw {
-        case "manual": "Manual"
-        case "auto": "Automatic"
-        case "disabled": "Off"
+        case "manual": String(localized: "Manual")
+        case "auto": String(localized: "Automatic")
+        case "disabled": String(localized: "Off")
         default: raw.capitalized
         }
     }
@@ -352,9 +352,9 @@ struct OpenCodeServerConfiguration: Equatable, Sendable {
     /// v1 `autoupdate` is a boolean or `"notify"`; v2 `update` is `disable|notify|auto`.
     static func updatesTitle(_ value: OpenCodeJSONValue?) -> String? {
         switch value {
-        case .bool(true), .string("auto"): "Automatic"
-        case .bool(false), .string("disable"): "Off"
-        case .string("notify"): "Notify only"
+        case .bool(true), .string("auto"): String(localized: "Automatic")
+        case .bool(false), .string("disable"): String(localized: "Off")
+        case .string("notify"): String(localized: "Notify only")
         case .string(let raw): raw.trimmedNonEmpty?.capitalized
         default: nil
         }
@@ -524,8 +524,8 @@ enum OpenCodeServerContextError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unsupported: "This OpenCode server doesn’t provide this information."
-        case .wrongLocation: "The server answered for a different project. Refresh and try again."
+        case .unsupported: String(localized: "This OpenCode server doesn’t provide this information.")
+        case .wrongLocation: String(localized: "The server answered for a different project. Refresh and try again.")
         }
     }
 }

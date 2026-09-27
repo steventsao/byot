@@ -44,6 +44,6 @@ struct OpenCodeSessionSharePresentation: Equatable, Sendable {
         isSupported && isPublished && !isUpdating
     }
 
-    var menuTitle: String { isPublished ? "Share link" : "Publish on web" }
+    var menuTitle: String { isPublished ? String(localized: "Share link") : String(localized: "Publish on web") }
     var menuSymbol: String { isPublished ? "square.and.arrow.up" : "globe" }
 }

@@ -87,9 +87,9 @@ struct OpenCodeDictationStatusView: View {
 
     private var title: String {
         switch dictation.phase {
-        case .preparing: "Starting…"
-        case .finishing: "Finishing…"
-        case .idle, .listening: "Listening…"
+        case .preparing: String(localized: "Starting…")
+        case .finishing: String(localized: "Finishing…")
+        case .idle, .listening: String(localized: "Listening…")
         }
     }
 

@@ -32,17 +32,17 @@ enum BYOTIntentError: LocalizedError, Equatable, Sendable {
 
     var errorDescription: String? {
         switch self {
-        case .noServers: "Add an OpenCode server in byot first."
-        case .serverRemoved: "That server was removed from byot. Add it again, then try again."
-        case .emptyPrompt: "Tell OpenCode what to do."
-        case .promptTooLong: "That prompt is too long to send from Siri. Open byot to send it."
-        case .needsProject: "Choose a project for OpenCode to work in."
-        case .noProjects(let server): "\(server) has no projects yet. Open byot to start a session in a directory."
-        case .projectOnOtherServer: "That project is on a different server. Choose the server again."
-        case .unsupported(let server, let detail): "byot can’t start sessions on \(server). \(detail)"
-        case .unreachable(let server): "Couldn’t reach \(server). Check that it’s running and connected, then try again."
-        case .failed(let server, let detail): "\(server) returned an error. \(detail)"
-        case .notSent(let server, let detail): "\(server) didn’t accept the prompt. \(detail)"
+        case .noServers: String(localized: "Add an OpenCode server in byot first.")
+        case .serverRemoved: String(localized: "That server was removed from byot. Add it again, then try again.")
+        case .emptyPrompt: String(localized: "Tell OpenCode what to do.")
+        case .promptTooLong: String(localized: "That prompt is too long to send from Siri. Open byot to send it.")
+        case .needsProject: String(localized: "Choose a project for OpenCode to work in.")
+        case .noProjects(let server): String(localized: "\(server) has no projects yet. Open byot to start a session in a directory.")
+        case .projectOnOtherServer: String(localized: "That project is on a different server. Choose the server again.")
+        case .unsupported(let server, let detail): String(localized: "byot can’t start sessions on \(server). \(detail)")
+        case .unreachable(let server): String(localized: "Couldn’t reach \(server). Check that it’s running and connected, then try again.")
+        case .failed(let server, let detail): String(localized: "\(server) returned an error. \(detail)")
+        case .notSent(let server, let detail): String(localized: "\(server) didn’t accept the prompt. \(detail)")
         }
     }
 }
@@ -120,7 +120,7 @@ struct BYOTAskResult: Equatable, Sendable {
     var session: BYOTIntentSession
 
     var dialog: String {
-        "Sent. OpenCode is working in \(session.projectName) on \(session.serverName)."
+        String(localized: "Sent. OpenCode is working in \(session.projectName) on \(session.serverName).")
     }
 }
 
@@ -138,36 +138,34 @@ struct BYOTAttentionReport: Equatable, Sendable {
     var dialog: String {
         var sentences: [String] = []
         if checkedServers == 0, !unreachable.isEmpty {
-            return "Couldn’t reach \(Self.list(unreachable)). Check that byot’s servers are running, then try again."
+            return String(localized: "Couldn’t reach \(Self.list(unreachable)). Check that byot’s servers are running, then try again.")
         }
         if sessions.isEmpty {
-            sentences.append("Nothing needs you right now.")
+            sentences.append(String(localized: "Nothing needs you right now."))
         } else {
             let count = sessions.count
-            let lead = count == 1 ? "1 session needs you" : "\(count) sessions need you"
+            let lead = count == 1 ? String(localized: "1 session needs you") : String(localized: "\(count) sessions need you")
             let named = sessions.prefix(Self.spokenLimit).map { session in
-                "“\(session.title)” \(session.state == .failed ? "failed" : "is waiting for you")"
+                session.state == .failed
+                    ? String(localized: "“\(session.title)” failed")
+                    : String(localized: "“\(session.title)” is waiting for you")
             }
             let rest = count - named.count
-            let items = rest > 0 ? named + ["\(rest) more"] : named
-            sentences.append("\(lead): \(Self.list(items)).")
+            let items = rest > 0 ? named + [String(localized: "\(rest) more")] : named
+            sentences.append(String(localized: "\(lead): \(Self.list(items))."))
         }
         if runningCount > 0 {
-            sentences.append(runningCount == 1 ? "1 session is running." : "\(runningCount) sessions are running.")
+            sentences.append(runningCount == 1 ? String(localized: "1 session is running.") : String(localized: "\(runningCount) sessions are running."))
         }
         if !unreachable.isEmpty {
-            sentences.append("Couldn’t fully check \(Self.list(unreachable)).")
+            sentences.append(String(localized: "Couldn’t fully check \(Self.list(unreachable))."))
         }
         return sentences.joined(separator: " ")
     }
 
+    /// "A, B, and C" in English, and the reader's own list style elsewhere.
     static func list(_ items: [String]) -> String {
-        switch items.count {
-        case 0: ""
-        case 1: items[0]
-        case 2: "\(items[0]) and \(items[1])"
-        default: items.dropLast().joined(separator: ", ") + ", and " + items[items.count - 1]
-        }
+        ListFormatter.localizedString(byJoining: items)
     }
 }
 
@@ -263,7 +261,7 @@ struct BYOTIntentService: Sendable {
         catch { throw Self.failure(error, profile: profile, rejected: BYOTIntentError.failed) }
         guard compatibility.state != .unsupported else {
             throw BYOTIntentError.unsupported(server: profile.name,
-                                              detail: compatibility.detail ?? "This OpenCode version isn’t supported.")
+                                              detail: compatibility.detail ?? String(localized: "This OpenCode version isn’t supported."))
         }
 
         var projectName: String?

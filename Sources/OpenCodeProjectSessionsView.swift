@@ -50,7 +50,7 @@ struct OpenCodeProjectSessionsView: View {
             if store.isLoading && store.sessions.isEmpty {
                 BYOTActivityView(
                     .loading,
-                    title: "Loading sessions",
+                    title: String(localized: "Loading sessions"),
                     layout: .blocking
                 )
             } else if !store.isLoading,
@@ -284,7 +284,7 @@ struct OpenCodeStatusLabel: View {
     }
 
     private var displayLabel: String {
-        eventConnected == false ? "Reconnecting" : status.label
+        eventConnected == false ? String(localized: "Reconnecting") : status.label
     }
 }
 

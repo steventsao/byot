@@ -20,18 +20,18 @@ struct BYOTTurnActivityAttributes: ActivityAttributes {
 
         var headline: String {
             switch phase {
-            case .thinking: "Thinking"
-            case .working: tool ?? "Writing a reply"
+            case .thinking: String(localized: "Thinking")
+            case .working: tool ?? String(localized: "Writing a reply")
             case .needsResponse:
                 switch response {
-                case .approval: "Approval needed"
-                case .answer: "Question for you"
-                case nil: "Response needed"
+                case .approval: String(localized: "Approval needed")
+                case .answer: String(localized: "Question for you")
+                case nil: String(localized: "Response needed")
                 }
-            case .retrying: "Retrying"
-            case .completed: "Turn complete"
-            case .failed: "Turn failed"
-            case .stopped: "Turn stopped"
+            case .retrying: String(localized: "Retrying")
+            case .completed: String(localized: "Turn complete")
+            case .failed: String(localized: "Turn failed")
+            case .stopped: String(localized: "Turn stopped")
             }
         }
 
@@ -40,7 +40,7 @@ struct BYOTTurnActivityAttributes: ActivityAttributes {
             switch phase {
             case .working: tool == nil ? nil : detail
             case .needsResponse:
-                if pendingCount > 1 { "\(pendingCount) waiting" } else { tool ?? detail }
+                if pendingCount > 1 { String(localized: "\(pendingCount) waiting") } else { tool ?? detail }
             case .retrying: detail
             default: nil
             }

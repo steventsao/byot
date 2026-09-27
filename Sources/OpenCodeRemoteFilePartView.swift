@@ -42,7 +42,7 @@ struct OpenCodeRemoteFilePartView: View {
                 }
             }
         } else {
-            Label(part.filename ?? part.mime ?? "Attachment", systemImage: "paperclip").font(.cleanCaption)
+            Label(part.filename ?? part.mime ?? String(localized: "Attachment"), systemImage: "paperclip").font(.cleanCaption)
         }
     }
 }

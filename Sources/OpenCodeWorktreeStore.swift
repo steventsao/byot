@@ -186,7 +186,7 @@ final class OpenCodeWorktreeStore: ObservableObject {
         do {
             worktree = try await service.create(name: name)
         } catch {
-            if !Self.isCancellation(error) { actionError = Self.message(error, doing: "create the worktree") }
+            if !Self.isCancellation(error) { actionError = Self.message(error, doing: String(localized: "create the worktree")) }
             return nil
         }
         availability = .available
@@ -196,7 +196,7 @@ final class OpenCodeWorktreeStore: ObservableObject {
         let outcome = await monitor.outcome(for: worktree.directory, timeout: readinessTimeout)
         await refreshSummary(of: worktree)
         if case .failed(let message) = outcome {
-            actionError = "“\(worktree.name)” was created, but OpenCode couldn’t prepare it: \(message)"
+            actionError = String(localized: "“\(worktree.name)” was created, but OpenCode couldn’t prepare it: \(message)")
             return nil
         }
         return worktree
@@ -210,7 +210,7 @@ final class OpenCodeWorktreeStore: ObservableObject {
         do {
             return try await service.createSession(in: worktree.directory)
         } catch {
-            if !Self.isCancellation(error) { actionError = Self.message(error, doing: "start a session in “\(worktree.name)”") }
+            if !Self.isCancellation(error) { actionError = Self.message(error, doing: String(localized: "start a session in “\(worktree.name)”")) }
             return nil
         }
     }
@@ -224,7 +224,7 @@ final class OpenCodeWorktreeStore: ObservableObject {
         do {
             try await service.reset(worktree.directory)
         } catch {
-            if !Self.isCancellation(error) { actionError = Self.message(error, doing: "reset “\(worktree.name)”") }
+            if !Self.isCancellation(error) { actionError = Self.message(error, doing: String(localized: "reset “\(worktree.name)”")) }
             await refreshSummary(of: worktree)
             return false
         }
@@ -241,7 +241,7 @@ final class OpenCodeWorktreeStore: ObservableObject {
         do {
             try await service.remove(worktree.directory)
         } catch {
-            if !Self.isCancellation(error) { actionError = Self.message(error, doing: "delete “\(worktree.name)”") }
+            if !Self.isCancellation(error) { actionError = Self.message(error, doing: String(localized: "delete “\(worktree.name)”")) }
             return false
         }
         worktrees.removeAll { $0.directory == worktree.directory }
@@ -286,9 +286,9 @@ final class OpenCodeWorktreeStore: ObservableObject {
 
     private static func message(_ error: any Error, doing action: String) -> String {
         if let error = error as? OpenCodeWorktreeError, case .server(let message) = error {
-            return "Couldn’t \(action): \(message)"
+            return String(localized: "Couldn’t \(action): \(message)")
         }
-        return "Couldn’t \(action). \(error.localizedDescription)"
+        return String(localized: "Couldn’t \(action). \(error.localizedDescription)")
     }
 
     private static func isCancellation(_ error: any Error) -> Bool {

@@ -24,7 +24,7 @@ enum OpenCodeCompatibilityEvaluator {
         serverProtocol: OpenCodeServerProtocol
     ) -> OpenCodeCompatibility {
         if serverProtocol == .v2, health.healthy {
-            return .degraded(reason: "OpenCode 2 beta. Some server features may be unavailable.")
+            return .degraded(reason: String(localized: "OpenCode 2 beta. Some server features may be unavailable."))
         }
         return evaluate(health: health)
     }
@@ -32,12 +32,12 @@ enum OpenCodeCompatibilityEvaluator {
     static func evaluate(health: OpenCodeHealth) -> OpenCodeCompatibility {
         guard health.healthy else {
             return .unsupported(
-                reason: "OpenCode reported an unhealthy status. Restart the server and try again."
+                reason: String(localized: "OpenCode reported an unhealthy status. Restart the server and try again.")
             )
         }
         guard let version = OpenCodeServerVersion(parsing: health.version) else {
             return .degraded(
-                reason: "OpenCode reported an unrecognized version “\(health.version)”."
+                reason: String(localized: "OpenCode reported an unrecognized version “\(health.version)”.")
             )
         }
         if version.major == 0 {
@@ -45,7 +45,7 @@ enum OpenCodeCompatibilityEvaluator {
         }
         guard version >= minimumSupported else {
             return .unsupported(
-                reason: "OpenCode \(version) is older than the minimum supported \(minimumSupported). Upgrade to \(verifiedBaseline) or later."
+                reason: String(localized: "OpenCode \(version.description) is older than the minimum supported \(minimumSupported.description). Upgrade to \(verifiedBaseline.description) or later.")
             )
         }
         if version == verifiedBaseline {
@@ -55,11 +55,11 @@ enum OpenCodeCompatibilityEvaluator {
             return .compatible(isVerifiedBaseline: false)
         }
         return .degraded(
-            reason: "OpenCode \(version) is older than the verified \(verifiedBaseline) baseline."
+            reason: String(localized: "OpenCode \(version.description) is older than the verified \(verifiedBaseline.description) baseline.")
         )
     }
 
     private static func openCode2Reason(version: String) -> String {
-        "OpenCode 2 (\(version)) is not supported. This app requires OpenCode \(minimumSupported)+ (v1)."
+        String(localized: "OpenCode 2 (\(version)) is not supported. This app requires OpenCode \(minimumSupported.description)+ (v1).")
     }
 }

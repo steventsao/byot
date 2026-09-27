@@ -54,9 +54,9 @@ enum BYOTShareInboxError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unavailable: "byot can’t receive shared items right now. Update byot, then try again."
-        case .empty: "There’s nothing here byot can send."
-        case .missingFile(let filename): "\(filename) is no longer available. Share it again."
+        case .unavailable: String(localized: "byot can’t receive shared items right now. Update byot, then try again.")
+        case .empty: String(localized: "There’s nothing here byot can send.")
+        case .missingFile(let filename): String(localized: "\(filename) is no longer available. Share it again.")
         }
     }
 }

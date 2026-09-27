@@ -189,9 +189,9 @@ enum OpenCodeTerminalDisconnect: Equatable, Sendable {
         case .closed: .reconnect
         case .rejected(404): .checkStatus
         case .rejected(401):
-            .fail("The server rejected the terminal credentials. Check the password for this server.")
+            .fail(String(localized: "The server rejected the terminal credentials. Check the password for this server."))
         case .rejected(403):
-            .fail("The server refused the terminal connection. Check its CORS and authentication settings.")
+            .fail(String(localized: "The server refused the terminal connection. Check its CORS and authentication settings."))
         case .rejected, .lost: .reconnect
         }
     }
@@ -241,17 +241,17 @@ enum OpenCodeTerminalKey: String, CaseIterable, Identifiable, Sendable {
 
     var accessibilityLabel: String {
         switch self {
-        case .escape: "Escape"
-        case .tab: "Tab"
-        case .control: "Control"
-        case .left: "Left arrow"
-        case .up: "Up arrow"
-        case .down: "Down arrow"
-        case .right: "Right arrow"
-        case .tilde: "Tilde"
-        case .pipe: "Vertical bar"
-        case .slash: "Slash"
-        case .dash: "Hyphen"
+        case .escape: String(localized: "Escape")
+        case .tab: String(localized: "Tab")
+        case .control: String(localized: "Control")
+        case .left: String(localized: "Left arrow")
+        case .up: String(localized: "Up arrow")
+        case .down: String(localized: "Down arrow")
+        case .right: String(localized: "Right arrow")
+        case .tilde: String(localized: "Tilde")
+        case .pipe: String(localized: "Vertical bar")
+        case .slash: String(localized: "Slash")
+        case .dash: String(localized: "Hyphen")
         }
     }
 
@@ -323,8 +323,8 @@ enum OpenCodeTerminalError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unsupported: "This OpenCode server doesn’t provide terminals."
-        case .wrongLocation: "The server opened the terminal in a different project. Close it and try again."
+        case .unsupported: String(localized: "This OpenCode server doesn’t provide terminals.")
+        case .wrongLocation: String(localized: "The server opened the terminal in a different project. Close it and try again.")
         }
     }
 }
@@ -361,7 +361,7 @@ struct OpenCodeTerminalService: OpenCodeTerminalServicing {
             let supported = connection.supports("/api/pty") && connection.supports("/api/pty", method: "post")
                 && connection.supports("/api/pty/{ptyID}/connect")
             return supported ? .available
-                : .unavailable("This OpenCode 2 server doesn’t provide terminals yet.")
+                : .unavailable(String(localized: "This OpenCode 2 server doesn’t provide terminals yet."))
         }
         // v1 has no schema; older servers answer 404 or the web app's HTML.
         do {

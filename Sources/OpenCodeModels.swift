@@ -478,18 +478,18 @@ struct OpenCodePermissionRequest: Codable, Identifiable, Equatable, Sendable {
     var rememberedScopeTitle: String {
         switch resolvedAPIVersion {
         case .legacy:
-            "Always allow would remember for this directory"
+            String(localized: "Always allow would remember for this directory")
         case .v2:
-            "Always allow would save this project permission"
+            String(localized: "Always allow would save this project permission")
         }
     }
 
     var rememberedScopeFooter: String {
         switch resolvedAPIVersion {
         case .legacy:
-            "The rule is kept in memory while this OpenCode instance remains active and is not persisted."
+            String(localized: "The rule is kept in memory while this OpenCode instance remains active and is not persisted.")
         case .v2:
-            "The saved rule applies across project sessions and server restarts until removed. Configured deny rules still take precedence."
+            String(localized: "The saved rule applies across project sessions and server restarts until removed. Configured deny rules still take precedence.")
         }
     }
 
@@ -498,14 +498,16 @@ struct OpenCodePermissionRequest: Codable, Identifiable, Equatable, Sendable {
         switch resolvedAPIVersion {
         case .legacy:
             if always == ["*"] {
-                return "While this OpenCode instance remains active, this allows every \(permission) request in this directory. The rule is kept in memory and is not persisted."
+                return String(localized: "While this OpenCode instance remains active, this allows every \(permission) request in this directory. The rule is kept in memory and is not persisted.")
             }
-            return "While this OpenCode instance remains active, this allows \(permission) requests matching: \(always.joined(separator: ", ")) in this directory. The rule is kept in memory and is not persisted."
+            let patterns = always.joined(separator: ", ")
+            return String(localized: "While this OpenCode instance remains active, this allows \(permission) requests matching: \(patterns) in this directory. The rule is kept in memory and is not persisted.")
         case .v2:
             if always == ["*"] {
-                return "This saves every \(permission) request in this OpenCode project. The rule applies across project sessions and server restarts until removed from saved permissions. Configured deny rules still take precedence."
+                return String(localized: "This saves every \(permission) request in this OpenCode project. The rule applies across project sessions and server restarts until removed from saved permissions. Configured deny rules still take precedence.")
             }
-            return "This saves \(permission) requests matching: \(always.joined(separator: ", ")) in this OpenCode project. The rule applies across project sessions and server restarts until removed from saved permissions. Configured deny rules still take precedence."
+            let patterns = always.joined(separator: ", ")
+            return String(localized: "This saves \(permission) requests matching: \(patterns) in this OpenCode project. The rule applies across project sessions and server restarts until removed from saved permissions. Configured deny rules still take precedence.")
         }
     }
 }
@@ -610,9 +612,9 @@ enum OpenCodeSessionStatus: Equatable, Sendable {
 
     var label: String {
         switch self {
-        case .idle: "Idle"
-        case .busy: "Working"
-        case .retry(let attempt, _, _): "Retry \(attempt)"
+        case .idle: String(localized: "Idle")
+        case .busy: String(localized: "Working")
+        case .retry(let attempt, _, _): String(localized: "Retry \(attempt)")
         }
     }
 

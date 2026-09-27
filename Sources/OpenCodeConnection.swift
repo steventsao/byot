@@ -69,7 +69,7 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
               let host = components.host, !host.isEmpty
         else {
             throw OpenCodeConnectionError.invalidProfile(
-                "Enter a complete HTTPS server URL."
+                String(localized: "Enter a complete HTTPS server URL.")
             )
         }
         if scheme == "http" {
@@ -77,13 +77,13 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
             guard allowsLocalHTTP else {
                 throw OpenCodeConnectionError.invalidProfile(
                     isLocalAddress
-                        ? "Plain HTTP is only used for servers found nearby or added with a pairing code. Use HTTPS, or scan the server’s pairing code."
-                        : "Enter a complete HTTPS server URL."
+                        ? String(localized: "Plain HTTP is only used for servers found nearby or added with a pairing code. Use HTTPS, or scan the server’s pairing code.")
+                        : String(localized: "Enter a complete HTTPS server URL.")
                 )
             }
             guard isLocalAddress else {
                 throw OpenCodeConnectionError.invalidProfile(
-                    "Plain HTTP works only with a local network IP address. Use HTTPS for any other address."
+                    String(localized: "Plain HTTP works only with a local network IP address. Use HTTPS for any other address.")
                 )
             }
         }
@@ -94,7 +94,7 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
         )
         guard let url = components.url else {
             throw OpenCodeConnectionError.invalidProfile(
-                "Enter a complete HTTPS server URL."
+                String(localized: "Enter a complete HTTPS server URL.")
             )
         }
         return url
@@ -107,14 +107,14 @@ struct OpenCodeServerProfile: Codable, Identifiable, Equatable, Sendable {
 
     func validate(password: String) throws {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw OpenCodeConnectionError.invalidProfile("Give this Mac a profile name.")
+            throw OpenCodeConnectionError.invalidProfile(String(localized: "Give this Mac a profile name."))
         }
         _ = try validatedBaseURL()
         guard !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw OpenCodeConnectionError.invalidProfile("Enter the OpenCode username.")
+            throw OpenCodeConnectionError.invalidProfile(String(localized: "Enter the OpenCode username."))
         }
         guard !password.isEmpty else {
-            throw OpenCodeConnectionError.invalidProfile("Enter the OpenCode server password.")
+            throw OpenCodeConnectionError.invalidProfile(String(localized: "Enter the OpenCode server password."))
         }
     }
 }
@@ -134,25 +134,29 @@ enum OpenCodeConnectionError: LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .invalidProfile(let message): message
-        case .invalidResponse: "The OpenCode server returned an invalid response."
+        case .invalidResponse: String(localized: "The OpenCode server returned an invalid response.")
         case .unexpectedContentType(let path, let contentType):
-            "OpenCode returned \(contentType ?? "a non-JSON response") instead of JSON for \(path)."
+            if let contentType {
+                String(localized: "OpenCode returned \(contentType) instead of JSON for \(path).")
+            } else {
+                String(localized: "OpenCode returned a non-JSON response instead of JSON for \(path).")
+            }
         case .unexpectedEventContentType:
-            "The OpenCode event endpoint did not return an event stream."
-        case .httpStatus(401, _): "OpenCode rejected the username or password."
+            String(localized: "The OpenCode event endpoint did not return an event stream.")
+        case .httpStatus(401, _): String(localized: "OpenCode rejected the username or password.")
         case .httpStatus(let status, let message):
             if let message, !message.isEmpty {
-                "OpenCode returned \(status): \(message)"
+                String(localized: "OpenCode returned \(String(status)): \(message)")
             } else {
-                "OpenCode returned HTTP \(status)."
+                String(localized: "OpenCode returned HTTP \(String(status)).")
             }
-        case .emptyResponse: "The OpenCode server returned an empty response."
+        case .emptyResponse: String(localized: "The OpenCode server returned an empty response.")
         case .eventBufferOverflow:
-            "The OpenCode event stream fell behind and will reconnect."
+            String(localized: "The OpenCode event stream fell behind and will reconnect.")
         case .eventLineTooLong(let maxBytes):
-            "The OpenCode event stream sent a line larger than the \(maxBytes)-byte safety limit."
+            String(localized: "The OpenCode event stream sent a line larger than the \(String(maxBytes))-byte safety limit.")
         case .eventRecordTooLarge(let maxBytes):
-            "The OpenCode event stream sent a record larger than the \(maxBytes)-byte safety limit."
+            String(localized: "The OpenCode event stream sent a record larger than the \(String(maxBytes))-byte safety limit.")
         case .server(let message): message
         }
     }

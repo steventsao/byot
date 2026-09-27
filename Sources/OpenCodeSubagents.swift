@@ -43,7 +43,7 @@ struct OpenCodeSubagentTask: Equatable, Sendable {
     /// find the child when a server leaves the ID out of the call's metadata.
     var expectedChildTitle: String? {
         guard let description, let agent else { return nil }
-        return "\(description) (@\(agent) subagent)"
+        return String(localized: "\(description) (@\(agent) subagent)")
     }
 
     func isChild(_ session: OpenCodeSession) -> Bool {
@@ -124,7 +124,7 @@ enum OpenCodeSubagentTitle {
     /// `explore` → `Explore`, `code-reviewer` → `Code Reviewer`.
     static func agentLabel(_ agent: String?) -> String {
         agent?.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
-            .capitalized.trimmedNonEmpty ?? "Subagent"
+            .capitalized.trimmedNonEmpty ?? String(localized: "Subagent")
     }
 }
 
@@ -202,7 +202,7 @@ struct OpenCodeSubagentTracker: Equatable, Sendable {
             entry.status = .busy
         case "session.retry.scheduled", "session.retried":
             entry.status = .retry(attempt: Int(data["attempt"]?.numberValue ?? 1),
-                                  message: data["error"]?.objectValue?["message"]?.stringValue ?? "Retrying",
+                                  message: data["error"]?.objectValue?["message"]?.stringValue ?? String(localized: "Retrying"),
                                   next: data["at"]?.numberValue ?? 0)
         case "message.part.updated":
             guard let part = data["part"]?.objectValue, part["type"]?.stringValue == "tool",
@@ -318,33 +318,34 @@ struct OpenCodeSubagentCardPresentation: Equatable, Sendable {
         }
         self.phase = phase
         let agent = OpenCodeSubagentTitle.agentLabel(task.agent)
-        agentLabel = task.isBackground ? "\(agent) · Background" : agent
-        title = task.description ?? "Subagent task"
+        agentLabel = task.isBackground ? String(localized: "\(agent) · Background") : agent
+        title = task.description ?? String(localized: "Subagent task")
         self.isLinked = isLinked
 
         switch phase {
-        case .starting: statusLabel = "Starting"
-        case .running: statusLabel = "Running"
-        case .retrying: statusLabel = "Retrying"
-        case .needsResponse: statusLabel = "Needs your response"
-        case .background: statusLabel = "In background"
-        case .completed: statusLabel = "Done"
-        case .failed: statusLabel = "Failed"
+        case .starting: statusLabel = String(localized: "Starting")
+        case .running: statusLabel = String(localized: "Running")
+        case .retrying: statusLabel = String(localized: "Retrying")
+        case .needsResponse: statusLabel = String(localized: "Needs your response")
+        case .background: statusLabel = String(localized: "In background")
+        case .completed: statusLabel = String(localized: "Done")
+        case .failed: statusLabel = String(localized: "Failed")
         }
 
         let toolCount = activity?.toolCount ?? 0
-        let calls = toolCount > 0 ? "\(toolCount) tool call\(toolCount == 1 ? "" : "s")" : nil
+        let calls: String? = toolCount <= 0 ? nil
+            : toolCount == 1 ? String(localized: "1 tool call") : String(localized: "\(toolCount) tool calls")
         switch phase {
         case .running:
             detail = activity?.latestTool ?? calls
         case .retrying:
             if case .retry(let attempt, let message, _)? = activity?.status {
-                detail = "Attempt \(attempt) · \(message)"
+                detail = String(localized: "Attempt \(attempt) · \(message)")
             } else {
                 detail = nil
             }
         case .needsResponse:
-            detail = isLinked ? "Open to answer" : nil
+            detail = isLinked ? String(localized: "Open to answer") : nil
         case .completed, .failed:
             let parts = [calls, task.duration.map(Self.durationText)].compactMap { $0 }
             detail = parts.isEmpty ? nil : parts.joined(separator: " · ")
@@ -356,13 +357,13 @@ struct OpenCodeSubagentCardPresentation: Equatable, Sendable {
     var isActive: Bool { phase == .running || phase == .retrying || phase == .starting }
 
     var accessibilityLabel: String {
-        ["\(agentLabel) subagent", title, statusLabel, detail].compactMap { $0 }.joined(separator: ", ")
+        [String(localized: "\(agentLabel) subagent"), title, statusLabel, detail].compactMap { $0 }.joined(separator: ", ")
     }
 
     static func durationText(_ seconds: TimeInterval) -> String {
         let total = Int(seconds.rounded())
-        if total < 60 { return "\(max(total, 0))s" }
-        if total < 3_600 { return "\(total / 60)m \(total % 60)s" }
-        return "\(total / 3_600)h \((total % 3_600) / 60)m"
+        if total < 60 { return String(localized: "\(max(total, 0))s") }
+        if total < 3_600 { return String(localized: "\(total / 60)m \(total % 60)s") }
+        return String(localized: "\(total / 3_600)h \((total % 3_600) / 60)m")
     }
 }

@@ -312,7 +312,7 @@ struct OpenCodeRootView: View {
             } message: {
                 Text(
                     profileRemovalError
-                        ?? "The server profile and password were left unchanged."
+                        ?? String(localized: "The server profile and password were left unchanged.")
                 )
             }
     }
@@ -358,14 +358,14 @@ struct OpenCodeRootView: View {
         defer { if push.pendingDestination?.id == destination.id { push.pendingDestination = nil } }
         guard let profile = profileStore.profiles.first(where: { $0.id == route.serverID }) else {
             push.routingError = destination.origin != .notification
-                ? "This server was removed from byot. Add it again to open its sessions."
-                : "The saved server has changed or was removed. Open Notifications on the correct server to pair it again."
+                ? String(localized: "This server was removed from byot. Add it again to open its sessions.")
+                : String(localized: "The saved server has changed or was removed. Open Notifications on the correct server to pair it again.")
             return
         }
         if destination.origin == .notification {
             guard let credential = push.credentials[profile.id],
                   credential.fingerprint == BYOTPushCredential.fingerprint(profile) else {
-                push.routingError = "The saved server has changed or was removed. Open Notifications on the correct server to pair it again."
+                push.routingError = String(localized: "The saved server has changed or was removed. Open Notifications on the correct server to pair it again.")
                 return
             }
         }
@@ -383,7 +383,7 @@ struct OpenCodeRootView: View {
             guard details.session.id == route.sessionID else { throw BYOTPushError.invalidNotification }
             show(details.session, on: profile)
         } catch is CancellationError { }
-        catch { push.routingError = "Couldn’t load this session. It may have been deleted, or the server may be offline. Open the server and try again." }
+        catch { push.routingError = String(localized: "Couldn’t load this session. It may have been deleted, or the server may be offline. Open the server and try again.") }
     }
 
     /// Shows the picker for the waiting share. It replaces any sheet the root
@@ -414,7 +414,7 @@ struct OpenCodeRootView: View {
         case .session(let session): session.serverID
         }
         guard let profile = profileStore.profiles.first(where: { $0.id == serverID }) else {
-            shares.release(content, error: "This server was removed from byot. Choose another.")
+            shares.release(content, error: String(localized: "This server was removed from byot. Choose another."))
             return
         }
         var session: OpenCodeSession?
@@ -427,8 +427,7 @@ struct OpenCodeRootView: View {
                 session = details.session
             } catch {
                 guard shares.incoming?.id == content.id else { return }
-                shares.release(content, error: "Couldn’t open “\(target.title)”. It may have been deleted, or the "
-                    + "server may be offline. Choose another session or try again.")
+                shares.release(content, error: String(localized: "Couldn’t open “\(target.title)”. It may have been deleted, or the server may be offline. Choose another session or try again."))
                 return
             }
             // Another share may have replaced this one while the session loaded.
@@ -449,8 +448,7 @@ struct OpenCodeRootView: View {
                 serverID: profile.id, sessionID: session.id, directory: session.directory,
                 workspace: session.workspaceID))
         } catch {
-            shares.release(content, error: "byot couldn’t add this to that session’s message. Choose another "
-                + "session or try again.")
+            shares.release(content, error: String(localized: "byot couldn’t add this to that session’s message. Choose another session or try again."))
             return
         }
         show(session, on: profile, focusesComposer: true)
@@ -890,10 +888,12 @@ private struct OpenCodeProfileEditorView: View {
                 case .compatible:
                     let projects = projects ?? []
                     let projectLine = projects.isEmpty
-                        ? "No projects."
-                        : "Connected to \(projects.count) project\(projects.count == 1 ? "" : "s")."
+                        ? String(localized: "No projects.")
+                        : projects.count == 1
+                            ? String(localized: "Connected to 1 project.")
+                            : String(localized: "Connected to \(projects.count) projects.")
                     statusIsError = false
-                    statusMessage = "\(projectLine) \(summary.stateTitle)."
+                    statusMessage = String(localized: "\(projectLine) \(summary.stateTitle).")
                 case .degraded:
                     statusIsError = false
                     statusMessage = summary.detail ?? summary.stateTitle
@@ -919,7 +919,7 @@ private struct OpenCodeProfileEditorView: View {
                 guard summary.state != .unsupported else {
                     statusIsError = true
                     statusMessage = summary.detail
-                        ?? "This OpenCode server version is not supported."
+                        ?? String(localized: "This OpenCode server version is not supported.")
                     isSaving = false
                     return
                 }

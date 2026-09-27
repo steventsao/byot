@@ -10,26 +10,26 @@ enum BYOTPushCategory {
 
     static var all: Set<UNNotificationCategory> {
         let review = UNNotificationAction(
-            identifier: BYOTPushAction.reviewIdentifier, title: "Review in byot",
+            identifier: BYOTPushAction.reviewIdentifier, title: String(localized: "Review in byot"),
             options: [.foreground], icon: UNNotificationActionIcon(systemImageName: "arrow.up.forward.app"))
         let allow = UNNotificationAction(
-            identifier: BYOTPushAction.allowOnceIdentifier, title: "Allow once",
+            identifier: BYOTPushAction.allowOnceIdentifier, title: String(localized: "Allow once"),
             options: [.authenticationRequired], icon: UNNotificationActionIcon(systemImageName: "checkmark"))
         let reject = UNNotificationAction(
-            identifier: BYOTPushAction.rejectIdentifier, title: "Reject",
+            identifier: BYOTPushAction.rejectIdentifier, title: String(localized: "Reject"),
             options: [.authenticationRequired, .destructive], icon: UNNotificationActionIcon(systemImageName: "xmark"))
         let reply = UNTextInputNotificationAction(
-            identifier: BYOTPushAction.replyIdentifier, title: "Reply",
+            identifier: BYOTPushAction.replyIdentifier, title: String(localized: "Reply"),
             options: [.authenticationRequired], icon: UNNotificationActionIcon(systemImageName: "arrowshape.turn.up.left"),
-            textInputButtonTitle: "Send", textInputPlaceholder: "Your answer")
+            textInputButtonTitle: String(localized: "Send"), textInputPlaceholder: String(localized: "Your answer"))
         let open = UNNotificationAction(
-            identifier: BYOTPushAction.reviewIdentifier, title: "Open in byot",
+            identifier: BYOTPushAction.reviewIdentifier, title: String(localized: "Open in byot"),
             options: [.foreground], icon: UNNotificationActionIcon(systemImageName: "arrow.up.forward.app"))
         return [
             UNNotificationCategory(identifier: permission, actions: [allow, reject, review], intentIdentifiers: [],
-                                   hiddenPreviewsBodyPlaceholder: "Approval needed", options: []),
+                                   hiddenPreviewsBodyPlaceholder: String(localized: "Approval needed"), options: []),
             UNNotificationCategory(identifier: question, actions: [reply, open], intentIdentifiers: [],
-                                   hiddenPreviewsBodyPlaceholder: "OpenCode has a question", options: []),
+                                   hiddenPreviewsBodyPlaceholder: String(localized: "OpenCode has a question"), options: []),
         ]
     }
 }
@@ -77,10 +77,10 @@ enum BYOTPushActionOutcome: Equatable, Sendable {
     var followUp: (title: String, body: String)? {
         switch self {
         case .sent: nil
-        case .alreadyHandled: ("Request already handled", "This request is no longer waiting for a response.")
-        case .needsReview: ("Open byot to respond", "This request needs a response in the app.")
-        case .serverChanged: ("Couldn’t send your response", "The saved server has changed or was removed. Open byot to review it.")
-        case .failed: ("Couldn’t send your response", "Your server couldn’t be reached or didn’t accept it. Open byot to try again.")
+        case .alreadyHandled: (String(localized: "Request already handled"), String(localized: "This request is no longer waiting for a response."))
+        case .needsReview: (String(localized: "Open byot to respond"), String(localized: "This request needs a response in the app."))
+        case .serverChanged: (String(localized: "Couldn’t send your response"), String(localized: "The saved server has changed or was removed. Open byot to review it."))
+        case .failed: (String(localized: "Couldn’t send your response"), String(localized: "Your server couldn’t be reached or didn’t accept it. Open byot to try again."))
         }
     }
 }

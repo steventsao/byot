@@ -36,7 +36,7 @@ struct OpenCodeDiscoveredServer: Equatable, Identifiable, Sendable {
     /// names the computer; the upstream default `opencode.local` does not.
     var title: String {
         if let label = Self.computerLabel(advertisedHost) { return label }
-        return "OpenCode on port \(port)"
+        return String(localized: "OpenCode on port \(String(port))")
     }
 
     /// The address shown under the title, without the scheme.
@@ -48,7 +48,7 @@ struct OpenCodeDiscoveredServer: Equatable, Identifiable, Sendable {
     var pairingPayload: OpenCodePairingPayload {
         OpenCodePairingPayload(
             baseURL: endpoint,
-            name: Self.computerLabel(advertisedHost) ?? "OpenCode (\(host))"
+            name: Self.computerLabel(advertisedHost) ?? String(localized: "OpenCode (\(host))")
         )
     }
 

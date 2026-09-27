@@ -301,7 +301,7 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         guard let next else { return nil }
         guard seen.insert(next).inserted else {
             throw OpenCodeConnectionError.server(
-                "OpenCode returned a repeated pagination cursor."
+                String(localized: "OpenCode returned a repeated pagination cursor.")
             )
         }
         return next
@@ -404,7 +404,7 @@ private struct OpenCodeV2Session: Decodable {
             directory: location.directory,
             parentID: parentID,
             summary: nil,
-            title: title ?? "New session",
+            title: title ?? String(localized: "New session"),
             agent: agent,
             version: "2",
             time: OpenCodeSessionTime(

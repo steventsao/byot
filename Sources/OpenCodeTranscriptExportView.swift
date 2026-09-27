@@ -31,7 +31,7 @@ enum OpenCodeTranscriptClipboard {
     static func copy(_ export: OpenCodeTranscriptExport, defaults: UserDefaults = .standard) {
         UIPasteboard.general.string = export.markdown(OpenCodeTranscriptExportOptions(defaults: defaults))
         AgentHaptics.send()
-        AccessibilityNotification.Announcement("Transcript copied").post()
+        AccessibilityNotification.Announcement(String(localized: "Transcript copied")).post()
     }
 }
 
@@ -70,11 +70,11 @@ struct OpenCodeTranscriptExportView: View {
             List {
                 Section { summary }
                 Section {
-                    optionToggle("Thinking", detail: "The model’s reasoning before each reply",
+                    optionToggle(String(localized: "Thinking"), detail: String(localized: "The model’s reasoning before each reply"),
                                  isOn: $options.thinking, id: "thinking")
-                    optionToggle("Tool details", detail: "Each tool call’s input and output",
+                    optionToggle(String(localized: "Tool details"), detail: String(localized: "Each tool call’s input and output"),
                                  isOn: $options.toolDetails, id: "tool-details")
-                    optionToggle("Reply details", detail: "Agent, model and duration beside each reply",
+                    optionToggle(String(localized: "Reply details"), detail: String(localized: "Agent, model and duration beside each reply"),
                                  isOn: $options.assistantMetadata, id: "assistant-metadata")
                 } header: {
                     Text("Include")
@@ -139,9 +139,9 @@ struct OpenCodeTranscriptExportView: View {
     }
 
     private var detail: String {
-        let messages = messageCount == 1 ? "1 message" : "\(messageCount.formatted()) messages"
+        let messages = messageCount == 1 ? String(localized: "1 message") : String(localized: "\(messageCount.formatted()) messages")
         let size = ByteCountFormatter.string(fromByteCount: Int64(markdown.utf8.count), countStyle: .file)
-        return "Markdown · \(messages) · \(size)"
+        return String(localized: "Markdown · \(messages) · \(size)")
     }
 
     private func optionToggle(_ title: String, detail: String, isOn: Binding<Bool>, id: String) -> some View {
@@ -221,14 +221,14 @@ struct OpenCodeTranscriptExportView: View {
             fileError = nil
         } catch {
             file = nil
-            fileError = "Couldn’t prepare the file to share. You can still copy the transcript."
+            fileError = String(localized: "Couldn’t prepare the file to share. You can still copy the transcript.")
         }
     }
 
     private func copy() {
         UIPasteboard.general.string = markdown
         AgentHaptics.send()
-        AccessibilityNotification.Announcement("Transcript copied").post()
+        AccessibilityNotification.Announcement(String(localized: "Transcript copied")).post()
         showsCopied = true
         copies += 1
     }

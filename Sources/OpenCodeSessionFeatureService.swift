@@ -8,14 +8,14 @@ struct OpenCodeSessionFeatureService: Sendable {
     var support: OpenCodeSessionFeatureSupport { .negotiated(context) }
 
     func details(_ id: String, directory: String, workspace: String?) async throws -> OpenCodeSessionDetails {
-        try require(support.details, "Session details")
+        try require(support.details, String(localized: "Session details"))
         let value: OpenCodeJSONValue = try await context.transport.get(path(id), query: query(directory, workspace))
         return try decodeDetails(value)
     }
 
     func rename(_ id: String, directory: String, workspace: String?, title: String) async throws -> OpenCodeSessionDetails {
-        try require(support.rename, "Rename")
-        guard let title = title.trimmedNonEmpty else { throw OpenCodeSessionFeatureError(message: "Enter a session name.") }
+        try require(support.rename, String(localized: "Rename"))
+        guard let title = title.trimmedNonEmpty else { throw OpenCodeSessionFeatureError(message: String(localized: "Enter a session name.")) }
         struct Body: Encodable { let title: String }
         let body = try JSONEncoder().encode(Body(title: title))
         let request = try context.transport.makeRequest(path: path(id) + (v2 ? ["rename"] : []),
@@ -28,7 +28,7 @@ struct OpenCodeSessionFeatureService: Sendable {
     }
 
     func delete(_ id: String, directory: String, workspace: String?) async throws {
-        try require(support.delete, "Delete")
+        try require(support.delete, String(localized: "Delete"))
         let request = try context.transport.makeRequest(path: path(id), query: query(directory, workspace), method: "DELETE", body: nil)
         try await context.transport.performExpectingEmptyResponse(request)
     }
@@ -37,7 +37,7 @@ struct OpenCodeSessionFeatureService: Sendable {
     /// server keeps the session and still lists it; the session browser hides it.
     /// Beta 19271 stores `archived` but has no route to set it.
     func archive(_ id: String, directory: String, workspace: String?, at date: Date = Date()) async throws {
-        try require(support.archive, "Archive")
+        try require(support.archive, String(localized: "Archive"))
         struct Body: Encodable { struct Time: Encodable { let archived: Int64 }; let time: Time }
         let archived = Int64((date.timeIntervalSince1970 * 1_000).rounded())
         let body = try JSONEncoder().encode(Body(time: .init(archived: archived)))
@@ -46,7 +46,7 @@ struct OpenCodeSessionFeatureService: Sendable {
     }
 
     func children(_ id: String, directory: String, workspace: String?) async throws -> [OpenCodeSession] {
-        try require(support.children, "Child sessions")
+        try require(support.children, String(localized: "Child sessions"))
         if !v2 {
             return try await context.transport.get(path(id) + ["children"], query: query(directory, workspace))
         }
@@ -74,7 +74,7 @@ struct OpenCodeSessionFeatureService: Sendable {
             }
             cursor = object["cursor"]?.objectValue?["next"]?.stringValue
             if let cursor, !seen.insert(cursor).inserted {
-                throw OpenCodeSessionFeatureError(message: "OpenCode returned a repeated session cursor.")
+                throw OpenCodeSessionFeatureError(message: String(localized: "OpenCode returned a repeated session cursor."))
             }
         } while cursor != nil
         return sessions
@@ -86,7 +86,7 @@ struct OpenCodeSessionFeatureService: Sendable {
     }
 
     func stage(_ id: String, directory: String, workspace: String?, messageID: String) async throws {
-        try require(support.undo, "Undo")
+        try require(support.undo, String(localized: "Undo"))
         if v2 {
             try await cancelPendingUsers(id)
             struct Body: Encodable { let messageID: String; let files = false }
@@ -98,7 +98,7 @@ struct OpenCodeSessionFeatureService: Sendable {
     }
 
     func clear(_ id: String, directory: String, workspace: String?) async throws {
-        try require(support.redo, "Redo")
+        try require(support.redo, String(localized: "Redo"))
         if v2 { try await cancelPendingUsers(id) }
         try await context.transport.postWithoutBodyExpectingEmptyResponse(
             path(id) + (v2 ? ["revert", "clear"] : ["unrevert"]), query: query(directory, workspace))
@@ -106,27 +106,27 @@ struct OpenCodeSessionFeatureService: Sendable {
 
     func commit(_ id: String) async throws -> Bool {
         guard v2 else { return false } // V1 cleans the staged boundary when accepting the next prompt.
-        try require(support.undo, "Continue after undo")
+        try require(support.undo, String(localized: "Continue after undo"))
         try await context.transport.postWithoutBodyExpectingEmptyResponse(path(id) + ["revert", "commit"])
         return true
     }
 
     func compact(_ id: String, directory: String, workspace: String?, model: OpenCodeModelOption?) async throws {
-        try require(support.compact, "Compaction")
+        try require(support.compact, String(localized: "Compaction"))
         if v2 {
             struct Body: Encodable {}
             // This route admits a compaction into the inbox and requires {}.
             let _: OpenCodeJSONValue = try await context.transport.post(path(id) + ["compact"], body: Body())
         } else {
-            guard let model else { throw OpenCodeSessionFeatureError(message: "Choose a model before compacting this conversation.") }
+            guard let model else { throw OpenCodeSessionFeatureError(message: String(localized: "Choose a model before compacting this conversation.")) }
             struct Body: Encodable { let providerID: String; let modelID: String }
             let result: Bool = try await context.transport.post(path(id) + ["summarize"], query: query(directory, workspace), body: Body(providerID: model.providerID, modelID: model.modelID), timeout: 180)
-            guard result else { throw OpenCodeSessionFeatureError(message: "OpenCode did not confirm compaction.") }
+            guard result else { throw OpenCodeSessionFeatureError(message: String(localized: "OpenCode did not confirm compaction.")) }
         }
     }
 
     func fork(_ id: String, directory: String, workspace: String?, beforeMessageID: String?) async throws -> OpenCodeSession {
-        try require(support.fork, "Fork")
+        try require(support.fork, String(localized: "Fork"))
         let value: OpenCodeJSONValue
         if v2 {
             struct Boundary: Encodable { let type: String; let messageID: String? }
@@ -158,13 +158,13 @@ struct OpenCodeSessionFeatureService: Sendable {
     /// Both routes answer with the whole updated session, carrying `share.url`
     /// once published and omitting it once private again.
     func share(_ id: String, directory: String, workspace: String?) async throws -> OpenCodeSession {
-        try require(support.share, "Sharing")
+        try require(support.share, String(localized: "Sharing"))
         let value: OpenCodeJSONValue = try await context.transport.postWithoutBody(path(id) + ["share"], query: query(directory, workspace))
         return try decodeDetails(value).session
     }
 
     func unshare(_ id: String, directory: String, workspace: String?) async throws -> OpenCodeSession {
-        try require(support.share, "Sharing")
+        try require(support.share, String(localized: "Sharing"))
         let request = try context.transport.makeRequest(path: path(id) + ["share"], query: query(directory, workspace), method: "DELETE", body: nil)
         return try decodeDetails(try await context.transport.perform(request)).session
     }
@@ -202,7 +202,7 @@ struct OpenCodeSessionFeatureService: Sendable {
         return OpenCodeSessionDetails(session: session, revertMessageID: object["revert"]?.objectValue?["messageID"]?.stringValue)
     }
     private func require(_ supported: Bool, _ name: String) throws {
-        guard supported else { throw OpenCodeSessionFeatureError(message: "\(name) is unavailable on this OpenCode server.") }
+        guard supported else { throw OpenCodeSessionFeatureError(message: String(localized: "\(name) is unavailable on this OpenCode server.")) }
     }
 }
 

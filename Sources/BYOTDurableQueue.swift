@@ -28,11 +28,11 @@ struct BYOTQueueEnvelope: Codable, Sendable {
     let prompt: OpenCodeQueuedPrompt
     let references: [Reference]
     func encrypted(key: String) throws -> String {
-        guard let key = Data(base64Encoded: key), key.count == 32 else { throw BYOTQueueError.message("Pair your computer again.") }
+        guard let key = Data(base64Encoded: key), key.count == 32 else { throw BYOTQueueError.message(String(localized: "Pair your computer again.")) }
         return try AES.GCM.seal(JSONEncoder().encode(self), using: SymmetricKey(data: key)).combined!.base64EncodedString()
     }
     static func decrypt(_ text: String, key: String) throws -> Self {
-        guard let key = Data(base64Encoded: key), let data = Data(base64Encoded: text), key.count == 32 else { throw BYOTQueueError.message("Couldn’t read this queued message.") }
+        guard let key = Data(base64Encoded: key), let data = Data(base64Encoded: text), key.count == 32 else { throw BYOTQueueError.message(String(localized: "Couldn’t read this queued message.")) }
         let clear = try AES.GCM.open(AES.GCM.SealedBox(combined: data), using: SymmetricKey(data: key))
         return try JSONDecoder().decode(Self.self, from: clear)
     }
@@ -51,15 +51,15 @@ struct BYOTQueueEntry: Codable, Identifiable, Equatable, Sendable {
     var state: String { uploaded ? remote?.state ?? "queued" : "local" }
     var title: String {
         switch state {
-        case "local": "Saved on this iPhone"
-        case "uploading": "Uploading to queue"
-        case "queued": "Accepted for computer"
-        case "claimed": "Starting on computer"
-        case "submitted": "Running on computer"
-        case "completed": "Completed"
-        case "needsReview": "Needs review · won’t resend"
-        case "cancelled": "Cancelled"
-        default: "Waiting"
+        case "local": String(localized: "Saved on this iPhone")
+        case "uploading": String(localized: "Uploading to queue")
+        case "queued": String(localized: "Accepted for computer")
+        case "claimed": String(localized: "Starting on computer")
+        case "submitted": String(localized: "Running on computer")
+        case "completed": String(localized: "Completed")
+        case "needsReview": String(localized: "Needs review · won’t resend")
+        case "cancelled": String(localized: "Cancelled")
+        default: String(localized: "Waiting")
         }
     }
 }
@@ -80,15 +80,15 @@ struct BYOTQueueHTTP: BYOTQueueTransport {
         let (bytes, response) = try await session.bytes(for: request)
         var data = Data()
         for try await byte in bytes {
-            guard data.count < 600_000 else { throw BYOTQueueError.message("The queue returned an invalid response.") }
+            guard data.count < 600_000 else { throw BYOTQueueError.message(String(localized: "The queue returned an invalid response.")) }
             data.append(byte)
         }
         guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         if method == "DELETE", response.statusCode == 404 { return Data() }
         guard (200..<300).contains(response.statusCode) else {
-            if response.statusCode == 409 { throw BYOTQueueError.message("The queue changed or this message already started. Refresh before changing it.") }
-            if response.statusCode == 403 || response.statusCode == 404 { throw BYOTQueueError.message("Reconnect the companion in Notifications settings. Your unsent messages are saved here.") }
-            throw BYOTQueueError.message("Couldn’t reach the queue. Unsent messages remain saved on this iPhone.")
+            if response.statusCode == 409 { throw BYOTQueueError.message(String(localized: "The queue changed or this message already started. Refresh before changing it.")) }
+            if response.statusCode == 403 || response.statusCode == 404 { throw BYOTQueueError.message(String(localized: "Reconnect the companion in Notifications settings. Your unsent messages are saved here.")) }
+            throw BYOTQueueError.message(String(localized: "Couldn’t reach the queue. Unsent messages remain saved on this iPhone."))
         }
         return data
     }
@@ -130,7 +130,7 @@ private final class BYOTQueueRedirectDelegate: NSObject, URLSessionTaskDelegate 
         file = directory.appending(path: BYOTPushCredential.digest("\(profile.id):\(route.sessionID)") + ".json")
         do {
             if FileManager.default.fileExists(atPath: file.path) { entries = try JSONDecoder().decode([BYOTQueueEntry].self, from: Data(contentsOf: file)) }
-        } catch { self.restoreFailed = true; self.error = "Couldn’t restore saved messages. The saved queue has been kept for recovery." }
+        } catch { self.restoreFailed = true; self.error = String(localized: "Couldn’t restore saved messages. The saved queue has been kept for recovery.") }
     }
     deinit { timer?.cancel() }
     func start() {
@@ -144,27 +144,27 @@ private final class BYOTQueueRedirectDelegate: NSObject, URLSessionTaskDelegate 
     }
     func stop() { timer?.cancel(); timer = nil }
     func enable() async throws {
-        guard credential != nil else { throw BYOTQueueError.message("Set up the computer companion in this server’s Notifications settings first.") }
+        guard credential != nil else { throw BYOTQueueError.message(String(localized: "Set up the computer companion in this server’s Notifications settings first.")) }
         if credentialOverride == nil {
             try await BYOTPushNotifications.shared.refresh(profile.id)
             guard BYOTPushNotifications.shared.preferences[profile.id]?.queueVersion == 1 else {
-                throw BYOTQueueError.message("Update the computer companion using the setup command in Notifications settings, then check again.")
+                throw BYOTQueueError.message(String(localized: "Update the computer companion using the setup command in Notifications settings, then check again."))
             }
         }
         enabled = true; defaults.set(true, forKey: settingKey)
         await sync()
     }
     func disable() throws {
-        guard pending.isEmpty else { throw BYOTQueueError.message("Finish or cancel pending messages before switching back to the phone queue.") }
+        guard pending.isEmpty else { throw BYOTQueueError.message(String(localized: "Finish or cancel pending messages before switching back to the phone queue.")) }
         enabled = false; defaults.set(false, forKey: settingKey)
     }
     func enqueue(_ prompt: OpenCodeQueuedPrompt) throws {
-        guard let credential else { throw BYOTQueueError.message("Reconnect the computer companion before queueing messages.") }
-        guard pending.count < 20 else { throw BYOTQueueError.message("This queue has 20 pending messages. Wait or remove one before adding another.") }
+        guard let credential else { throw BYOTQueueError.message(String(localized: "Reconnect the computer companion before queueing messages.")) }
+        guard pending.count < 20 else { throw BYOTQueueError.message(String(localized: "This queue has 20 pending messages. Wait or remove one before adding another.")) }
         try OpenCodePromptAttachment.validate(prompt.attachments)
         let envelope = makeEnvelope(prompt, revision: 1, credential: credential)
         let entry = BYOTQueueEntry(prompt: prompt, ciphertext: try envelope.encrypted(key: credential.routeKey), revision: 1)
-        guard entry.ciphertext.utf8.count <= 80 * 512 * 1024 else { throw BYOTQueueError.message("This message is too large to queue.") }
+        guard entry.ciphertext.utf8.count <= 80 * 512 * 1024 else { throw BYOTQueueError.message(String(localized: "This message is too large to queue.")) }
         var next = entries; next.append(entry)
         try persist(next); entries = next
         Task { await sync() }
@@ -174,7 +174,7 @@ private final class BYOTQueueRedirectDelegate: NSObject, URLSessionTaskDelegate 
             references: prompt.remoteReferences.map { .init(uri: $0.fileURL, name: $0.filename, mime: $0.mimeType) })
     }
     private func persist(_ values: [BYOTQueueEntry]) throws {
-        guard !restoreFailed else { throw BYOTQueueError.message("The saved queue needs recovery before it can be changed.") }
+        guard !restoreFailed else { throw BYOTQueueError.message(String(localized: "The saved queue needs recovery before it can be changed.")) }
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         let data = try JSONEncoder().encode(values)
         try data.write(to: file, options: [.atomic, .completeFileProtectionUnlessOpen])
@@ -182,11 +182,11 @@ private final class BYOTQueueRedirectDelegate: NSObject, URLSessionTaskDelegate 
         var folder = file.deletingLastPathComponent(); try folder.setResourceValues(resource)
     }
     private func call<T: Encodable>(_ method: String, _ path: String, _ body: T) async throws -> Data {
-        guard let credential else { throw BYOTQueueError.message("Reconnect the companion.") }
+        guard let credential else { throw BYOTQueueError.message(String(localized: "Reconnect the companion.")) }
         return try await transport.request(method, credential: credential, path: path, body: JSONEncoder().encode(body))
     }
     private func get(_ path: String = "") async throws -> Data {
-        guard let credential else { throw BYOTQueueError.message("Reconnect the companion.") }
+        guard let credential else { throw BYOTQueueError.message(String(localized: "Reconnect the companion.")) }
         return try await transport.request("GET", credential: credential, path: path, body: nil)
     }
     func sync() async {
@@ -206,12 +206,12 @@ private final class BYOTQueueRedirectDelegate: NSObject, URLSessionTaskDelegate 
     private func upload(_ entry: BYOTQueueEntry) async throws {
         guard let credential else { return }
         let envelope = try BYOTQueueEnvelope.decrypt(entry.ciphertext, key: credential.routeKey)
-        guard envelope.subscriptionID == credential.subscriptionID, envelope.route == route else { throw BYOTQueueError.message("This message belongs to a previous server pairing. Cancel it and compose it again.") }
+        guard envelope.subscriptionID == credential.subscriptionID, envelope.route == route else { throw BYOTQueueError.message(String(localized: "This message belongs to a previous server pairing. Cancel it and compose it again.")) }
         let id = entry.id.uuidString.lowercased(), text = entry.ciphertext
         let chunkSize = 512 * 1024
         let bytes = Array(text.utf8)
         let chunks = stride(from: 0, to: bytes.count, by: chunkSize).map { String(decoding: bytes[$0..<min($0 + chunkSize, bytes.count)], as: UTF8.self) }
-        guard chunks.count <= 80 else { throw BYOTQueueError.message("This message is too large to queue.") }
+        guard chunks.count <= 80 else { throw BYOTQueueError.message(String(localized: "This message is too large to queue.")) }
         struct Begin: Encodable { let thread: String; let chunks: Int; let digest: String }
         let digest = BYOTPushCredential.digest(text)
         let existing = try JSONDecoder().decode(BYOTQueueJob.self, from: await call("PUT", "/\(id)", Begin(thread: credential.thread(route.sessionID), chunks: chunks.count, digest: digest)))
@@ -222,7 +222,7 @@ private final class BYOTQueueRedirectDelegate: NSObject, URLSessionTaskDelegate 
             struct Commit: Encodable { let revision: Int; let chunks: Int; let digest: String }
             _ = try await call("POST", "/\(id)/commit", Commit(revision: entry.revision, chunks: chunks.count, digest: digest))
         } else if existing.revision != entry.revision || existing.digest != digest {
-            throw BYOTQueueError.message("This queued message changed on the computer. Refresh before editing it.")
+            throw BYOTQueueError.message(String(localized: "This queued message changed on the computer. Refresh before editing it."))
         }
         if let index = entries.firstIndex(where: { $0.id == entry.id && $0.revision == entry.revision }) {
             var next = entries; next[index].uploaded = true; next[index].remote = existing
@@ -245,9 +245,9 @@ private final class BYOTQueueRedirectDelegate: NSObject, URLSessionTaskDelegate 
                     struct Chunk: Decodable { let content: String }
                     ciphertext += try JSONDecoder().decode(Chunk.self, from: await get("/\(job.id.uuidString.lowercased())/chunks/\(ordinal)?revision=\(job.revision)")).content
                 }
-                guard BYOTPushCredential.digest(ciphertext) == job.digest else { throw BYOTQueueError.message("Couldn’t verify the saved message.") }
+                guard BYOTPushCredential.digest(ciphertext) == job.digest else { throw BYOTQueueError.message(String(localized: "Couldn’t verify the saved message.")) }
                 let envelope = try BYOTQueueEnvelope.decrypt(ciphertext, key: credential.routeKey)
-                guard envelope.route == route, envelope.prompt.id == job.id, envelope.subscriptionID == credential.subscriptionID, envelope.revision == job.revision else { throw BYOTQueueError.message("This message belongs to another queue.") }
+                guard envelope.route == route, envelope.prompt.id == job.id, envelope.subscriptionID == credential.subscriptionID, envelope.revision == job.revision else { throw BYOTQueueError.message(String(localized: "This message belongs to another queue.")) }
                 next.append(BYOTQueueEntry(prompt: envelope.prompt, ciphertext: ciphertext, revision: job.revision, uploaded: true, remote: job))
             }
         }
@@ -265,14 +265,14 @@ private final class BYOTQueueRedirectDelegate: NSObject, URLSessionTaskDelegate 
         try persist(next); entries = next
     }
     func setPaused(_ value: Bool) async throws {
-        if !value, entries.contains(where: { !$0.uploaded }) { throw BYOTQueueError.message("Finish syncing saved messages and edits before resuming the queue.") }
-        guard let credential else { throw BYOTQueueError.message("Reconnect the companion to pause this queue.") }
+        if !value, entries.contains(where: { !$0.uploaded }) { throw BYOTQueueError.message(String(localized: "Finish syncing saved messages and edits before resuming the queue.")) }
+        guard let credential else { throw BYOTQueueError.message(String(localized: "Reconnect the companion to pause this queue.")) }
         struct Pause: Encodable { let thread: String; let paused: Bool }
         _ = try await call("PATCH", "/sessions", Pause(thread: credential.thread(route.sessionID), paused: value))
         paused = value
     }
     func cancel(_ id: UUID) async throws {
-        guard !syncing else { throw BYOTQueueError.message("Wait for the queue to finish syncing.") }
+        guard !syncing else { throw BYOTQueueError.message(String(localized: "Wait for the queue to finish syncing.")) }
         syncing = true; defer { syncing = false }
         _ = try await call("DELETE", "/\(id.uuidString.lowercased())", [String: String]())
         var next = entries; next.removeAll { $0.id == id }
@@ -280,13 +280,13 @@ private final class BYOTQueueRedirectDelegate: NSObject, URLSessionTaskDelegate 
         try await refresh()
     }
     func edit(_ id: UUID, text: String) async throws {
-        guard !syncing else { throw BYOTQueueError.message("Wait for the queue to finish syncing.") }
+        guard !syncing else { throw BYOTQueueError.message(String(localized: "Wait for the queue to finish syncing.")) }
         syncing = true; defer { syncing = false }
         try await setPaused(true); try await refresh()
-        guard let index = entries.firstIndex(where: { $0.id == id }), entries[index].remote?.state == "queued" else { throw BYOTQueueError.message("This message has already started and can’t be edited.") }
+        guard let index = entries.firstIndex(where: { $0.id == id }), entries[index].remote?.state == "queued" else { throw BYOTQueueError.message(String(localized: "This message has already started and can’t be edited.")) }
         let old = entries[index].prompt
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !old.attachments.isEmpty || !old.remoteReferences.isEmpty else { throw BYOTQueueError.message("Add text or an attachment.") }
-        guard old.command == nil else { throw BYOTQueueError.message("Remove this command and compose it again to change its arguments.") }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !old.attachments.isEmpty || !old.remoteReferences.isEmpty else { throw BYOTQueueError.message(String(localized: "Add text or an attachment.")) }
+        guard old.command == nil else { throw BYOTQueueError.message(String(localized: "Remove this command and compose it again to change its arguments.")) }
         let prompt = OpenCodeQueuedPrompt(id: old.id, text: text, model: old.model, attachments: old.attachments, agent: old.agent, variant: old.variant, command: old.command, remoteReferences: old.remoteReferences)
         guard let credential else { return }
         var next = entries; next[index].revision += 1; next[index].prompt = prompt; next[index].uploaded = false
@@ -295,7 +295,7 @@ private final class BYOTQueueRedirectDelegate: NSObject, URLSessionTaskDelegate 
         try await upload(next[index]); try await refresh()
     }
     func move(_ id: UUID, offset: Int) async throws {
-        guard !syncing else { throw BYOTQueueError.message("Wait for the queue to finish syncing.") }
+        guard !syncing else { throw BYOTQueueError.message(String(localized: "Wait for the queue to finish syncing.")) }
         syncing = true; defer { syncing = false }
         try await setPaused(true); try await refresh()
         var ids = entries.filter { $0.remote?.state == "queued" }.map(\.id)

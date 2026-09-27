@@ -49,7 +49,7 @@ struct BYOTShareDestinationView: View {
                         ForEach(orderedProfiles) { profile in
                             let destination = BYOTShareDestination.newSession(serverID: profile.id)
                             Button { open(destination) } label: {
-                                destinationRow(symbol: "plus.bubble", title: "New session", subtitle: profile.name,
+                                destinationRow(symbol: "plus.bubble", title: String(localized: "New session"), subtitle: profile.name,
                                                isOpening: opening == destination)
                             }
                             .disabled(opening != nil)

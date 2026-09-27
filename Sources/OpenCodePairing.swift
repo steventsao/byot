@@ -134,15 +134,15 @@ enum OpenCodePairingError: LocalizedError, Equatable, Sendable {
     var errorDescription: String? {
         switch self {
         case .notPairingCode:
-            "This isn’t a byot pairing code. Show the code from byot-pair-qr.sh, or an HTTPS server address."
+            String(localized: "This isn’t a byot pairing code. Show the code from byot-pair-qr.sh, or an HTTPS server address.")
         case .unsupportedVersion:
-            "This pairing code needs a newer version of byot."
+            String(localized: "This pairing code needs a newer version of byot.")
         case .missingServerURL:
-            "This pairing code doesn’t include a server address."
+            String(localized: "This pairing code doesn’t include a server address.")
         case .invalidServerURL:
-            "The server address in this pairing code isn’t a complete HTTPS URL."
+            String(localized: "The server address in this pairing code isn’t a complete HTTPS URL.")
         case .insecureServerURL:
-            "Plain HTTP pairing codes must use a local network IP address. Use an HTTPS address, such as one from Tailscale Serve."
+            String(localized: "Plain HTTP pairing codes must use a local network IP address. Use an HTTPS address, such as one from Tailscale Serve.")
         }
     }
 }
@@ -208,7 +208,7 @@ enum OpenCodePairing {
         let host = (url.host ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
         if OpenCodeLocalEndpointPolicy.isLocalHost(host) || host.contains(":")
             || host.split(separator: ".").allSatisfy({ Int($0) != nil }) {
-            return "OpenCode (\(host))"
+            return String(localized: "OpenCode (\(host))")
         }
         let label = host.split(separator: ".").first.map(String.init) ?? host
         return label.isEmpty ? "OpenCode" : label

@@ -146,8 +146,8 @@ struct BYOTTurnLockScreenView: View {
     }
 
     private var accessibilityLabel: String {
-        var parts = [attributes.sessionTitle, state.statusLine, "\(attributes.projectName) on \(attributes.serverName)"]
-        if isStale && state.phase.isActive { parts.append("May be out of date. Open byot for the latest status") }
+        var parts = [attributes.sessionTitle, state.statusLine, String(localized: "\(attributes.projectName) on \(attributes.serverName)")]
+        if isStale && state.phase.isActive { parts.append(String(localized: "May be out of date. Open byot for the latest status")) }
         return parts.joined(separator: ", ")
     }
 }

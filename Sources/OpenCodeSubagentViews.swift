@@ -190,7 +190,7 @@ struct OpenCodeSubagentBreadcrumb: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "arrow.turn.left.up")
                     .accessibilityHidden(true)
-                Text(parentTitle ?? "Main session")
+                Text(parentTitle ?? String(localized: "Main session"))
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -253,7 +253,7 @@ struct OpenCodeSubagentBar: View {
 
     @ViewBuilder
     private var identity: some View {
-        let position = family.count > 1 ? family.position.map { "\($0) of \(family.count)" } : nil
+        let position = family.count > 1 ? family.position.map { String(localized: "\($0) of \(family.count)") } : nil
         if dynamicTypeSize.isAccessibilitySize {
             (Text("\(agentLabel) subagent").font(.cleanBodySemibold)
                 + Text(position.map { " · " + $0 } ?? "").font(.cleanCaption).foregroundStyle(.secondary))
@@ -290,8 +290,8 @@ struct OpenCodeSubagentBar: View {
                 .accessibilityIdentifier("subagent-stop")
             }
             if family.count > 1 {
-                stepButton(to: family.previous, symbol: "chevron.left", title: "Previous subagent", id: "subagent-previous")
-                stepButton(to: family.next, symbol: "chevron.right", title: "Next subagent", id: "subagent-next")
+                stepButton(to: family.previous, symbol: "chevron.left", title: String(localized: "Previous subagent"), id: "subagent-previous")
+                stepButton(to: family.next, symbol: "chevron.right", title: String(localized: "Next subagent"), id: "subagent-next")
             }
         }
     }
@@ -310,7 +310,7 @@ struct OpenCodeSubagentBar: View {
         .foregroundStyle(session == nil ? Color.secondary.opacity(0.5) : BYOTBrand.chromeTint)
         .disabled(session == nil)
         .accessibilityLabel(title)
-        .accessibilityValue(session.map(OpenCodeSubagentTitle.displayTitle) ?? "None")
+        .accessibilityValue(session.map(OpenCodeSubagentTitle.displayTitle) ?? String(localized: "None"))
         .accessibilityIdentifier(id)
     }
 }
@@ -349,11 +349,11 @@ struct OpenCodeSubagentSessionRow: View {
     }
 
     private var statusLabel: String? {
-        if activity?.needsResponse == true { return "Needs your response" }
+        if activity?.needsResponse == true { return String(localized: "Needs your response") }
         switch activity?.status {
-        case .busy?: return "Running"
-        case .retry?: return "Retrying"
-        case .idle?: return "Idle"
+        case .busy?: return String(localized: "Running")
+        case .retry?: return String(localized: "Retrying")
+        case .idle?: return String(localized: "Idle")
         case nil: return nil
         }
     }

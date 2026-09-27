@@ -39,7 +39,7 @@ struct OpenCodeTerminalScreen: View {
                 )
             }
             if let error = store.actionError {
-                ErrorBanner(message: error, actionTitle: "Dismiss") { store.actionError = nil }
+                ErrorBanner(message: error, actionTitle: String(localized: "Dismiss")) { store.actionError = nil }
             }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -96,7 +96,7 @@ struct OpenCodeTerminalScreen: View {
             }
         }
         .confirmationDialog(
-            "Close \(closing?.pty.title ?? "terminal")?",
+            "Close \(closing?.pty.title ?? String(localized: "terminal"))?",
             isPresented: Binding(get: { closing != nil }, set: { if !$0 { closing = nil } }),
             titleVisibility: .visible
         ) {
@@ -111,7 +111,7 @@ struct OpenCodeTerminalScreen: View {
     @ViewBuilder private var content: some View {
         switch store.phase {
         case .loading:
-            BYOTActivityView(.connecting, title: "Opening terminal", layout: .blocking)
+            BYOTActivityView(.connecting, title: String(localized: "Opening terminal"), layout: .blocking)
         case .unavailable(let reason):
             ContentUnavailableView("Terminal unavailable", systemImage: "apple.terminal", description: Text(reason))
         case .failed(let message):
@@ -309,12 +309,12 @@ private struct OpenCodeTerminalPane: View {
     @ViewBuilder private var status: some View {
         switch session.state {
         case .connecting:
-            statusCapsule(BYOTActivityView(.connecting, title: "Connecting", layout: .compact))
+            statusCapsule(BYOTActivityView(.connecting, title: String(localized: "Connecting"), layout: .compact))
         case .reconnecting(let attempt):
-            statusCapsule(BYOTActivityView(.reconnecting, title: attempt > 1 ? "Reconnecting (\(attempt))" : "Reconnecting",
-                                           layout: .compact, accessibilityLabel: "Reconnecting to the terminal"))
+            statusCapsule(BYOTActivityView(.reconnecting, title: attempt > 1 ? String(localized: "Reconnecting (\(attempt))") : String(localized: "Reconnecting"),
+                                           layout: .compact, accessibilityLabel: String(localized: "Reconnecting to the terminal")))
         case .failed(let message):
-            ErrorBanner(message: message, actionTitle: "Reconnect") { session.reconnectNow() }
+            ErrorBanner(message: message, actionTitle: String(localized: "Reconnect")) { session.reconnectNow() }
                 .transition(.opacity)
         case .idle, .connected, .exited:
             EmptyView()
@@ -366,11 +366,11 @@ private struct OpenCodeTerminalPane: View {
     }
 
     private var exitTitle: String {
-        guard case .exited(let code) = session.state else { return "Session ended" }
+        guard case .exited(let code) = session.state else { return String(localized: "Session ended") }
         switch code {
-        case .none: return "Session ended"
-        case .some(0): return "Process exited"
-        case .some(let code): return "Process exited with code \(code)"
+        case .none: return String(localized: "Session ended")
+        case .some(0): return String(localized: "Process exited")
+        case .some(let code): return String(localized: "Process exited with code \(code)")
         }
     }
 
@@ -475,7 +475,7 @@ private struct OpenCodeTerminalTab: View {
     let rename: () -> Void
     let close: () -> Void
 
-    private var title: String { session.pty.title.trimmedNonEmpty ?? "Terminal" }
+    private var title: String { session.pty.title.trimmedNonEmpty ?? String(localized: "Terminal") }
 
     var body: some View {
         Button(action: select) {
@@ -524,12 +524,12 @@ private struct OpenCodeTerminalTab: View {
 
     private var statusText: String {
         switch session.state {
-        case .idle: "Not connected"
-        case .connecting: "Connecting"
-        case .connected: session.pty.shellName.map { "Connected, \($0)" } ?? "Connected"
-        case .reconnecting: "Reconnecting"
-        case .exited(let code): code.map { "Exited with code \($0)" } ?? "Ended"
-        case .failed: "Disconnected"
+        case .idle: String(localized: "Not connected")
+        case .connecting: String(localized: "Connecting")
+        case .connected: session.pty.shellName.map { String(localized: "Connected, \($0)") } ?? String(localized: "Connected")
+        case .reconnecting: String(localized: "Reconnecting")
+        case .exited(let code): code.map { String(localized: "Exited with code \($0)") } ?? String(localized: "Ended")
+        case .failed: String(localized: "Disconnected")
         }
     }
 }

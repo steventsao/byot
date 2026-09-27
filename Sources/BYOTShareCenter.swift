@@ -18,12 +18,12 @@ struct BYOTShareContent: Identifiable, Hashable, Sendable {
         var parts: [String] = []
         if !text.isEmpty {
             let isLink = !text.contains(where: \.isWhitespace) && URL(string: text)?.scheme?.hasPrefix("http") == true
-            parts.append(isLink ? "a link" : "text")
+            parts.append(isLink ? String(localized: "a link") : String(localized: "text"))
         }
         let images = attachments.filter { $0.mimeType.hasPrefix("image/") }.count
         let files = attachments.count - images
-        if images > 0 { parts.append(images == 1 ? "an image" : "\(images) images") }
-        if files > 0 { parts.append(files == 1 ? "a file" : "\(files) files") }
+        if images > 0 { parts.append(images == 1 ? String(localized: "an image") : String(localized: "\(images) images")) }
+        if files > 0 { parts.append(files == 1 ? String(localized: "a file") : String(localized: "\(files) files")) }
         let joined = ListFormatter.localizedString(byJoining: parts)
         return joined.prefix(1).uppercased() + joined.dropFirst()
     }
@@ -78,8 +78,9 @@ enum BYOTShareDraft {
         guard !names.isEmpty else { return nil }
         let limit = ByteCountFormatter.string(fromByteCount: Int64(OpenCodePromptAttachment.maximumTotalBytes),
                                               countStyle: .file)
-        return "\(ListFormatter.localizedString(byJoining: names)) didn’t fit beside the attachments already in "
-            + "this message. A message can carry \(OpenCodePromptAttachment.maximumCount) files, up to \(limit) in total."
+        let maximum = OpenCodePromptAttachment.maximumCount
+        let leftOut = ListFormatter.localizedString(byJoining: names)
+        return String(localized: "\(leftOut) didn’t fit beside the attachments already in this message. A message can carry \(maximum) files, up to \(limit) in total.")
     }
 }
 

@@ -30,6 +30,6 @@ struct OpenCodeAlwaysAllowButton: View {
 
     private var confirmationMessage: String {
         request.alwaysAllowConfirmationMessage
-            ?? "OpenCode did not provide a reusable permission scope."
+            ?? String(localized: "OpenCode did not provide a reusable permission scope.")
     }
 }

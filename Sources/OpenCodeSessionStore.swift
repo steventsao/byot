@@ -225,10 +225,10 @@ final class OpenCodeSessionStore: ObservableObject {
     /// composer; shell runs are never queued behind a turn, as in OpenCode.
     var shellUnavailableReason: String? {
         guard supportsShell else { return OpenCodeShellError.unsupported.localizedDescription }
-        if !canSubmitPrompt { return "Wait for the session to connect." }
-        if isShellSending { return "Wait for the current command to finish." }
+        if !canSubmitPrompt { return String(localized: "Wait for the session to connect.") }
+        if isShellSending { return String(localized: "Wait for the current command to finish.") }
         if status.isActive || isSending || promptQueue.isTurnActive {
-            return "Shell commands run while OpenCode is idle. Stop the turn or wait for it to finish."
+            return String(localized: "Shell commands run while OpenCode is idle. Stop the turn or wait for it to finish.")
         }
         return nil
     }
@@ -646,14 +646,14 @@ final class OpenCodeSessionStore: ObservableObject {
         case .compact: supported = sessionFeatures.compact
         case .fork: supported = sessionFeatures.fork
         }
-        if !supported { return "This server does not support this action." }
-        if !isRunning || !isStatusReady { return "Wait for the session to connect." }
-        if isPerformingSessionAction || isSending || isStoppingTurn { return "Wait for the current request to finish." }
-        if status.isActive || durableQueue?.pending.contains(where: { ["claimed", "submitted"].contains($0.state) }) == true { return "Stop the current turn before changing its history." }
-        if action == .undo && !messages.contains(where: { $0.info.role == "user" }) { return "No turn to undo." }
-        if action == .redo && revertMessageID == nil { return "No undone turn to restore." }
-        if action == .compact && sessionFeatures.compactRequiresModel && selectedModel == nil { return "Choose a model before compacting." }
-        if action == .compact && revertMessageID != nil { return "Redo or send your revised prompt before compacting." }
+        if !supported { return String(localized: "This server does not support this action.") }
+        if !isRunning || !isStatusReady { return String(localized: "Wait for the session to connect.") }
+        if isPerformingSessionAction || isSending || isStoppingTurn { return String(localized: "Wait for the current request to finish.") }
+        if status.isActive || durableQueue?.pending.contains(where: { ["claimed", "submitted"].contains($0.state) }) == true { return String(localized: "Stop the current turn before changing its history.") }
+        if action == .undo && !messages.contains(where: { $0.info.role == "user" }) { return String(localized: "No turn to undo.") }
+        if action == .redo && revertMessageID == nil { return String(localized: "No undone turn to restore.") }
+        if action == .compact && sessionFeatures.compactRequiresModel && selectedModel == nil { return String(localized: "Choose a model before compacting.") }
+        if action == .compact && revertMessageID != nil { return String(localized: "Redo or send your revised prompt before compacting.") }
         return nil
     }
 
@@ -677,7 +677,7 @@ final class OpenCodeSessionStore: ObservableObject {
                 try await queue.setPaused(true)
                 try await queue.refresh()
                 guard !queue.pending.contains(where: { ["claimed", "submitted"].contains($0.state) }) else {
-                    throw BYOTQueueError.message("A queued message has started. Stop that turn before changing session history.")
+                    throw BYOTQueueError.message(String(localized: "A queued message has started. Stop that turn before changing session history."))
                 }
             }
             switch action {
@@ -772,7 +772,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let known = childSessions + siblingSessions + [parentSession].compactMap { $0 }
         if let session = known.first(where: { $0.id == sessionID }) { return session }
         guard let featureService, sessionFeatures.details else {
-            actionErrorMessage = "This server can’t open subagent sessions."
+            actionErrorMessage = String(localized: "This server can’t open subagent sessions.")
             return nil
         }
         guard openingSubagentID == nil else { return nil }
@@ -783,7 +783,7 @@ final class OpenCodeSessionStore: ObservableObject {
         } catch is CancellationError {
             return nil
         } catch {
-            actionErrorMessage = "Couldn’t open the subagent session: \(error.localizedDescription)"
+            actionErrorMessage = String(localized: "Couldn’t open the subagent session: \(error.localizedDescription)")
             return nil
         }
     }
@@ -881,7 +881,7 @@ final class OpenCodeSessionStore: ObservableObject {
             return false
         }
         guard session.share?.link != nil else {
-            shareErrorMessage = "OpenCode didn’t return a link for this session. Sharing may be turned off on the server."
+            shareErrorMessage = String(localized: "OpenCode didn’t return a link for this session. Sharing may be turned off on the server.")
             return false
         }
         return true
@@ -905,7 +905,7 @@ final class OpenCodeSessionStore: ObservableObject {
         else { return }
         sharePolicy = policy
         if policy == .disabled {
-            shareErrorMessage = "Sharing is turned off in this server’s OpenCode config."
+            shareErrorMessage = String(localized: "Sharing is turned off in this server’s OpenCode config.")
         }
     }
 
@@ -959,7 +959,7 @@ final class OpenCodeSessionStore: ObservableObject {
         guard (!trimmed.isEmpty || !attachments.isEmpty || !remoteReferences.isEmpty), canSubmitPrompt else { return false }
         guard remoteReferences.allSatisfy({ $0.matches(serverID: serverID, projectID: session.projectID,
             directory: directory, workspaceID: workspace) }) else {
-            errorMessage = "File context belongs to a different project. Select the file again."
+            errorMessage = String(localized: "File context belongs to a different project. Select the file again.")
             return false
         }
         do {
@@ -969,8 +969,8 @@ final class OpenCodeSessionStore: ObservableObject {
             return false
         }
         if let queue = durableQueue, queue.enabled {
-            guard revertMessageID == nil else { errorMessage = "Redo the conversation before adding work to the computer queue."; return false }
-            guard queuedPrompts.isEmpty else { errorMessage = "Send or remove the existing local queued messages first."; return false }
+            guard revertMessageID == nil else { errorMessage = String(localized: "Redo the conversation before adding work to the computer queue."); return false }
+            guard queuedPrompts.isEmpty else { errorMessage = String(localized: "Send or remove the existing local queued messages first."); return false }
             do {
                 try queue.enqueue(OpenCodeQueuedPrompt(text: trimmed, model: selectedModel, attachments: attachments,
                     agent: effectiveAgentID, variant: selectedVariant,
@@ -1115,7 +1115,7 @@ final class OpenCodeSessionStore: ObservableObject {
             try Task.checkCancellation()
             guard generation == lifecycleGeneration, isRunning else { return false }
             guard didAbort else {
-                errorMessage = "OpenCode did not confirm that the stalled turn was stopped."
+                errorMessage = String(localized: "OpenCode did not confirm that the stalled turn was stopped.")
                 return false
             }
 
@@ -1174,7 +1174,7 @@ final class OpenCodeSessionStore: ObservableObject {
             try Task.checkCancellation()
             guard generation == lifecycleGeneration, isRunning else { return }
             guard didAbort else {
-                errorMessage = "OpenCode did not confirm that the turn was stopped."
+                errorMessage = String(localized: "OpenCode did not confirm that the turn was stopped.")
                 return
             }
 
@@ -1218,7 +1218,7 @@ final class OpenCodeSessionStore: ObservableObject {
         do {
             guard prompt.remoteReferences.allSatisfy({ $0.matches(serverID: serverID,
                 projectID: session.projectID, directory: directory, workspaceID: workspace) }) else {
-                throw OpenCodeConnectionError.server("File context belongs to a different project. Remove this queued prompt and select the file again.")
+                throw OpenCodeConnectionError.server(String(localized: "File context belongs to a different project. Remove this queued prompt and select the file again."))
             }
             try await prepareHistoryForPromptDispatch()
             try Task.checkCancellation()
@@ -1258,7 +1258,7 @@ final class OpenCodeSessionStore: ObservableObject {
                 clearOptimisticBusy()
             }
             errorMessage = prompt.command?.kind == .command
-                ? "The command may have run before the connection failed. Review the session before choosing Run again. " + error.localizedDescription
+                ? String(localized: "The command may have run before the connection failed. Review the session before choosing Run again. \(error.localizedDescription)")
                 : error.localizedDescription
         }
     }
@@ -1365,7 +1365,7 @@ final class OpenCodeSessionStore: ObservableObject {
 
     var currentAgentName: String {
         if let currentAgent { return currentAgent.displayName }
-        return currentAgentID.map { OpenCodeAgentOption(id: $0, name: $0, description: nil).displayName } ?? "Default agent"
+        return currentAgentID.map { OpenCodeAgentOption(id: $0, name: $0, description: nil).displayName } ?? String(localized: "Default agent")
     }
 
     /// Where the next cycle lands, for the toggle's VoiceOver hint.
@@ -1418,7 +1418,7 @@ final class OpenCodeSessionStore: ObservableObject {
 
     var variantLabel: String {
         if let selectedVariant { return selectedVariant }
-        return "Default"
+        return String(localized: "Default")
     }
 
     private var variantSelectionKey: String? {
@@ -1544,7 +1544,7 @@ final class OpenCodeSessionStore: ObservableObject {
                         self?.isEventConnected = false
                         self?.markTasksStale()
                         self?.eventErrorMessage =
-                            "Live updates ended. Reconnecting automatically."
+                            String(localized: "Live updates ended. Reconnecting automatically.")
                         self?.scheduleQueueRecoveryIfNeeded()
                     }
                 } catch is CancellationError {
@@ -1570,7 +1570,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     nonisolated static func eventConnectionMessage(for error: Error) -> String {
-        "Live updates disconnected: \(error.localizedDescription) Reconnecting automatically."
+        String(localized: "Live updates disconnected: \(error.localizedDescription) Reconnecting automatically.")
     }
 
     nonisolated static func capture<Value: Sendable>(
@@ -1599,11 +1599,11 @@ final class OpenCodeSessionStore: ObservableObject {
     ) -> String {
         switch error {
         case .eventBufferOverflow:
-            "Live updates fell behind. Reconnecting and reconciling with OpenCode."
+            String(localized: "Live updates fell behind. Reconnecting and reconciling with OpenCode.")
         case .eventLineTooLong, .eventRecordTooLarge:
-            "Live updates exceeded the safe event size. Reconnecting and reconciling with OpenCode."
+            String(localized: "Live updates exceeded the safe event size. Reconnecting and reconciling with OpenCode.")
         default:
-            "Live updates disconnected. Reconnecting and reconciling with OpenCode."
+            String(localized: "Live updates disconnected. Reconnecting and reconciling with OpenCode.")
         }
     }
 
@@ -1724,14 +1724,14 @@ final class OpenCodeSessionStore: ObservableObject {
             scheduleMessageRefresh()
         case "session.execution.failed", "session.execution.interrupted":
             if event.type == "session.execution.failed" {
-                errorMessage = OpenCodeFailure(message: "The turn failed.", details: event.properties["error"]?.objectValue).message
+                errorMessage = OpenCodeFailure(message: String(localized: "The turn failed."), details: event.properties["error"]?.objectValue).message
             }
             settleTurnLocally(dismissingUnansweredPrompt: false)
             scheduleMessageRefresh()
         case "session.retry.scheduled", "session.next.retried":
             statusMutationGeneration &+= 1
             applyEventStatus(.retry(attempt: Int(event.properties["attempt"]?.numberValue ?? 1),
-                message: event.properties["error"]?.objectValue?["message"]?.stringValue ?? "Retrying", next: event.properties["at"]?.numberValue ?? 0))
+                message: event.properties["error"]?.objectValue?["message"]?.stringValue ?? String(localized: "Retrying"), next: event.properties["at"]?.numberValue ?? 0))
         case "session.next.step.started":
             // Current v2 has no execution events on /api/event; a step is the
             // first sign of work and a new step supersedes any pending settle.
@@ -2310,7 +2310,7 @@ final class OpenCodeSessionStore: ObservableObject {
                     publishPromptQueue()
                     if hadQueuedFollowUps {
                         errorMessage =
-                            "Live session activity could not be confirmed. Your queued message is paused to avoid sending it twice."
+                            String(localized: "Live session activity could not be confirmed. Your queued message is paused to avoid sending it twice.")
                     }
                     await refreshMessages()
                     guard isCurrentQueueRecovery(recoveryID), status.isActive == false
@@ -2336,7 +2336,7 @@ final class OpenCodeSessionStore: ObservableObject {
             } catch {
                 guard isCurrentQueueRecovery(recoveryID) else { return }
                 eventErrorMessage =
-                    "Queued message is waiting for session status: \(error.localizedDescription)"
+                    String(localized: "Queued message is waiting for session status: \(error.localizedDescription)")
                 delay = min(delay * 2, .seconds(15))
             }
         }
@@ -2484,7 +2484,7 @@ final class OpenCodeSessionStore: ObservableObject {
         )
         if let firstError = errors.first {
             actionErrorMessage =
-                "Some OpenCode actions could not be refreshed: \(firstError.localizedDescription)"
+                String(localized: "Some OpenCode actions could not be refreshed: \(firstError.localizedDescription)")
         } else {
             actionErrorMessage = nil
         }

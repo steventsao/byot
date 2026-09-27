@@ -129,8 +129,8 @@ struct OpenCodeQueuedPromptsView: View {
 
     private func queueLabel(for index: Int, prompt: OpenCodeQueuedPrompt) -> String {
         let state = index == 0 && canRetryFirst
-            ? "Waiting to retry"
-            : "Queued \(index + 1)"
+            ? String(localized: "Waiting to retry")
+            : String(localized: "Queued \(index + 1)")
         return [state, prompt.agent, prompt.model?.modelName, prompt.variant].compactMap { $0 }.joined(separator: " · ")
     }
 
@@ -143,6 +143,6 @@ struct OpenCodeQueuedPromptsView: View {
         if prompt.attachments.count == 1 {
             return prompt.attachments[0].filename
         }
-        return "\(prompt.attachments.count) attachments"
+        return String(localized: "\(prompt.attachments.count) attachments")
     }
 }

@@ -94,45 +94,46 @@ enum OpenCodeWorktreeNaming {
 enum OpenCodeWorktreeCopy {
     static func changes(_ count: Int) -> String {
         switch count {
-        case 0: "No uncommitted changes"
-        case 1: "1 uncommitted change"
-        default: "\(count) uncommitted changes"
+        case 0: String(localized: "No uncommitted changes")
+        case 1: String(localized: "1 uncommitted change")
+        default: String(localized: "\(count) uncommitted changes")
         }
     }
 
     static func sessions(_ count: Int) -> String {
         switch count {
-        case 0: "No sessions"
-        case 1: "1 session"
-        default: "\(count) sessions"
+        case 0: String(localized: "No sessions")
+        case 1: String(localized: "1 session")
+        default: String(localized: "\(count) sessions")
         }
     }
 
     /// What a reset discards, as the web app's reset dialog explains it.
     static func resetMessage(_ worktree: OpenCodeWorktree, summary: OpenCodeWorktreeSummary?) -> String {
         let branch = summary?.branch ?? worktree.branch
-        let target = summary?.defaultBranch ?? "the default branch"
-        var lines = ["Resets \(branch ?? "the worktree") to match \(target)."]
+        let target = summary?.defaultBranch ?? String(localized: "the default branch")
+        var lines = [branch.map { String(localized: "Resets \($0) to match \(target).") }
+            ?? String(localized: "Resets the worktree to match \(target).")]
         switch summary?.changes {
         case let count? where count > 0:
-            lines.append("Commits on it and \(changes(count).lowercased()) will be discarded.")
+            lines.append(String(localized: "Commits on it and \(changes(count).lowercased()) will be discarded."))
         default:
-            lines.append("Commits on it and any uncommitted changes will be discarded.")
+            lines.append(String(localized: "Commits on it and any uncommitted changes will be discarded."))
         }
-        lines.append("Its sessions are kept.")
+        lines.append(String(localized: "Its sessions are kept."))
         return lines.joined(separator: " ")
     }
 
     /// What a delete removes: the folder, the branch, and (from the list) its sessions.
     static func removalMessage(_ worktree: OpenCodeWorktree, summary: OpenCodeWorktreeSummary?) -> String {
         let branch = summary?.branch ?? worktree.branch
-        var lines = [branch.map { "Deletes the worktree’s folder on the server and its branch, \($0)." }
-            ?? "Deletes the worktree’s folder on the server and its branch."]
+        var lines = [branch.map { String(localized: "Deletes the worktree’s folder on the server and its branch, \($0).") }
+            ?? String(localized: "Deletes the worktree’s folder on the server and its branch.")]
         if let count = summary?.changes, count > 0 {
-            lines.append("\(changes(count)) will be lost.")
+            lines.append(String(localized: "\(changes(count)) will be lost."))
         }
         if let count = summary?.sessions, count > 0 {
-            lines.append(count == 1 ? "Its session will no longer be listed." : "Its \(count) sessions will no longer be listed.")
+            lines.append(count == 1 ? String(localized: "Its session will no longer be listed.") : String(localized: "Its \(count) sessions will no longer be listed."))
         }
         return lines.joined(separator: " ")
     }
@@ -156,7 +157,7 @@ enum OpenCodeWorktreeEvent: Equatable, Sendable {
             guard let directory = event.location?.directory else { return nil }
             let message = event.properties["message"]?.stringValue?.trimmedNonEmpty
             self = .failed(directory: OpenCodeWorktree.key(directory),
-                           message: message ?? "OpenCode couldn’t check out the worktree.")
+                           message: message ?? String(localized: "OpenCode couldn’t check out the worktree."))
         default:
             return nil
         }
@@ -171,7 +172,7 @@ enum OpenCodeWorktreeError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unsupported: "This OpenCode server doesn’t manage worktrees."
+        case .unsupported: String(localized: "This OpenCode server doesn’t manage worktrees.")
         case .server(let message): message
         }
     }

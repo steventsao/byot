@@ -281,7 +281,7 @@ struct OpenCodeSessionComposerView: View {
                 Button("OK", role: .cancel) { attachmentErrorMessage = nil }
             },
             message: {
-                Text(attachmentErrorMessage ?? "The attachment couldn’t be read.")
+                Text(attachmentErrorMessage ?? String(localized: "The attachment couldn’t be read."))
             }
         )
     }
@@ -300,7 +300,7 @@ struct OpenCodeSessionComposerView: View {
             attachments = savedAttachments
             isShellMode = draft.isShellMode == true && !isShellUnsupported
         } catch {
-            draftErrorMessage = "Couldn’t restore this draft from this iPhone."
+            draftErrorMessage = String(localized: "Couldn’t restore this draft from this iPhone.")
         }
         didLoadDraft = true
     }
@@ -311,7 +311,7 @@ struct OpenCodeSessionComposerView: View {
             try draftStore.save(OpenCodeComposerDraft(text: text, references: remoteReferences,
                                                       isShellMode: isShellMode ? true : nil))
         } catch {
-            draftErrorMessage = "Couldn’t save this draft. Keep this session open until you send it."
+            draftErrorMessage = String(localized: "Couldn’t save this draft. Keep this session open until you send it.")
         }
     }
 
@@ -320,7 +320,7 @@ struct OpenCodeSessionComposerView: View {
         do {
             try draftStore.saveAttachments(attachments)
         } catch {
-            draftErrorMessage = "Couldn’t save draft attachments. Keep this session open until you send them."
+            draftErrorMessage = String(localized: "Couldn’t save draft attachments. Keep this session open until you send them.")
         }
     }
 
@@ -465,8 +465,8 @@ struct OpenCodeSessionComposerView: View {
 
     private var shellLocation: String {
         let project = URL(fileURLWithPath: store.directory).lastPathComponent
-        guard let serverName = serverName?.trimmedNonEmpty else { return "Runs in \(project)" }
-        return "Runs in \(project) on \(serverName)"
+        guard let serverName = serverName?.trimmedNonEmpty else { return String(localized: "Runs in \(project)") }
+        return String(localized: "Runs in \(project) on \(serverName)")
     }
 
     /// `refocus` keeps the keyboard up while the field is rebuilt for its new
@@ -477,7 +477,7 @@ struct OpenCodeSessionComposerView: View {
         if enabled { dictation.cancel() }
         isShellMode = enabled
         if enabled {
-            AccessibilityNotification.Announcement("Shell mode. Commands run on the server.").post()
+            AccessibilityNotification.Announcement(String(localized: "Shell mode. Commands run on the server.")).post()
         }
         guard refocus else { return }
         Task { @MainActor in
@@ -506,7 +506,7 @@ struct OpenCodeSessionComposerView: View {
     private var modelButton: some View {
         Button(action: showModelPicker) {
             HStack(spacing: 6) {
-                Text(store.selectedModel?.modelName ?? "Automatic")
+                Text(store.selectedModel?.modelName ?? String(localized: "Automatic"))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     .truncationMode(.tail)
                 Image(systemName: "chevron.down")
@@ -675,7 +675,7 @@ struct OpenCodeSessionComposerView: View {
         var actions = OpenCodeComposerCommandActions()
         if canSend { actions.send = { sendFromKeyboard() } }
         if store.canStopTurn { actions.stop = { stopTurn() } }
-        if store.willQueueNextPrompt { actions.sendTitle = "Queue Message" }
+        if store.willQueueNextPrompt { actions.sendTitle = String(localized: "Queue Message") }
         return actions
     }
 
@@ -839,9 +839,9 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private var builtinActions: [OpenCodeComposerAction] {
-        var actions = [OpenCodeComposerAction(name: "model", title: "Choose model", unavailableReason: nil, run: showModelPicker)]
+        var actions = [OpenCodeComposerAction(name: "model", title: String(localized: "Choose model"), unavailableReason: nil, run: showModelPicker)]
         if let onNewSession {
-            actions.append(OpenCodeComposerAction(name: "new", title: "New session", unavailableReason: nil, run: onNewSession))
+            actions.append(OpenCodeComposerAction(name: "new", title: String(localized: "New session"), unavailableReason: nil, run: onNewSession))
         }
         return actions + sessionActions
     }
@@ -861,7 +861,7 @@ struct OpenCodeSessionComposerView: View {
                                 isFocused = false
                                 action.run()
                             } label: {
-                                commandRow(name: action.name, detail: action.unavailableReason ?? action.title, kind: "App action")
+                                commandRow(name: action.name, detail: action.unavailableReason ?? action.title, kind: String(localized: "App action"))
                             }
                             .buttonStyle(.plain)
                             .disabled(action.unavailableReason != nil)
@@ -872,8 +872,8 @@ struct OpenCodeSessionComposerView: View {
                                 text = "/\(command.name) "
                                 isFocused = true
                             } label: {
-                                commandRow(name: command.name, detail: command.description ?? "Add arguments, then send",
-                                           kind: command.kind == .command ? "Server command" : "Server skill")
+                                commandRow(name: command.name, detail: command.description ?? String(localized: "Add arguments, then send"),
+                                           kind: command.kind == .command ? String(localized: "Server command") : String(localized: "Server skill"))
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("opencode-command-\(command.id)")
@@ -889,7 +889,9 @@ struct OpenCodeSessionComposerView: View {
                 .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? 180 : 220)
                 .accessibilityIdentifier("opencode-slash-suggestions")
             } else if let invocation = OpenCodeCommandInvocation.parse(text, catalog: store.composerCatalog.commands) {
-                Text("/\(invocation.name) · \(invocation.kind == .command ? "Server command" : "Server skill") · Add arguments below")
+                Text(invocation.kind == .command
+                     ? "/\(invocation.name) · Server command · Add arguments below"
+                     : "/\(invocation.name) · Server skill · Add arguments below")
                     .font(.cleanCaption)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("opencode-command-arguments")
@@ -936,7 +938,7 @@ struct OpenCodeSessionComposerView: View {
             guard part.type == "file", let url = part.url, url.hasPrefix("data:"),
                   let comma = url.firstIndex(of: ","), url[..<comma].hasSuffix(";base64"),
                   let data = Data(base64Encoded: String(url[url.index(after: comma)...])) else { return nil }
-            return OpenCodePromptAttachment(filename: part.filename ?? "Attachment",
+            return OpenCodePromptAttachment(filename: part.filename ?? String(localized: "Attachment"),
                                             mimeType: part.mime ?? "application/octet-stream", data: data)
         }
         remoteReferences = OpenCodePromptFileReference.restored(from: message, serverID: store.serverID,
@@ -961,7 +963,7 @@ struct OpenCodeSessionComposerView: View {
                 var imported: [OpenCodePromptAttachment] = []
                 for (index, item) in items.enumerated() {
                     guard let data = try await item.loadTransferable(type: Data.self) else {
-                        throw OpenCodeAttachmentImportError.unreadable("Photo \(index + 1)")
+                        throw OpenCodeAttachmentImportError.unreadable(String(localized: "Photo \(index + 1)"))
                     }
                     let type = item.supportedContentTypes.first(where: {
                         $0.preferredMIMEType != nil
@@ -969,7 +971,7 @@ struct OpenCodeSessionComposerView: View {
                     let fileExtension = type.preferredFilenameExtension ?? "jpg"
                     imported.append(
                         OpenCodePromptAttachment(
-                            filename: "Photo \(attachments.count + imported.count + 1).\(fileExtension)",
+                            filename: String(localized: "Photo \(attachments.count + imported.count + 1).\(fileExtension)"),
                             mimeType: type.preferredMIMEType ?? "image/jpeg",
                             data: data
                         )
@@ -1047,7 +1049,7 @@ private enum OpenCodeAttachmentImportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unreadable(let filename):
-            "\(filename) couldn’t be read as a file."
+            String(localized: "\(filename) couldn’t be read as a file.")
         }
     }
 }

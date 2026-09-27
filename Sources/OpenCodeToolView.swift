@@ -23,7 +23,7 @@ struct OpenCodeToolView: View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: BYOTBrand.Space.sm) {
                 if let input = presentation.input {
-                    OpenCodeToolDetailBlock(title: "Input", text: input)
+                    OpenCodeToolDetailBlock(title: String(localized: "Input"), text: input)
                 }
                 if let code = presentation.inputCode {
                     OpenCodeToolDetailBlock(code: code)
@@ -31,10 +31,10 @@ struct OpenCodeToolView: View {
                 if let code = presentation.outputCode {
                     OpenCodeToolDetailBlock(code: code)
                 } else if let output = presentation.output {
-                    OpenCodeToolDetailBlock(title: "Output", text: output)
+                    OpenCodeToolDetailBlock(title: String(localized: "Output"), text: output)
                 }
                 if let error = presentation.error {
-                    OpenCodeToolDetailBlock(title: "Error", text: error, isError: true)
+                    OpenCodeToolDetailBlock(title: String(localized: "Error"), text: error, isError: true)
                 }
             }
             .padding(10)

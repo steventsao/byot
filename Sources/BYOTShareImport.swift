@@ -196,9 +196,9 @@ enum BYOTShareImport {
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
             self.suggested = base.isEmpty || base == "." || base == ".." ? nil : base
             fallback = switch kind {
-            case .image: "Image \(index)"
-            case .webURL: "Link \(index)"
-            case .fileURL, .text, .file: "File \(index)"
+            case .image: String(localized: "Image \(index)")
+            case .webURL: String(localized: "Link \(index)")
+            case .fileURL, .text, .file: String(localized: "File \(index)")
             }
         }
 
@@ -222,7 +222,7 @@ enum BYOTShareImport {
 
     static func attachment(_ data: Data, type: UTType?, name: String, budget: Budget) -> Loaded {
         let name = filename(name, type: type)
-        guard !data.isEmpty else { return .skipped("\(name) is empty, so it wasn’t added.") }
+        guard !data.isEmpty else { return .skipped(String(localized: "\(name) is empty, so it wasn’t added.")) }
         if let note = limitNote(data.count, name: name, budget: budget) { return .skipped(note) }
         return .attachment(OpenCodePromptAttachment(filename: name,
                                                     mimeType: type?.preferredMIMEType ?? "application/octet-stream",
@@ -278,10 +278,10 @@ enum BYOTShareImport {
         let limit = ByteCountFormatter.string(fromByteCount: Int64(OpenCodePromptAttachment.maximumFileBytes),
                                               countStyle: .file)
         if size > OpenCodePromptAttachment.maximumFileBytes {
-            return "\(name) is larger than \(limit), so it wasn’t added."
+            return String(localized: "\(name) is larger than \(limit), so it wasn’t added.")
         }
         if size > budget.bytes {
-            return "\(name) wasn’t added: attachments can total up to \(limit) per message."
+            return String(localized: "\(name) wasn’t added: attachments can total up to \(limit) per message.")
         }
         return nil
     }
@@ -308,7 +308,7 @@ enum BYOTShareImport {
     }
 
     private static func unreadable(_ name: String) -> String {
-        "\(name) couldn’t be read, so it wasn’t added."
+        String(localized: "\(name) couldn’t be read, so it wasn’t added.")
     }
 
     // MARK: Limits
@@ -352,8 +352,9 @@ enum BYOTShareImport {
             }
             if overflow > 0 {
                 let maximum = OpenCodePromptAttachment.maximumCount
-                result.notes.append("A message can carry \(maximum) files, so \(overflow) more "
-                    + "\(overflow == 1 ? "wasn’t" : "weren’t") added.")
+                result.notes.append(overflow == 1
+                    ? String(localized: "A message can carry \(maximum) files, so 1 more wasn’t added.")
+                    : String(localized: "A message can carry \(maximum) files, so \(overflow) more weren’t added."))
             }
             return result
         }

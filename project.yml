@@ -1,6 +1,7 @@
 name: BYOT
 options:
   bundleIdPrefix: com.steventsao
+  developmentLanguage: en
   deploymentTarget:
     iOS: "17.0"
 settings:
@@ -9,6 +10,12 @@ settings:
     CURRENT_PROJECT_VERSION: 1
     SWIFT_VERSION: 6.0
     DEVELOPMENT_TEAM: 449BD89VDV
+    # String Catalogs in Sources/Resources: Localizable (app, widget and share
+    # extension copy), InfoPlist (permission prompts) and AppShortcuts (Siri
+    # phrases). Builds extract SwiftUI literals and String(localized:) calls;
+    # see docs/features/localization.md.
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
 packages:
   # Terminal emulator for the PTY screen. 1.10.1 is the newest release without
   # build-tool plugins or benchmark dependencies in its manifest; later ones need
@@ -91,6 +98,9 @@ targets:
       - path: Sources/BYOTBrand.swift
       - path: Sources/Resources/Fonts/OpenRunde-Bold.otf
         buildPhase: resources
+      # The app's catalog, so widget and Live Activity copy is translated too.
+      - path: Sources/Resources/Localizable.xcstrings
+        buildPhase: resources
     info:
       path: Widgets/Info.plist
       properties:
@@ -123,6 +133,8 @@ targets:
       - path: Sources/BYOTShareInbox.swift
       - path: Sources/OpenCodePromptAttachment.swift
       - path: Sources/Resources/Fonts/OpenRunde-Bold.otf
+        buildPhase: resources
+      - path: Sources/Resources/Localizable.xcstrings
         buildPhase: resources
     info:
       path: ShareExtension/Info.plist

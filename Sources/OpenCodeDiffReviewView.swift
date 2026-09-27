@@ -142,27 +142,29 @@ struct OpenCodeDiffReviewView: View {
 
     private var summary: some View {
         HStack(spacing: 8) {
-            Text("\(store.files.count) \(store.files.count == 1 ? "file" : "files")")
+            Text(store.files.count == 1 ? "1 file" : "\(store.files.count) files")
             Spacer(minLength: 8)
             OpenCodeDiffCounts(additions: store.additions, deletions: store.deletions)
         }
         .font(.cleanCaptionBold)
         .textCase(nil)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(store.files.count) changed \(store.files.count == 1 ? "file" : "files"), \(store.additions) additions, \(store.deletions) deletions")
+        .accessibilityLabel(store.files.count == 1
+            ? "1 changed file, \(store.additions) additions, \(store.deletions) deletions"
+            : "\(store.files.count) changed files, \(store.additions) additions, \(store.deletions) deletions")
     }
 
     private var caption: String? {
         switch store.source {
         case .turn:
-            store.isPinnedTurn ? "Files changed by the selected prompt." : "Files changed by your latest prompt."
+            store.isPinnedTurn ? String(localized: "Files changed by the selected prompt.") : String(localized: "Files changed by your latest prompt.")
         case .session:
-            "Files changed during this session."
+            String(localized: "Files changed during this session.")
         case .uncommitted:
-            store.branch?.current.map { "Uncommitted changes on \($0)." } ?? "Uncommitted changes in the working tree."
+            store.branch?.current.map { String(localized: "Uncommitted changes on \($0).") } ?? String(localized: "Uncommitted changes in the working tree.")
         case .branch:
             if let current = store.branch?.current, let base = store.branch?.defaultBranch {
-                "\(current) compared with \(base)."
+                String(localized: "\(current) compared with \(base).")
             } else { nil }
         case nil:
             nil
@@ -173,7 +175,7 @@ struct OpenCodeDiffReviewView: View {
         switch store.phase {
         case .idle, .loading:
             if store.files.isEmpty {
-                BYOTActivityView(.loading, title: "Loading changes", layout: .blocking)
+                BYOTActivityView(.loading, title: String(localized: "Loading changes"), layout: .blocking)
             }
         case .failed(let message) where store.files.isEmpty:
             ContentUnavailableView {
@@ -191,7 +193,7 @@ struct OpenCodeDiffReviewView: View {
             ContentUnavailableView("Changes unavailable", systemImage: "plusminus", description: Text(reason))
         case .loaded where store.files.isEmpty:
             ContentUnavailableView {
-                Label(store.source?.emptyTitle ?? "No changes", systemImage: "checkmark.circle")
+                Label(store.source?.emptyTitle ?? String(localized: "No changes"), systemImage: "checkmark.circle")
             } description: {
                 if let caption { Text(caption) }
             }
@@ -322,7 +324,7 @@ struct OpenCodeDiffFileView: View {
             }
         }
         .background(BYOTBrand.canvas)
-        .navigationTitle(file?.name ?? "Changes")
+        .navigationTitle(file?.name ?? String(localized: "Changes"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarTitleMenu {
             ForEach(store.files) { item in
@@ -408,7 +410,7 @@ struct OpenCodeDiffFileView: View {
                 lines
             }
         } else {
-            BYOTActivityView(.loading, title: "Preparing diff", layout: .blocking)
+            BYOTActivityView(.loading, title: String(localized: "Preparing diff"), layout: .blocking)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -452,7 +454,7 @@ struct OpenCodeDiffFileView: View {
                 .accessibilityAddTraits(.isHeader)
         case .gap(let id, let hidden):
             Button { expand(id) } label: {
-                Label("Show \(hidden) unchanged \(hidden == 1 ? "line" : "lines")", systemImage: "arrow.up.and.down")
+                Label(hidden == 1 ? "Show 1 unchanged line" : "Show \(hidden) unchanged lines", systemImage: "arrow.up.and.down")
                     .font(.cleanCaption)
                     .foregroundStyle(BYOTBrand.interactionTint)
                     .padding(.horizontal, 12)
@@ -474,7 +476,7 @@ struct OpenCodeDiffFileView: View {
     private func hunkLabel(_ title: String) -> String {
         guard let hunk = parsed?.hunks.first(where: { title.hasPrefix($0.header) }) else { return title }
         let start = hunk.newCount > 0 ? hunk.newStart : hunk.oldStart
-        return ["Change at line \(start)", hunk.section].compactMap { $0 }.joined(separator: ", ")
+        return [String(localized: "Change at line \(String(start))"), hunk.section].compactMap { $0 }.joined(separator: ", ")
     }
 
     private func parse() async {
@@ -594,12 +596,12 @@ private struct OpenCodeDiffLineRow: View {
     }
 
     private var accessibilityLabel: String {
-        let content = line.text.trimmingCharacters(in: .whitespaces).isEmpty ? "blank" : line.text
-        let suffix = line.missingNewline ? ", no newline at end of file" : ""
+        let content = line.text.trimmingCharacters(in: .whitespaces).isEmpty ? String(localized: "blank") : line.text
+        let suffix = line.missingNewline ? String(localized: ", no newline at end of file") : ""
         switch line.kind {
-        case .addition: return "Added line \(line.newNumber ?? 0): \(content)\(suffix)"
-        case .deletion: return "Removed line \(line.oldNumber ?? 0): \(content)\(suffix)"
-        case .context: return "Line \(line.newNumber ?? 0): \(content)\(suffix)"
+        case .addition: return String(localized: "Added line \(String(line.newNumber ?? 0)): \(content)\(suffix)")
+        case .deletion: return String(localized: "Removed line \(String(line.oldNumber ?? 0)): \(content)\(suffix)")
+        case .context: return String(localized: "Line \(String(line.newNumber ?? 0)): \(content)\(suffix)")
         }
     }
 }

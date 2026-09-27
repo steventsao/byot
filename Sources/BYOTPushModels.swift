@@ -5,10 +5,10 @@ enum BYOTPushKind: String, Codable, CaseIterable, Sendable {
     case permission, question, complete, error
     var title: String {
         switch self {
-        case .permission: "Approval requests"
-        case .question: "Questions"
-        case .complete: "Finished turns"
-        case .error: "Errors"
+        case .permission: String(localized: "Approval requests")
+        case .question: String(localized: "Questions")
+        case .complete: String(localized: "Finished turns")
+        case .error: String(localized: "Errors")
         }
     }
 }
@@ -112,9 +112,9 @@ enum BYOTPushError: LocalizedError {
     case invalidNotification, denied, registering, unavailable(String)
     var errorDescription: String? {
         switch self {
-        case .invalidNotification: "This notification can’t be opened. Open the session from your server instead."
-        case .denied: "Notifications are disabled for byot. Enable them in iOS Settings, then try again."
-        case .registering: "Waiting for Apple to register this device. Try again in a moment."
+        case .invalidNotification: String(localized: "This notification can’t be opened. Open the session from your server instead.")
+        case .denied: String(localized: "Notifications are disabled for byot. Enable them in iOS Settings, then try again.")
+        case .registering: String(localized: "Waiting for Apple to register this device. Try again in a moment.")
         case .unavailable(let message): message
         }
     }

@@ -45,8 +45,8 @@ struct OpenCodeAttachmentPreviewFile {
         directory = root.appendingPathComponent("byot-preview-\(UUID().uuidString)", isDirectory: true)
         // Both separators are untrusted filename input, including Windows paths.
         var filename = attachment.filename.replacingOccurrences(of: "\\", with: "/")
-            .split(separator: "/").last.map(String.init) ?? "Attachment"
-        if filename == "." || filename == ".." { filename = "Attachment" }
+            .split(separator: "/").last.map(String.init) ?? String(localized: "Attachment")
+        if filename == "." || filename == ".." { filename = String(localized: "Attachment") }
         if (filename as NSString).pathExtension.isEmpty,
            let ext = UTType(mimeType: attachment.mimeType)?.preferredFilenameExtension {
             filename += ".\(ext)"

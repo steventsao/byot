@@ -15,10 +15,10 @@ enum BYOTWidgetSessionState: String, Codable, Hashable, Sendable {
 
     var title: String {
         switch self {
-        case .needsResponse: "Needs you"
-        case .failed: "Failed"
-        case .retrying: "Retrying"
-        case .running: "Running"
+        case .needsResponse: String(localized: "Needs you")
+        case .failed: String(localized: "Failed")
+        case .retrying: String(localized: "Retrying")
+        case .running: String(localized: "Running")
         }
     }
 
@@ -67,7 +67,7 @@ struct BYOTWidgetSession: Codable, Hashable, Identifiable, Sendable {
     }
 
     var accessibilityLabel: String {
-        "\(title), \(state.title), \(projectName) on \(serverName)"
+        String(localized: "\(title), \(state.title), \(projectName) on \(serverName)")
     }
 }
 

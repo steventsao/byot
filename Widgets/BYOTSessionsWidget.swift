@@ -128,7 +128,7 @@ struct BYOTSessionsWidgetView: View {
                 BYOTWidgetWordmark()
                 Spacer(minLength: 4)
                 if !snapshot.isEmpty {
-                    Text(entry.isStale ? "May be out of date" : summary)
+                    Text(entry.isStale ? String(localized: "May be out of date") : summary)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(entry.isStale ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
                         .lineLimit(1)
@@ -255,15 +255,15 @@ struct BYOTSessionsWidgetView: View {
     // MARK: Copy
 
     private var needsYou: String {
-        snapshot.attentionCount == 1 ? "1 needs you" : "\(snapshot.attentionCount) need you"
+        snapshot.attentionCount == 1 ? String(localized: "1 needs you") : String(localized: "\(snapshot.attentionCount) need you")
     }
 
     private var summary: String {
         switch (snapshot.attentionCount, snapshot.activeCount) {
-        case (0, 0): "Nothing running"
-        case (0, let active): "\(active) active"
+        case (0, 0): String(localized: "Nothing running")
+        case (0, let active): String(localized: "\(active) active")
         case (_, 0): needsYou
-        case (_, let active): "\(needsYou) · \(active) active"
+        case (_, let active): String(localized: "\(needsYou) · \(active) active")
         }
     }
 }

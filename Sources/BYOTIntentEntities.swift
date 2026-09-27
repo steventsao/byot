@@ -106,7 +106,7 @@ struct OpenCodeSessionEntity: AppEntity {
         title = session.title
         project = session.projectName
         server = session.serverName
-        status = session.state?.title ?? "Idle"
+        status = session.state?.title ?? String(localized: "Idle")
     }
 
     var displayRepresentation: DisplayRepresentation {

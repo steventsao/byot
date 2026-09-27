@@ -116,13 +116,13 @@ struct OpenCodeConnectedView: View {
                 if !groupByProject {
                     ForEach(browser.groups.filter { $0.error != nil }) { group in
                         Section(group.project.displayName) {
-                            ErrorBanner(message: group.error ?? "Couldn’t refresh sessions")
+                            ErrorBanner(message: group.error ?? String(localized: "Couldn’t refresh sessions"))
                         }
                     }
                 }
                 if browser.isLoading || (workspace.isLoading && browser.cachedAt != nil && offlineSavedAt == nil) {
                     Section {
-                        BYOTActivityView(.loading, title: "Refreshing sessions", layout: .inline)
+                        BYOTActivityView(.loading, title: String(localized: "Refreshing sessions"), layout: .inline)
                     }
                 }
                 if !workspace.isLoading && !browser.isLoading && browser.sessions.isEmpty && workspace.errorMessage == nil {
@@ -420,7 +420,7 @@ struct OpenCodeConnectedView: View {
         } else if !group.isLoaded {
             Text("Loading sessions")
         } else {
-            let countLabel = group.sessions.count == 1 ? "1 session" : "\(group.sessions.count) sessions"
+            let countLabel = group.sessions.count == 1 ? String(localized: "1 session") : String(localized: "\(group.sessions.count) sessions")
             let retries = group.sessions.filter {
                 if case .retry = group.status(for: $0) { return true }
                 return false
@@ -432,7 +432,7 @@ struct OpenCodeConnectedView: View {
             let active = group.sessions.filter { group.status(for: $0)?.isActive == true }.count
             if waiting > 0 {
                 Label {
-                    Text("\(waiting) need\(waiting == 1 ? "s" : "") input · \(countLabel)")
+                    Text(waiting == 1 ? "1 needs input · \(countLabel)" : "\(waiting) need input · \(countLabel)")
                 } icon: {
                     Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
                 }
@@ -598,7 +598,7 @@ struct OpenCodeConnectedView: View {
                 try await client.archiveSession(sessionID: session.id, directory: session.directory, workspace: session.workspaceID)
             } catch {
                 browser.unmarkArchived(session.id)
-                archiveError = "Couldn’t archive “\(session.title)”: \(error.localizedDescription)"
+                archiveError = String(localized: "Couldn’t archive “\(session.title)”: \(error.localizedDescription)")
                 await browser.load(projects: projects)
             }
         }
@@ -675,7 +675,7 @@ struct OpenCodeConnectedView: View {
 
     private func worktreesTitle(_ project: OpenCodeProject) -> String {
         let count = project.sandboxes.count
-        return count == 0 ? "Worktrees of \(project.displayName)" : "Worktrees of \(project.displayName) (\(count))"
+        return count == 0 ? String(localized: "Worktrees of \(project.displayName)") : String(localized: "Worktrees of \(project.displayName) (\(count))")
     }
 
     /// Sessions started in a worktree run in one of their project's `sandboxes`.

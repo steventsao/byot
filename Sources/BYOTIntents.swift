@@ -116,7 +116,9 @@ struct SessionsNeedingAttentionIntent: AppIntent {
 
 extension BYOTIntentError: CustomLocalizedStringResourceConvertible {
     /// What Siri says and Shortcuts shows when an intent can't finish.
-    var localizedStringResource: LocalizedStringResource { "\(errorDescription ?? "Something went wrong.")" }
+    var localizedStringResource: LocalizedStringResource {
+        errorDescription.map { "\($0)" } ?? "Something went wrong."
+    }
 }
 
 struct BYOTAppShortcuts: AppShortcutsProvider {
@@ -163,12 +165,12 @@ struct BYOTAttentionSnippet: View {
         VStack(alignment: .leading, spacing: 12) {
             if report.checkedServers == 0 {
                 summaryRow(symbol: "wifi.exclamationmark", tint: .orange,
-                           title: "Couldn’t reach \(BYOTAttentionReport.list(report.unreachable))",
-                           detail: "Check that the server is running, then try again.")
+                           title: String(localized: "Couldn’t reach \(BYOTAttentionReport.list(report.unreachable))"),
+                           detail: String(localized: "Check that the server is running, then try again."))
             } else if report.sessions.isEmpty {
-                summaryRow(symbol: "checkmark.circle.fill", tint: BYOTBrand.accent, title: "Nothing needs you",
+                summaryRow(symbol: "checkmark.circle.fill", tint: BYOTBrand.accent, title: String(localized: "Nothing needs you"),
                            detail: report.runningCount > 0
-                               ? (report.runningCount == 1 ? "1 session is running" : "\(report.runningCount) sessions are running")
+                               ? (report.runningCount == 1 ? String(localized: "1 session is running") : String(localized: "\(report.runningCount) sessions are running"))
                                : nil)
             } else {
                 ForEach(report.sessions.prefix(Self.rowLimit)) { session in

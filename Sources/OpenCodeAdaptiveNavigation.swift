@@ -143,7 +143,7 @@ struct OpenCodeComposerCommandActions {
     var send: (@MainActor () -> Void)?
     var stop: (@MainActor () -> Void)?
     /// "Queue Message" while a turn runs, so the shortcut list says what ⌘↩ does.
-    var sendTitle = "Send Message"
+    var sendTitle = String(localized: "Send Message")
     /// A sheet or alert of the conversation covers it, so no shortcut, the
     /// root's included, should act on the screen beneath.
     var isCovered = false
@@ -232,12 +232,12 @@ struct OpenCodeKeyboardShortcuts: View {
     private var shortcuts: [Shortcut] {
         let composer = router.top
         return [
-            Shortcut(title: "New Session", key: "n", action: app.newSession),
-            Shortcut(title: composer?.sendTitle ?? "Send Message", key: .return, action: composer?.send),
-            Shortcut(title: "Stop Turn", key: ".", action: composer?.stop),
-            Shortcut(title: "Search Sessions", key: "k", action: app.searchSessions),
-            Shortcut(title: "Previous Session", key: "[", action: app.previousSession),
-            Shortcut(title: "Next Session", key: "]", action: app.nextSession),
+            Shortcut(title: String(localized: "New Session"), key: "n", action: app.newSession),
+            Shortcut(title: composer?.sendTitle ?? String(localized: "Send Message"), key: .return, action: composer?.send),
+            Shortcut(title: String(localized: "Stop Turn"), key: ".", action: composer?.stop),
+            Shortcut(title: String(localized: "Search Sessions"), key: "k", action: app.searchSessions),
+            Shortcut(title: String(localized: "Previous Session"), key: "[", action: app.previousSession),
+            Shortcut(title: String(localized: "Next Session"), key: "]", action: app.nextSession),
         ]
     }
 

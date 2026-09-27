@@ -5,10 +5,10 @@ enum OpenCodeSessionAction: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .undo: "Undo last turn"
-        case .redo: "Redo turn"
-        case .compact: "Compact conversation"
-        case .fork: "Fork conversation"
+        case .undo: String(localized: "Undo last turn")
+        case .redo: String(localized: "Redo turn")
+        case .compact: String(localized: "Compact conversation")
+        case .fork: String(localized: "Fork conversation")
         }
     }
     var symbol: String {
@@ -103,9 +103,9 @@ struct OpenCodeTodoProgress: Equatable, Sendable {
     var resolvedCount: Int { items?.filter(\.isResolved).count ?? 0 }
     var totalCount: Int { items?.count ?? 0 }
     var summary: String {
-        guard items != nil else { return "Task progress unavailable" }
-        guard totalCount > 0 else { return "No tasks reported" }
-        return "\(resolvedCount) of \(totalCount) tasks resolved"
+        guard items != nil else { return String(localized: "Task progress unavailable") }
+        guard totalCount > 0 else { return String(localized: "No tasks reported") }
+        return String(localized: "\(resolvedCount) of \(totalCount) tasks resolved")
     }
 }
 

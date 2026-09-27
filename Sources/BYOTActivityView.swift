@@ -19,16 +19,16 @@ enum BYOTActivityPhase: String, CaseIterable, Identifiable, Sendable {
 
     var defaultTitle: String {
         switch self {
-        case .connecting: "Connecting"
-        case .reconnecting: "Reconnecting"
-        case .loading: "Loading"
-        case .thinking: "Thinking"
-        case .working: "Working"
-        case .waiting: "Waiting"
-        case .queued: "Queued"
-        case .retrying: "Retrying"
-        case .completed: "Complete"
-        case .failed: "Failed"
+        case .connecting: String(localized: "Connecting")
+        case .reconnecting: String(localized: "Reconnecting")
+        case .loading: String(localized: "Loading")
+        case .thinking: String(localized: "Thinking")
+        case .working: String(localized: "Working")
+        case .waiting: String(localized: "Waiting")
+        case .queued: String(localized: "Queued")
+        case .retrying: String(localized: "Retrying")
+        case .completed: String(localized: "Complete")
+        case .failed: String(localized: "Failed")
         }
     }
 

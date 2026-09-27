@@ -26,13 +26,13 @@ struct OpenCodeShellRun: Identifiable, Equatable, Sendable {
 
     var statusLabel: String {
         switch status {
-        case .running: "Running"
-        case .exited(let code?): code == 0 ? "Exit 0" : "Exit \(code)"
-        case .exited(nil): "Done"
-        case .timedOut: "Timed out"
-        case .stopped: "Stopped"
-        case .notRun: "Didn’t run"
-        case .unconfirmed: "Unconfirmed"
+        case .running: String(localized: "Running")
+        case .exited(let code?): code == 0 ? String(localized: "Exit 0") : String(localized: "Exit \(code)")
+        case .exited(nil): String(localized: "Done")
+        case .timedOut: String(localized: "Timed out")
+        case .stopped: String(localized: "Stopped")
+        case .notRun: String(localized: "Didn’t run")
+        case .unconfirmed: String(localized: "Unconfirmed")
         }
     }
 
@@ -160,7 +160,7 @@ enum OpenCodeShellTranscript {
         case "pending", "running":
             status = .running
         case "error":
-            status = .notRun(state.error?.trimmedNonEmpty ?? "OpenCode couldn’t run the command.")
+            status = .notRun(state.error?.trimmedNonEmpty ?? String(localized: "OpenCode couldn’t run the command."))
         default:
             if let range = output.range(of: v1AbortNotice, options: .backwards) {
                 output.removeSubrange(range)

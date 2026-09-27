@@ -128,7 +128,7 @@ struct OpenCodeSessionShareView: View {
         VStack(spacing: BYOTBrand.Space.sm) {
             if let link = presentation.link {
                 ShareLink(item: link, subject: Text(store.session.title)) {
-                    fullWidthLabel("Share link", systemImage: "square.and.arrow.up")
+                    fullWidthLabel(String(localized: "Share link"), systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.borderedProminent)
                 .foregroundStyle(BYOTBrand.accentInk)
@@ -138,7 +138,7 @@ struct OpenCodeSessionShareView: View {
                     VStack(spacing: BYOTBrand.Space.sm) { copyButton(link); openButton(link) }
                 }
                 Button(role: .destructive) { isConfirmingUnpublish = true } label: {
-                    progressLabel(store.isUpdatingShare ? "Unpublishing…" : "Unpublish", systemImage: "eye.slash")
+                    progressLabel(store.isUpdatingShare ? String(localized: "Unpublishing…") : String(localized: "Unpublish"), systemImage: "eye.slash")
                 }
                 .buttonStyle(.bordered)
                 .tint(.red)
@@ -146,7 +146,7 @@ struct OpenCodeSessionShareView: View {
                 .accessibilityIdentifier("session-share-unpublish")
             } else {
                 Button { publish() } label: {
-                    progressLabel(store.isUpdatingShare ? "Publishing…" : "Publish", systemImage: "globe")
+                    progressLabel(store.isUpdatingShare ? String(localized: "Publishing…") : String(localized: "Publish"), systemImage: "globe")
                 }
                 .buttonStyle(.borderedProminent)
                 .foregroundStyle(BYOTBrand.accentInk)
@@ -163,13 +163,13 @@ struct OpenCodeSessionShareView: View {
             // Both forms, so the link pastes into plain text fields too.
             UIPasteboard.general.items = [[UTType.url.identifier: link, UTType.plainText.identifier: link.absoluteString]]
             withAnimation(reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick)) { copiedLink = link }
-            AccessibilityNotification.Announcement("Link copied").post()
+            AccessibilityNotification.Announcement(String(localized: "Link copied")).post()
             Task {
                 try? await Task.sleep(for: .seconds(2))
                 if copiedLink == link { copiedLink = nil }
             }
         } label: {
-            fullWidthLabel(copied ? "Copied" : "Copy link", systemImage: copied ? "checkmark" : "doc.on.doc")
+            fullWidthLabel(copied ? String(localized: "Copied") : String(localized: "Copy link"), systemImage: copied ? "checkmark" : "doc.on.doc")
         }
         .buttonStyle(.bordered)
         .accessibilityIdentifier("session-share-copy")
@@ -177,7 +177,7 @@ struct OpenCodeSessionShareView: View {
 
     private func openButton(_ link: URL) -> some View {
         Button { openURL(link) } label: {
-            fullWidthLabel("View page", systemImage: "safari")
+            fullWidthLabel(String(localized: "View page"), systemImage: "safari")
         }
         .buttonStyle(.bordered)
         .accessibilityHint("Opens the published conversation in your browser.")
@@ -208,7 +208,7 @@ struct OpenCodeSessionShareView: View {
     private func publish() {
         Task {
             if await store.publishShareLink() {
-                AccessibilityNotification.Announcement("Published. Anyone with the link can view this conversation.").post()
+                AccessibilityNotification.Announcement(String(localized: "Published. Anyone with the link can view this conversation.")).post()
             }
         }
     }
@@ -217,7 +217,7 @@ struct OpenCodeSessionShareView: View {
         Task {
             if await store.unpublishShareLink() {
                 copiedLink = nil
-                AccessibilityNotification.Announcement("Unpublished. The conversation is private.").post()
+                AccessibilityNotification.Announcement(String(localized: "Unpublished. The conversation is private.")).post()
             }
         }
     }

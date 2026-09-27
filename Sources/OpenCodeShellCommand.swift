@@ -92,9 +92,9 @@ enum OpenCodeShellError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unsupported: "This OpenCode server doesn’t support shell commands."
-        case .emptyCommand: "Enter a command to run."
-        case .agentRequired: "OpenCode hasn’t listed its agents yet. Reload commands, then run this again."
+        case .unsupported: String(localized: "This OpenCode server doesn’t support shell commands.")
+        case .emptyCommand: String(localized: "Enter a command to run.")
+        case .agentRequired: String(localized: "OpenCode hasn’t listed its agents yet. Reload commands, then run this again.")
         }
     }
 
@@ -110,11 +110,10 @@ enum OpenCodeShellError: LocalizedError, Equatable {
     static func failureMessage(for error: Error) -> String {
         if let shellError = error as? OpenCodeShellError { return shellError.localizedDescription }
         if case .httpStatus(409, _) = error as? OpenCodeConnectionError {
-            return "OpenCode was busy with another turn. Run the command again when the session is idle."
+            return String(localized: "OpenCode was busy with another turn. Run the command again when the session is idle.")
         }
         if certainlyDidNotRun(error) { return error.localizedDescription }
-        return "The connection ended before OpenCode confirmed the result, so the command may have run. "
-            + "Check the conversation before running it again. " + error.localizedDescription
+        return String(localized: "The connection ended before OpenCode confirmed the result, so the command may have run. Check the conversation before running it again. \(error.localizedDescription)")
     }
 }
 

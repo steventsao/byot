@@ -109,7 +109,7 @@ private struct OpenCodeStatusVersionControlSection: View {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 OpenCodeStatusIcon(systemName: "arrow.triangle.branch", tint: BYOTBrand.accent)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(branch.current ?? "Detached HEAD")
+                    Text(branch.current ?? String(localized: "Detached HEAD"))
                         .font(.cleanBodySemibold)
                         .textSelection(.enabled)
                     if let detail = Self.branchDetail(branch) {
@@ -134,11 +134,11 @@ private struct OpenCodeStatusVersionControlSection: View {
 
     static func branchDetail(_ branch: OpenCodeVcsBranch) -> String? {
         guard let base = branch.defaultBranch else { return nil }
-        return base == branch.current ? "Default branch" : "Default branch: \(base)"
+        return base == branch.current ? String(localized: "Default branch") : String(localized: "Default branch: \(base)")
     }
 
     static func branchAccessibilityLabel(_ branch: OpenCodeVcsBranch) -> String {
-        let current = branch.current.map { "Branch \($0)" } ?? "Detached HEAD"
+        let current = branch.current.map { String(localized: "Branch \($0)") } ?? String(localized: "Detached HEAD")
         return [current, branchDetail(branch)].compactMap { $0 }.joined(separator: ", ")
     }
 
@@ -198,7 +198,7 @@ private struct OpenCodeStatusChangesSummary: View {
         }
     }
 
-    static func count(_ count: Int) -> String { count == 1 ? "1 changed file" : "\(count) changed files" }
+    static func count(_ count: Int) -> String { count == 1 ? String(localized: "1 changed file") : String(localized: "\(count) changed files") }
 }
 
 private struct OpenCodeStatusFileChangeRow: View {
@@ -232,8 +232,8 @@ private struct OpenCodeStatusFileChangeRow: View {
         }
         .frame(minHeight: 44)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel([file.name, file.status.title, file.folder.map { "in \($0)" },
-                             "\(file.additions) additions, \(file.deletions) deletions"]
+        .accessibilityLabel([file.name, file.status.title, file.folder.map { String(localized: "in \($0)") },
+                             String(localized: "\(file.additions) additions, \(file.deletions) deletions")]
             .compactMap { $0 }.joined(separator: ", "))
         .contextMenu {
             Button("Copy path", systemImage: "doc.on.doc") { UIPasteboard.general.string = file.path }
@@ -255,7 +255,7 @@ private struct OpenCodeStatusMCPSection: View {
                 case .failed(let message):
                     OpenCodeStatusErrorRow(message: message) { Task { await store.load() } }
                 case .loaded(let servers) where servers.isEmpty:
-                    OpenCodeStatusEmptyRow(text: "No MCP servers configured")
+                    OpenCodeStatusEmptyRow(text: String(localized: "No MCP servers configured"))
                 case .loaded(let servers):
                     ForEach(servers) { server in
                         OpenCodeMCPServerRow(
@@ -271,7 +271,7 @@ private struct OpenCodeStatusMCPSection: View {
                     EmptyView()
                 }
             } header: {
-                OpenCodeStatusSectionHeader(title: "MCP servers", detail: connectedSummary)
+                OpenCodeStatusSectionHeader(title: String(localized: "MCP servers"), detail: connectedSummary)
             } footer: {
                 if let footer { Text(footer).font(.cleanCaption) }
             }
@@ -280,14 +280,14 @@ private struct OpenCodeStatusMCPSection: View {
 
     private var connectedSummary: String? {
         guard let servers = store.mcpServers.value, !servers.isEmpty else { return nil }
-        return "\(servers.filter(\.isConnected).count) of \(servers.count) connected"
+        return String(localized: "\(servers.filter(\.isConnected).count) of \(servers.count) connected")
     }
 
     private var footer: String? {
         guard let servers = store.mcpServers.value else { return nil }
-        if servers.isEmpty { return "Add MCP servers to opencode.json on the server." }
+        if servers.isEmpty { return String(localized: "Add MCP servers to opencode.json on the server.") }
         return store.canControlMCP
-            ? "Switching a server applies until OpenCode restarts. Its configuration is unchanged."
+            ? String(localized: "Switching a server applies until OpenCode restarts. Its configuration is unchanged.")
             : nil
     }
 
@@ -297,7 +297,7 @@ private struct OpenCodeStatusMCPSection: View {
         if let error = store.mcpErrors[server.name] {
             message = "\(server.name): \(error)"
         } else if let updated = store.mcpServer(named: server.name) {
-            message = "\(server.name) \(updated.state.title.lowercased())"
+            message = String(localized: "\(server.name) \(updated.state.title.lowercased())")
         } else {
             return
         }
@@ -375,7 +375,7 @@ struct OpenCodeMCPServerRow: View {
         if let actionError { return actionError.agentDisplayErrorText }
         switch server.state {
         case .needsAuthentication:
-            return "Sign in on the server’s computer with “opencode mcp auth \(server.name)”."
+            return String(localized: "Sign in on the server’s computer with “opencode mcp auth \(server.name)”.")
         case .failed, .needsClientRegistration, .other:
             return server.error?.agentDisplayErrorText
         case .connected, .pending, .disabled:
@@ -420,7 +420,7 @@ private struct OpenCodeStatusLanguageServerSection: View {
                 case .failed(let message):
                     OpenCodeStatusErrorRow(message: message) { Task { await store.load() } }
                 case .loaded(let servers) where servers.isEmpty:
-                    OpenCodeStatusEmptyRow(text: "No language servers running")
+                    OpenCodeStatusEmptyRow(text: String(localized: "No language servers running"))
                 case .loaded(let servers):
                     ForEach(servers) { server in
                         HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -447,7 +447,7 @@ private struct OpenCodeStatusLanguageServerSection: View {
                     EmptyView()
                 }
             } header: {
-                OpenCodeStatusSectionHeader(title: "Language servers", detail: nil)
+                OpenCodeStatusSectionHeader(title: String(localized: "Language servers"), detail: nil)
             } footer: {
                 Text("OpenCode starts language servers as the agent opens matching files.")
                     .font(.cleanCaption)
@@ -471,7 +471,7 @@ private struct OpenCodeStatusFormatterSection: View {
                     let enabled = formatters.filter(\.enabled)
                     let available = formatters.filter { !$0.enabled }
                     if enabled.isEmpty {
-                        OpenCodeStatusEmptyRow(text: "No formatters enabled for this project")
+                        OpenCodeStatusEmptyRow(text: String(localized: "No formatters enabled for this project"))
                     }
                     ForEach(enabled) { formatter in formatterRow(formatter) }
                     if !available.isEmpty {
@@ -489,7 +489,7 @@ private struct OpenCodeStatusFormatterSection: View {
                     EmptyView()
                 }
             } header: {
-                OpenCodeStatusSectionHeader(title: "Formatters", detail: nil)
+                OpenCodeStatusSectionHeader(title: String(localized: "Formatters"), detail: nil)
             } footer: {
                 Text("OpenCode formats the files it edits with the enabled formatter for each file type.")
                     .font(.cleanCaption)
@@ -514,7 +514,7 @@ private struct OpenCodeStatusFormatterSection: View {
         }
         .frame(minHeight: 44)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(formatter.name), \(formatter.enabled ? "enabled" : "not enabled")")
+        .accessibilityLabel(formatter.enabled ? "\(formatter.name), enabled" : "\(formatter.name), not enabled")
         .accessibilityValue(formatter.extensions.joined(separator: ", "))
         .accessibilityIdentifier("formatter-\(formatter.name)")
     }
@@ -539,7 +539,7 @@ private struct OpenCodeStatusConfigurationSections: View {
                     EmptyView()
                 }
             } header: {
-                OpenCodeStatusSectionHeader(title: "Configuration", detail: nil)
+                OpenCodeStatusSectionHeader(title: String(localized: "Configuration"), detail: nil)
             } footer: {
                 Text("Read-only. Change settings in opencode.json on the server. Secrets such as API keys are hidden.")
                     .font(.cleanCaption)
@@ -560,7 +560,7 @@ private struct OpenCodeStatusConfigurationSections: View {
                         .accessibilityElement(children: .combine)
                     }
                 } header: {
-                    OpenCodeStatusSectionHeader(title: "Plugins", detail: "\(plugins.count)")
+                    OpenCodeStatusSectionHeader(title: String(localized: "Plugins"), detail: "\(plugins.count)")
                 }
             }
         }
@@ -569,7 +569,7 @@ private struct OpenCodeStatusConfigurationSections: View {
     @ViewBuilder private func summary(_ configuration: OpenCodeServerConfiguration) -> some View {
         let rows = Self.rows(configuration)
         if rows.isEmpty {
-            OpenCodeStatusEmptyRow(text: "Using OpenCode’s defaults")
+            OpenCodeStatusEmptyRow(text: String(localized: "Using OpenCode’s defaults"))
         }
         ForEach(rows, id: \.title) { row in
             OpenCodeStatusValueRow(title: row.title, value: row.value, monospaced: row.monospaced)
@@ -577,7 +577,7 @@ private struct OpenCodeStatusConfigurationSections: View {
         if !configuration.sources.isEmpty {
             DisclosureGroup {
                 ForEach(configuration.sources) { source in
-                    OpenCodeStatusValueRow(title: source.kind.title, value: source.path ?? "Built in",
+                    OpenCodeStatusValueRow(title: source.kind.title, value: source.path ?? String(localized: "Built in"),
                                            monospaced: source.path != nil, stacked: true)
                 }
             } label: {
@@ -608,19 +608,19 @@ private struct OpenCodeStatusConfigurationSections: View {
 
     static func rows(_ configuration: OpenCodeServerConfiguration) -> [Row] {
         var rows: [Row] = []
-        if let model = configuration.model { rows.append(Row(title: "Model", value: model, monospaced: true)) }
-        if let model = configuration.smallModel { rows.append(Row(title: "Small model", value: model, monospaced: true)) }
-        if let agent = configuration.defaultAgent { rows.append(Row(title: "Default agent", value: agent)) }
+        if let model = configuration.model { rows.append(Row(title: String(localized: "Model"), value: model, monospaced: true)) }
+        if let model = configuration.smallModel { rows.append(Row(title: String(localized: "Small model"), value: model, monospaced: true)) }
+        if let agent = configuration.defaultAgent { rows.append(Row(title: String(localized: "Default agent"), value: agent)) }
         if !configuration.providers.isEmpty {
-            rows.append(Row(title: configuration.providers.count == 1 ? "Provider" : "Providers",
+            rows.append(Row(title: configuration.providers.count == 1 ? String(localized: "Provider") : String(localized: "Providers"),
                             value: configuration.providers.map(\.name).joined(separator: ", ")))
         }
-        if let share = configuration.share { rows.append(Row(title: "Sharing", value: share)) }
-        if let updates = configuration.updates { rows.append(Row(title: "Updates", value: updates)) }
-        if let shell = configuration.shell { rows.append(Row(title: "Shell", value: shell, monospaced: true)) }
-        if let username = configuration.username { rows.append(Row(title: "Username", value: username)) }
+        if let share = configuration.share { rows.append(Row(title: String(localized: "Sharing"), value: share)) }
+        if let updates = configuration.updates { rows.append(Row(title: String(localized: "Updates"), value: updates)) }
+        if let shell = configuration.shell { rows.append(Row(title: String(localized: "Shell"), value: shell, monospaced: true)) }
+        if let username = configuration.username { rows.append(Row(title: String(localized: "Username"), value: username)) }
         if !configuration.instructions.isEmpty {
-            rows.append(Row(title: "Instructions", value: configuration.instructions.joined(separator: "\n"), monospaced: true))
+            rows.append(Row(title: String(localized: "Instructions"), value: configuration.instructions.joined(separator: "\n"), monospaced: true))
         }
         return rows
     }
@@ -690,7 +690,7 @@ struct OpenCodeConfigurationDocumentView: View {
             }
             .joined(separator: "\n\n")
         withAnimation(reduceMotion ? nil : .snappy(duration: BYOTBrand.Motion.quick)) { didCopy = true }
-        AccessibilityNotification.Announcement("Configuration copied").post()
+        AccessibilityNotification.Announcement(String(localized: "Configuration copied")).post()
         Task {
             try? await Task.sleep(for: .seconds(2))
             withAnimation(reduceMotion ? nil : .snappy(duration: BYOTBrand.Motion.quick)) { didCopy = false }
@@ -736,13 +736,13 @@ private struct OpenCodeStatusPathsSection: View {
         }
         let worktree = paths.worktree == paths.directory ? nil : paths.worktree
         return [
-            row("Directory", paths.directory),
-            row(paths.projectID == nil ? "Worktree" : "Project", worktree),
-            paths.projectID.map { Row(title: "Project ID", value: $0, copyValue: $0) },
-            paths.workspaceID.map { Row(title: "Workspace", value: $0, copyValue: $0) },
-            row("Config", paths.config),
-            row("State", paths.state),
-            row("Home", paths.home),
+            row(String(localized: "Directory"), paths.directory),
+            row(paths.projectID == nil ? String(localized: "Worktree") : String(localized: "Project"), worktree),
+            paths.projectID.map { Row(title: String(localized: "Project ID"), value: $0, copyValue: $0) },
+            paths.workspaceID.map { Row(title: String(localized: "Workspace"), value: $0, copyValue: $0) },
+            row(String(localized: "Config"), paths.config),
+            row(String(localized: "State"), paths.state),
+            row(String(localized: "Home"), paths.home),
         ].compactMap { $0 }
     }
 }

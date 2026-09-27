@@ -52,7 +52,7 @@ enum OpenCodeTerminalPalette {
 /// SwiftTerm's view with VoiceOver support: it reads as one element whose value is the
 /// visible screen, and double-tapping focuses it for typing.
 final class OpenCodeTerminalEmulatorView: TerminalView {
-    var terminalTitle = "Terminal"
+    var terminalTitle = String(localized: "Terminal")
 
     override var isAccessibilityElement: Bool {
         get { true }
@@ -60,7 +60,7 @@ final class OpenCodeTerminalEmulatorView: TerminalView {
     }
 
     override var accessibilityLabel: String? {
-        get { "\(terminalTitle) output" }
+        get { String(localized: "\(terminalTitle) output") }
         set {}
     }
 
@@ -70,7 +70,7 @@ final class OpenCodeTerminalEmulatorView: TerminalView {
     }
 
     override var accessibilityHint: String? {
-        get { "Double-tap to type." }
+        get { String(localized: "Double-tap to type.") }
         set {}
     }
 
@@ -92,7 +92,7 @@ final class OpenCodeTerminalEmulatorView: TerminalView {
     static func visibleText(_ terminal: Terminal) -> String {
         var lines = (0..<terminal.rows).compactMap { terminal.getLine(row: $0)?.translateToString(trimRight: true) }
         while lines.last?.isEmpty == true { lines.removeLast() }
-        return lines.isEmpty ? "Empty" : lines.joined(separator: "\n")
+        return lines.isEmpty ? String(localized: "Empty") : lines.joined(separator: "\n")
     }
 }
 

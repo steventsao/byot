@@ -98,7 +98,7 @@ struct OpenCodeNewSessionView: View {
                         .tint(BYOTBrand.chromeTint)
                         .disabled(isCreating)
                         if let error {
-                            ErrorBanner(message: error, actionTitle: "Refresh") {
+                            ErrorBanner(message: error, actionTitle: String(localized: "Refresh")) {
                                 Task { await loadProjects() }
                             }
                         }
@@ -221,22 +221,22 @@ struct OpenCodeNewSessionView: View {
     private var workspaceDescription: String {
         switch workspace {
         case .main:
-            "Works in the project’s own checkout."
+            String(localized: "Works in the project’s own checkout.")
         case .existing(let directory):
             worktrees.worktrees.first { $0.directory == directory }.flatMap(worktrees.branch(of:))
-                .map { "Works on \($0), apart from the main checkout." } ?? "Works apart from the main checkout."
+                .map { String(localized: "Works on \($0), apart from the main checkout.") } ?? String(localized: "Works apart from the main checkout.")
         case .new:
             OpenCodeWorktreeNaming.branch(for: worktreeName)
-                .map { "Creates the branch \($0) in a new folder on the server." }
-                ?? "OpenCode picks a name and creates its branch in a new folder on the server."
+                .map { String(localized: "Creates the branch \($0) in a new folder on the server.") }
+                ?? String(localized: "OpenCode picks a name and creates its branch in a new folder on the server.")
         }
     }
 
     private var startTitle: String {
         switch worktrees.creation {
-        case .creating: "Creating worktree…"
-        case .preparing: "Preparing worktree…"
-        case nil: isCreating ? "Starting session…" : "Start session"
+        case .creating: String(localized: "Creating worktree…")
+        case .preparing: String(localized: "Preparing worktree…")
+        case nil: isCreating ? String(localized: "Starting session…") : String(localized: "Start session")
         }
     }
 
@@ -315,7 +315,7 @@ struct OpenCodeNewSessionView: View {
                 directory = worktree
             case .new:
                 guard let worktree = await worktrees.create(name: worktreeName) else {
-                    error = worktrees.actionError ?? "Couldn’t create the worktree."
+                    error = worktrees.actionError ?? String(localized: "Couldn’t create the worktree.")
                     return
                 }
                 // A retry after a failed start reuses this worktree instead of making another.
@@ -341,8 +341,7 @@ struct OpenCodeNewSessionView: View {
             try shares.deliver(share, into: store)
         } catch {
             shares.release(share)
-            shares.notice = "byot couldn’t add what you shared to this session’s message. "
-                + "It’s kept for the next time you open byot."
+            shares.notice = String(localized: "byot couldn’t add what you shared to this session’s message. It’s kept for the next time you open byot.")
         }
     }
 }

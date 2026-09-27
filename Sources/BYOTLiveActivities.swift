@@ -36,12 +36,12 @@ struct BYOTTurnSnapshot: Equatable, Sendable {
         }
         switch status {
         case .retry(let attempt, _, _):
-            return BYOTTurnSnapshot(phase: .retrying, detail: "Attempt \(attempt)", startedAt: startedAt)
+            return BYOTTurnSnapshot(phase: .retrying, detail: String(localized: "Attempt \(attempt)"), startedAt: startedAt)
         case .busy:
             let parts = turn.filter { $0.info.role.lowercased() == "assistant" }.flatMap(\.parts)
             if let tool = parts.last(where: { $0.type == "tool" && Self.isRunning($0.state?.status) }),
                let state = tool.state {
-                let name = tool.tool ?? "Tool"
+                let name = tool.tool ?? String(localized: "Tool")
                 return BYOTTurnSnapshot(
                     phase: .working, tool: OpenCodeToolPresentation(name: name, state: state).title,
                     detail: Self.detail(tool: name, input: state.input), startedAt: startedAt)
@@ -209,7 +209,7 @@ final class BYOTLiveActivityController {
                     snapshot = BYOTTurnSnapshot(phase: failures[sessionID] == nil ? .completed : .failed,
                                                 startedAt: current.startedAt)
                 case .retry(let attempt, _, _):
-                    snapshot = BYOTTurnSnapshot(phase: .retrying, detail: "Attempt \(attempt)", startedAt: current.startedAt)
+                    snapshot = BYOTTurnSnapshot(phase: .retrying, detail: String(localized: "Attempt \(attempt)"), startedAt: current.startedAt)
                 case .busy:
                     if !current.phase.isActive || current.phase == .needsResponse || current.phase == .retrying {
                         snapshot = BYOTTurnSnapshot(phase: .working, startedAt: current.startedAt)
