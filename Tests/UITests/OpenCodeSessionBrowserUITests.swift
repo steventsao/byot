@@ -62,6 +62,50 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
     }
 
     @MainActor
+    func testOfflineLaunchShowsSavedSessionsAndTranscript() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--session-browser-fixture", "--reset-browser", "--offline-cache-fixture"]
+        app.launch()
+        let idle = app.buttons["session-idle"]
+        XCTAssertTrue(idle.waitForExistence(timeout: 10))
+        idle.tap()
+        let prompt = app.staticTexts["Review this project"]
+        XCTAssertTrue(prompt.waitForExistence(timeout: 10), app.debugDescription)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(idle.waitForExistence(timeout: 5))
+        // Leaving the conversation saves it; give the write a moment to land.
+        Thread.sleep(forTimeInterval: 1)
+        app.terminate()
+
+        app.launchArguments = ["--session-browser-fixture", "--offline-cache-fixture", "--server-offline"]
+        app.launch()
+        XCTAssertTrue(idle.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.buttons["session-active"].exists)
+        let notice = app.staticTexts["offline-notice"]
+        XCTAssertTrue(notice.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.buttons["offline-retry"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertGreaterThanOrEqual(app.buttons["offline-retry"].frame.height, 44 - 0.01)
+        attach("offline-session-list")
+        idle.tap()
+        XCTAssertTrue(prompt.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(notice.waitForExistence(timeout: 10), app.debugDescription)
+        attach("offline-transcript")
+        app.terminate()
+
+        // The notice wraps rather than truncates at the largest text size.
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        XCTAssertTrue(notice.waitForExistence(timeout: 10), app.debugDescription)
+        let retry = app.buttons["offline-retry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertGreaterThanOrEqual(retry.frame.height, 44 - 0.01)
+        XCTAssertLessThanOrEqual(notice.frame.maxX, app.frame.width)
+        attach("offline-session-list-largest-text")
+        app.terminate()
+    }
+
+    @MainActor
     func testSwipeLeftArchivesASession() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -130,7 +174,10 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
             .firstMatch
         XCTAssertTrue(focusedComposer.waitForExistence(timeout: 5),
                       "The new session composer should receive keyboard focus")
-        XCTAssertTrue(app.staticTexts["Server Windows, project C:/work/new-project"].exists, app.debugDescription)
+        // The header opens the project's status where the server has one, and adds the branch it reports.
+        let context = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Server Windows, project C:/work/new-project")).firstMatch
+        XCTAssertTrue(context.exists, app.debugDescription)
         attach("new-session-custom-directory")
     }
 
@@ -196,7 +243,8 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
 
         app.buttons["Session list options"].tap()
         app.buttons["Group by project"].tap()
-        XCTAssertTrue(app.staticTexts["1 retrying · 2 sessions"].waitForExistence(timeout: 5))
+        // byot's count includes the session in its login-flow worktree.
+        XCTAssertTrue(app.staticTexts["1 retrying · 3 sessions"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["New session in byot"].exists)
         attach("sessions-grouped")
 

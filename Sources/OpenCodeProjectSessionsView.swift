@@ -123,6 +123,8 @@ struct OpenCodeSessionRow: View {
     let session: OpenCodeSession
     let status: OpenCodeSessionStatus?
     var projectName: String? = nil
+    /// The worktree the session runs in, when it isn't the project's main checkout.
+    var worktreeName: String? = nil
     var attentionMessage: String? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -138,6 +140,7 @@ struct OpenCodeSessionRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     if let projectName { Text(projectName) }
+                    if let worktreeName { worktreeLabel(worktreeName) }
                     if let agent = session.agent {
                         Text(agent)
                     }
@@ -158,6 +161,7 @@ struct OpenCodeSessionRow: View {
                 }
                 HStack(spacing: 12) {
                     if let projectName { Text(projectName).lineLimit(1) }
+                    if let worktreeName { worktreeLabel(worktreeName).lineLimit(1) }
                     if let agent = session.agent {
                         Text(agent)
                     }
@@ -182,6 +186,12 @@ struct OpenCodeSessionRow: View {
             }
         }
         .padding(.vertical, 5)
+    }
+
+    private func worktreeLabel(_ name: String) -> some View {
+        Label(name, systemImage: "arrow.triangle.branch")
+            .labelStyle(OpenCodeCompactLabelStyle())
+            .accessibilityLabel("Worktree \(name)")
     }
 
     @ViewBuilder
@@ -247,5 +257,15 @@ struct OpenCodeStatusLabel: View {
 
     private var displayLabel: String {
         eventConnected == false ? "Reconnecting" : status.label
+    }
+}
+
+/// An icon and title set tight, for metadata beside other caption text.
+struct OpenCodeCompactLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
+            configuration.icon.imageScale(.small)
+            configuration.title
+        }
     }
 }

@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// Where a new session runs: the project's own checkout, an existing worktree, or a
+/// worktree created for it (as the web app's new-session view offers).
+enum OpenCodeNewSessionWorkspace: Hashable, Sendable {
+    case main
+    case existing(String)
+    case new
+}
+
 /// New conversations choose their context on the page instead of presenting a
 /// long, mixed server/project modal. Creating a session remains explicit.
 struct OpenCodeNewSessionView: View {
@@ -17,6 +25,10 @@ struct OpenCodeNewSessionView: View {
     @State private var createdSession: OpenCodeSession?
     @State private var attention: OpenCodeSessionAttentionStore?
     @State private var loadID = UUID()
+    @StateObject private var worktrees = OpenCodeWorktreeStore()
+    @State private var workspace = OpenCodeNewSessionWorkspace.main
+    @State private var worktreeName = ""
+    @State private var worktreeRoute: OpenCodeWorktreeRoute?
 
     init(profiles: [OpenCodeServerProfile], initialProfile: OpenCodeServerProfile,
          makeClient: @escaping (OpenCodeServerProfile) -> OpenCodeClient) {
@@ -67,6 +79,9 @@ struct OpenCodeNewSessionView: View {
                                         .textSelection(.enabled)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
+                                if worktrees.availability == .available && !directory.isEmpty {
+                                    workspacePicker
+                                }
                             }
                         }
                         .pickerStyle(.menu)
@@ -82,8 +97,8 @@ struct OpenCodeNewSessionView: View {
                         } label: {
                             HStack(spacing: 8) {
                                 if isCreating { ProgressView() }
-                                Text("Start session")
-                                Image(systemName: "arrow.right")
+                                Text(startTitle)
+                                if !isCreating { Image(systemName: "arrow.right").accessibilityHidden(true) }
                             }
                             .frame(minHeight: 36)
                             .frame(maxWidth: .infinity)
@@ -102,9 +117,114 @@ struct OpenCodeNewSessionView: View {
                 .navigationTitle("New session")
                 .navigationBarTitleDisplayMode(.inline)
                 .task(id: selectedServerID) { await loadProjects() }
+                .task(id: worktreeScope) { await loadWorktrees() }
+                .onChange(of: worktrees.worktrees) { _, listed in
+                    // A worktree deleted from the manage screen can't stay selected.
+                    if case .existing(let chosen) = workspace, !listed.contains(where: { $0.directory == chosen }) {
+                        workspace = .main
+                    }
+                }
+                .navigationDestination(item: $worktreeRoute) { route in
+                    if let client {
+                        OpenCodeWorktreesScreen(client: client, route: route, attention: attention)
+                    }
+                }
+                .onChange(of: worktreeRoute) { _, route in
+                    if route == nil { Task { await worktrees.load() } }
+                }
             }
         }
         .background(BYOTBrand.canvas)
+    }
+
+    /// Offered only for Git projects on servers with worktree routes.
+    @ViewBuilder
+    private var workspacePicker: some View {
+        Picker("Workspace", selection: $workspace) {
+            Label("Main checkout", systemImage: "folder").tag(OpenCodeNewSessionWorkspace.main)
+            ForEach(worktrees.worktrees) { worktree in
+                Label(worktree.name, systemImage: "arrow.triangle.branch")
+                    .tag(OpenCodeNewSessionWorkspace.existing(worktree.directory))
+            }
+            Label("New worktree", systemImage: "plus").tag(OpenCodeNewSessionWorkspace.new)
+        }
+        .accessibilityIdentifier("new-session-workspace")
+        if workspace == .new {
+            TextField("Worktree name (optional)", text: $worktreeName)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.go)
+                .onSubmit(createSession)
+                .padding(12)
+                .background(BYOTBrand.controlSurface, in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityIdentifier("new-session-worktree-name")
+        }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                workspaceHint
+                Spacer(minLength: 8)
+                manageWorktreesButton
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                workspaceHint
+                manageWorktreesButton
+            }
+        }
+    }
+
+    private var workspaceHint: some View {
+        Text(workspaceDescription)
+            .font(.cleanCaption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var manageWorktreesButton: some View {
+        Button("Manage worktrees") {
+            guard let project = projects.first(where: { $0.worktree == directory }) else { return }
+            worktreeRoute = OpenCodeWorktreeRoute(directory: project.worktree, projectName: project.displayName)
+        }
+        .font(.cleanCaptionBold)
+        .frame(minHeight: 44)
+        .tint(BYOTBrand.interactionTint)
+        .accessibilityIdentifier("new-session-manage-worktrees")
+    }
+
+    private var workspaceDescription: String {
+        switch workspace {
+        case .main:
+            "Works in the project’s own checkout."
+        case .existing(let directory):
+            worktrees.worktrees.first { $0.directory == directory }.flatMap(worktrees.branch(of:))
+                .map { "Works on \($0), apart from the main checkout." } ?? "Works apart from the main checkout."
+        case .new:
+            OpenCodeWorktreeNaming.branch(for: worktreeName)
+                .map { "Creates the branch \($0) in a new folder on the server." }
+                ?? "OpenCode picks a name and creates its branch in a new folder on the server."
+        }
+    }
+
+    private var startTitle: String {
+        switch worktrees.creation {
+        case .creating: "Creating worktree…"
+        case .preparing: "Preparing worktree…"
+        case nil: isCreating ? "Starting session…" : "Start session"
+        }
+    }
+
+    private var worktreeScope: String { "\(selectedServerID)|\(directory)|\(canCreate)" }
+
+    private func loadWorktrees() async {
+        workspace = .main
+        worktreeName = ""
+        guard canCreate, let client, let project = projects.first(where: { $0.worktree == directory }),
+              project.vcs == "git" else {
+            worktrees.use(nil)
+            return
+        }
+        worktrees.use(OpenCodeWorktreeService(
+            client: client, route: OpenCodeWorktreeRoute(directory: project.worktree, projectName: project.displayName)))
+        await worktrees.load()
     }
 
     private var targetDirectory: String {
@@ -155,9 +275,26 @@ struct OpenCodeNewSessionView: View {
         guard let client, canCreate, !isCreating, !targetDirectory.isEmpty else { return }
         isCreating = true
         error = nil
-        let directory = targetDirectory
+        var directory = targetDirectory
+        // Worktrees belong to a listed project; a typed directory always starts in place.
+        let workspace = worktrees.availability == .available && !self.directory.isEmpty ? workspace : .main
         Task {
             defer { isCreating = false }
+            switch workspace {
+            case .main:
+                break
+            case .existing(let worktree):
+                directory = worktree
+            case .new:
+                guard let worktree = await worktrees.create(name: worktreeName) else {
+                    error = worktrees.actionError ?? "Couldn’t create the worktree."
+                    return
+                }
+                // A retry after a failed start reuses this worktree instead of making another.
+                self.workspace = .existing(worktree.directory)
+                worktreeName = ""
+                directory = worktree.directory
+            }
             do {
                 createdSession = try await client.createSession(directory: directory, title: nil)
             } catch { self.error = error.localizedDescription }

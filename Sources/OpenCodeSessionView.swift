@@ -53,7 +53,11 @@ struct OpenCodeSessionScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
-    @State private var diffSheet: OpenCodeDiffSheet?
+    @StateObject private var diffReview: OpenCodeDiffReviewStore
+    @State private var diffRequest: OpenCodeDiffReviewRequest?
+    /// Starts shown so v1 servers don't shift the toolbar; hidden once negotiation
+    /// finds nothing to compare.
+    @State private var canReviewChanges = true
     @State private var isShowingQueue = false
     @ObservedObject private var push = BYOTPushNotifications.shared
     @State private var notificationError: String?
@@ -69,7 +73,17 @@ struct OpenCodeSessionScreen: View {
     @State private var transcriptCopies = 0
     @State private var showsTranscriptCopied = false
     @State private var nextSession: OpenCodeSessionRoute?
+    @State private var terminalRoute: OpenCodeTerminalRoute?
+    @State private var canOpenTerminal = false
+    @State private var statusRoute: OpenCodeProjectStatusRoute?
+    @State private var canOpenStatus = false
+    /// The project's checked-out branch, shown beside the project name.
+    @State private var branch: String?
+    /// Bumped by each branch event, so a slower fetch never overwrites a newer report.
+    @State private var branchGeneration = 0
     private let client: OpenCodeClient
+    private let terminalService: OpenCodeTerminalService
+    private let contextService: OpenCodeServerContextService
     private let serverName: String
     private let attention: OpenCodeSessionAttentionStore?
     private let startsWithComposerFocused: Bool
@@ -93,10 +107,20 @@ struct OpenCodeSessionScreen: View {
         self.startsWithComposerFocused = startsWithComposerFocused
         self.presentingSessionID = presentingSessionID
         self.replaceSession = replaceSession
+        terminalService = OpenCodeTerminalService(
+            client: client, route: OpenCodeTerminalRoute(directory: directory, workspace: session.workspaceID))
+        contextService = OpenCodeServerContextService(
+            client: client, route: OpenCodeProjectStatusRoute(directory: directory, workspace: session.workspaceID))
         _store = StateObject(
             wrappedValue: OpenCodeSessionStore(
                 client: client,
                 session: session,
+                directory: directory
+            )
+        )
+        _diffReview = StateObject(
+            wrappedValue: OpenCodeDiffReviewStore(
+                service: OpenCodeDiffReviewService(client: client, session: session, directory: directory),
                 directory: directory
             )
         )
@@ -106,7 +130,17 @@ struct OpenCodeSessionScreen: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
-                    if let errorMessage = store.errorMessage, hasConversationContent {
+                    if let offline = store.offlineTranscript, let errorMessage = store.errorMessage {
+                        // One notice covers the failed load and the dropped event stream.
+                        OpenCodeOfflineNotice(
+                            subject: .transcript,
+                            savedAt: offline.savedAt,
+                            detail: errorMessage,
+                            isTruncated: offline.isTruncated,
+                            isRetrying: store.isLoading,
+                            retry: refreshSession
+                        )
+                    } else if let errorMessage = store.errorMessage, hasConversationContent {
                         ErrorBanner(
                             message: errorMessage,
                             actionTitle: "Refresh",
@@ -115,6 +149,7 @@ struct OpenCodeSessionScreen: View {
                     }
 
                     if let eventErrorMessage = store.eventErrorMessage,
+                       store.offlineTranscript == nil || store.errorMessage == nil,
                        eventErrorMessage != store.errorMessage {
                         ErrorBanner(
                             message: eventErrorMessage,
@@ -385,9 +420,10 @@ struct OpenCodeSessionScreen: View {
         ) { sessionID in
             openSubagent(sessionID)
         })
-        .environment(\.openCodeDiffNavigator, OpenCodeDiffNavigator(diffs: store.diffs, directory: store.directory) { diffID in
-            diffSheet = OpenCodeDiffSheet(focusedDiffID: diffID)
-        })
+        .environment(\.openCodeDiffNavigator, OpenCodeDiffNavigator(diffs: store.diffs, directory: store.directory))
+        .environment(\.openCodeReviewChanges, isReviewChangesVisible ? OpenCodeReviewChangesAction { request in
+            diffRequest = request
+        } : nil)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -397,6 +433,21 @@ struct OpenCodeSessionScreen: View {
                     Button("Context and usage", systemImage: "gauge.with.dots.needle.33percent") { isShowingUsage = true }
                         .accessibilityIdentifier("session-usage")
                     Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
+                    if isReviewChangesVisible {
+                        Button("Review changes", systemImage: "plusminus") { diffRequest = OpenCodeDiffReviewRequest() }
+                            .accessibilityIdentifier("session-menu-review-changes")
+                    }
+                    if canOpenTerminal {
+                        Button("Terminal", systemImage: "apple.terminal") {
+                            terminalRoute = OpenCodeTerminalRoute(
+                                directory: terminalService.directory, workspace: terminalService.workspace)
+                        }
+                        .accessibilityIdentifier("session-menu-terminal")
+                    }
+                    if canOpenStatus {
+                        Button("Project status", systemImage: "gauge.with.dots.needle.33percent", action: openStatus)
+                            .accessibilityIdentifier("session-menu-status")
+                    }
                     if push.credentials[client.profile.id] != nil {
                         Button(push.isMuted(serverID: client.profile.id, sessionID: store.session.id) ? "Unmute notifications" : "Mute notifications", systemImage: "bell.slash") {
                             Task {
@@ -429,13 +480,15 @@ struct OpenCodeSessionScreen: View {
                 .accessibilityLabel("Session actions")
                 .accessibilityIdentifier("session-actions")
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Changes", systemImage: "doc.text.magnifyingglass") {
-                    diffSheet = OpenCodeDiffSheet(focusedDiffID: nil)
+            if isReviewChangesVisible {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Changes", systemImage: "plusminus") {
+                        diffRequest = OpenCodeDiffReviewRequest()
+                    }
+                    .labelStyle(.iconOnly)
+                    .tint(BYOTBrand.chromeTint)
+                    .accessibilityHint("Review files changed in this session")
                 }
-                .labelStyle(.iconOnly)
-                .tint(BYOTBrand.chromeTint)
-                .disabled(!store.diffPresentation.canPresent)
             }
         }
         .sheet(isPresented: $isShowingQueue) {
@@ -481,6 +534,12 @@ struct OpenCodeSessionScreen: View {
             OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory,
                                 attention: attention, presentingSessionID: store.session.id)
         }
+        .navigationDestination(item: $terminalRoute) { route in
+            OpenCodeTerminalScreen(client: client, route: route)
+        }
+        .navigationDestination(item: $statusRoute) { route in
+            OpenCodeProjectStatusScreen(client: client, route: route)
+        }
         .navigationDestination(isPresented: $isShowingNewSession) {
             OpenCodeNewSessionView(profiles: [client.profile], initialProfile: client.profile, makeClient: { _ in client })
         }
@@ -494,9 +553,13 @@ struct OpenCodeSessionScreen: View {
         .onChange(of: store.didDeleteSession) { _, deleted in
             if deleted { isShowingDetails = false; dismiss() }
         }
-        .sheet(item: $diffSheet) { sheet in
-            OpenCodeDiffView(diffs: store.diffs, unavailableReason: store.diffPresentation.unavailableReason,
-                             focusedDiffID: sheet.focusedDiffID)
+        .sheet(item: $diffRequest) { request in
+            OpenCodeDiffReviewView(
+                store: diffReview,
+                request: request,
+                latestTurnMessageID: store.messages.last { $0.info.role == "user" }?.id,
+                sessionDiffs: store.diffs
+            )
         }
         .sheet(isPresented: $isShowingRecoveryModelPicker) {
             OpenCodeModelPickerView(store: store)
@@ -507,8 +570,24 @@ struct OpenCodeSessionScreen: View {
             Button("OK") { notificationError = nil }
         } message: { Text(notificationError ?? "") }
         .task { await store.start() }
+        .task { canOpenTerminal = await terminalService.isAvailable() }
+        .task { canReviewChanges = await diffReview.isReviewAvailable() }
+        .task {
+            canOpenStatus = await contextService.isAvailable()
+            await refreshBranch()
+        }
+        .onChange(of: store.reportedBranch) { _, reported in
+            guard let reported else { return }
+            branchGeneration &+= 1
+            branch = reported.name
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { store.refreshAfterForeground() }
+            if phase == .active {
+                store.refreshAfterForeground()
+                Task { await refreshBranch() }
+            } else if phase == .background {
+                store.saveOfflineTranscriptNow()
+            }
         }
         .onChange(of: store.errorMessage) { _, _ in rememberAttention() }
         .onDisappear {
@@ -551,7 +630,7 @@ struct OpenCodeSessionScreen: View {
                     }.disabled(store.actionUnavailableReason(.fork) != nil)
                 }
         } else {
-            OpenCodeMessageView(message: message)
+            OpenCodeMessageView(message: message, turnMessageID: turnMessageID(for: message))
         }
     }
 
@@ -561,6 +640,19 @@ struct OpenCodeSessionScreen: View {
         OpenCodeTranscriptClipboard.copy(store.transcriptExport)
         transcriptCopies += 1
         withAnimation(reduceMotion ? nil : .spring(duration: BYOTBrand.Motion.composerResize)) { showsTranscriptCopied = true }
+    }
+
+    /// A legacy session snapshot is reviewable even where negotiation found nothing else.
+    private var isReviewChangesVisible: Bool { canReviewChanges || !store.diffs.isEmpty }
+
+    /// The user prompt an assistant reply answers: its declared parent, else the
+    /// nearest earlier prompt in the transcript.
+    private func turnMessageID(for message: OpenCodeMessageEnvelope) -> String? {
+        if let parentID = message.info.parentID { return parentID }
+        // Only patch rows use it; skip the transcript scan for every other message.
+        guard message.parts.contains(where: { $0.type == "patch" }),
+              let index = store.messages.firstIndex(where: { $0.id == message.id }) else { return nil }
+        return store.messages[..<index].last { $0.info.role == "user" }?.id
     }
 
     private func rememberAttention() {
@@ -613,13 +705,46 @@ struct OpenCodeSessionScreen: View {
         }
     }
 
+    /// Server, project and branch; opens the project's status where the server has one.
+    @ViewBuilder
     private var sessionContext: some View {
-        Text("\(serverName) · \(URL(fileURLWithPath: store.directory).lastPathComponent)")
-            .font(.cleanCaption)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityLabel("Server \(serverName), project \(store.directory)")
+        let project = URL(fileURLWithPath: store.directory).lastPathComponent
+        let label = Group {
+            if let branch {
+                Text("\(serverName) · \(project) · \(Image(systemName: "arrow.triangle.branch")) \(branch)")
+            } else {
+                Text("\(serverName) · \(project)")
+            }
+        }
+        .font(.cleanCaption)
+        .foregroundStyle(.secondary)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+        let accessibilityLabel = "Server \(serverName), project \(store.directory)" + (branch.map { ", branch \($0)" } ?? "")
+        if canOpenStatus {
+            // The padding grows the tap target to 44pt without making the header taller.
+            Button(action: openStatus) {
+                label.padding(.vertical, 14).contentShape(Rectangle())
+            }
+            .padding(.vertical, -14)
+            .buttonStyle(.plain)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint("Shows the project’s status")
+            .accessibilityIdentifier("session-context")
+        } else {
+            label.accessibilityLabel(accessibilityLabel)
+        }
+    }
+
+    private func openStatus() {
+        statusRoute = OpenCodeProjectStatusRoute(
+            directory: contextService.directory, workspace: contextService.workspace)
+    }
+
+    private func refreshBranch() async {
+        let generation = branchGeneration
+        let current = await contextService.currentBranch()
+        if !Task.isCancelled, generation == branchGeneration { branch = current }
     }
 
     @ViewBuilder
@@ -767,6 +892,7 @@ private struct OpenCodeScrollMetricsKey: PreferenceKey {
 private struct OpenCodeMessageView: View {
     let message: OpenCodeMessageEnvelope
     @Environment(\.openCodeContextLimits) private var contextLimits
+    var turnMessageID: String? = nil
 
     private var isUser: Bool { message.info.role == "user" }
 
@@ -784,7 +910,8 @@ private struct OpenCodeMessageView: View {
             if !bubble.isEmpty || message.info.error != nil || reply != nil {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(bubble) { item in
-                        OpenCodeTranscriptItemView(item: item, isUser: isUser, contextLimit: contextLimit)
+                        OpenCodeTranscriptItemView(item: item, isUser: isUser, contextLimit: contextLimit,
+                                                   turnMessageID: turnMessageID)
                     }
                     if let reply {
                         OpenCodeStepSummaryView(summary: reply)
@@ -819,13 +946,14 @@ private struct OpenCodeTranscriptItemView: View {
     let item: OpenCodeTranscriptItem
     let isUser: Bool
     let contextLimit: Int?
+    var turnMessageID: String? = nil
 
     var body: some View {
         switch item {
         case .images(let parts):
             OpenCodeInlineImageGallery(parts: parts)
         case .part(let part):
-            OpenCodePartView(part: part, isUser: isUser, contextLimit: contextLimit)
+            OpenCodePartView(part: part, isUser: isUser, contextLimit: contextLimit, turnMessageID: turnMessageID)
         }
     }
 }
@@ -834,6 +962,7 @@ private struct OpenCodePartView: View {
     let part: OpenCodePart
     let isUser: Bool
     let contextLimit: Int?
+    var turnMessageID: String? = nil
 
     var body: some View {
         switch part.type {
@@ -867,7 +996,7 @@ private struct OpenCodePartView: View {
             OpenCodeRemoteFilePartView(part: part)
         case "patch":
             if let files = part.files, !files.isEmpty {
-                OpenCodePatchPartView(files: files)
+                OpenCodePatchPartView(files: files, turnMessageID: turnMessageID)
             }
         case "subtask":
             VStack(alignment: .leading, spacing: 4) {
@@ -907,76 +1036,3 @@ private struct OpenCodePartView: View {
     }
 }
 
-/// One presentation of the session diff, optionally opened at a file.
-private struct OpenCodeDiffSheet: Identifiable {
-    let id = UUID()
-    let focusedDiffID: String?
-}
-
-private struct OpenCodeDiffView: View {
-    @Environment(\.dismiss) private var dismiss
-    let diffs: [OpenCodeDiff]
-    let unavailableReason: String?
-    let focusedDiffID: String?
-    @State private var expanded: Set<String>
-
-    init(diffs: [OpenCodeDiff], unavailableReason: String?, focusedDiffID: String? = nil) {
-        self.diffs = diffs
-        self.unavailableReason = unavailableReason
-        self.focusedDiffID = focusedDiffID
-        _expanded = State(initialValue: focusedDiffID.map { [$0] } ?? [])
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollViewReader { proxy in
-                List(diffs) { diff in
-                    DisclosureGroup(isExpanded: isExpanded(diff.id)) {
-                        if let patch = diff.patch, !patch.isEmpty {
-                            ScrollView(.horizontal) {
-                                Text(BYOTSyntaxRenderer.attributedString(code: patch, language: .diff))
-                                    .font(.system(.caption, design: .monospaced))
-                                    .textSelection(.enabled)
-                                    .padding(.vertical, 8)
-                            }
-                        }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(diff.file ?? "Changed file")
-                                .font(.cleanBodySemibold)
-                            Text("+\(diff.additions) −\(diff.deletions)")
-                                .font(.cleanCaptionBold)
-                                .foregroundStyle(BYOTBrand.accent)
-                        }
-                    }
-                    .id(diff.id)
-                }
-                .task {
-                    // Opened from a transcript file: bring that file's diff into view.
-                    guard let focusedDiffID, diffs.contains(where: { $0.id == focusedDiffID }) else { return }
-                    await Task.yield()
-                    proxy.scrollTo(focusedDiffID, anchor: .top)
-                }
-            }
-            .overlay {
-                if let unavailableReason {
-                    ContentUnavailableView("Session changes unavailable", systemImage: "doc.text.magnifyingglass", description: Text(unavailableReason))
-                }
-            }
-            .navigationTitle("Session changes")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
-    }
-
-    private func isExpanded(_ id: String) -> Binding<Bool> {
-        Binding(
-            get: { expanded.contains(id) },
-            set: { if $0 { expanded.insert(id) } else { expanded.remove(id) } }
-        )
-    }
-}

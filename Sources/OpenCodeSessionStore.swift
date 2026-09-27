@@ -19,9 +19,6 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var questions: [OpenCodeQuestionRequest] = []
     @Published private(set) var diffs: [OpenCodeDiff] = []
     @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
-    var diffPresentation: OpenCodeSessionDiffPresentation {
-        OpenCodeSessionDiffPresentation(diffs: diffs, support: protocolCapabilities?.sessionDiff)
-    }
     @Published private(set) var status: OpenCodeSessionStatus = .idle
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false
@@ -77,6 +74,11 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var isPerformingSessionAction = false
     @Published private(set) var isLoadingRelatedSessions = false
     @Published private(set) var didDeleteSession = false
+    /// The latest `vcs.branch.updated` event; `nil` until the server reports a switch.
+    @Published private(set) var reportedBranch: OpenCodeReportedBranch?
+    /// Set while `messages` shows the transcript saved on this device, before the
+    /// server's transcript arrives.
+    @Published private(set) var offlineTranscript: OpenCodeOfflineTranscriptInfo?
     private let featureService: (any OpenCodeSessionFeatureServicing)?
     private var featureRefreshGeneration = 0
     private var featureMutationGeneration = 0
@@ -90,6 +92,14 @@ final class OpenCodeSessionStore: ObservableObject {
     let serverID: UUID
     private let workspace: String?
     let durableQueue: BYOTDurableQueue?
+    private let offlineCache: OpenCodeOfflineCacheScope?
+    private var cachedMessages: [OpenCodeMessageEnvelope]?
+    /// The reducer holds a transcript loaded from the server, not only streamed parts.
+    private var hasServerTranscript = false
+    private var savedMessages: [OpenCodeMessageEnvelope]?
+    private var offlineRestoreTask: Task<Void, Never>?
+    private var offlineSaveTask: Task<Void, Never>?
+    private var offlineSavePendingSince: ContinuousClock.Instant?
     private var queueObservation: AnyCancellable?
     private let service: any OpenCodeSessionServicing
     private let defaults: UserDefaults
@@ -135,10 +145,12 @@ final class OpenCodeSessionStore: ObservableObject {
         session: OpenCodeSession,
         directory: String,
         defaults: UserDefaults = .standard,
+        offlineCache: OpenCodeOfflineCacheScope? = nil,
         remoteFiles: OpenCodeRemoteFileStore? = nil,
         durableQueue: BYOTDurableQueue? = nil
     ) {
         self.durableQueue = durableQueue
+        self.offlineCache = offlineCache
         self.service = service
         self.serverID = serverID
         featureService = service as? any OpenCodeSessionFeatureServicing
@@ -165,6 +177,8 @@ final class OpenCodeSessionStore: ObservableObject {
         modelTask?.cancel()
         promptDispatchTask?.cancel()
         queueRecoveryTask?.cancel()
+        offlineRestoreTask?.cancel()
+        offlineSaveTask?.cancel()
     }
 
     var pendingActionCount: Int {
@@ -261,6 +275,7 @@ final class OpenCodeSessionStore: ObservableObject {
         isStatusReady = false
         didStatusProbeFailWithFreshTranscript = false
         recoveryIdleUserMessageID = nil
+        restoreOfflineTranscript()
         connectEvents()
         modelTask?.cancel()
         modelTask = Task { [weak self] in
@@ -282,6 +297,9 @@ final class OpenCodeSessionStore: ObservableObject {
 
     func stop() {
         durableQueue?.stop()
+        offlineRestoreTask?.cancel()
+        offlineRestoreTask = nil
+        saveOfflineTranscriptNow()
         lifecycleGeneration &+= 1
         featureRefreshGeneration &+= 1
         isRunning = false
@@ -403,6 +421,7 @@ final class OpenCodeSessionStore: ObservableObject {
                 if messageGeneration == messageRequestGeneration,
                    transcriptBaseline == transcriptMutationGeneration {
                     transcript.replace(with: messages)
+                    didLoadServerTranscript()
                     publishTranscript()
                     didApplyFreshMessages = true
                 }
@@ -789,6 +808,7 @@ final class OpenCodeSessionStore: ObservableObject {
         do {
             try await featureService.deleteSession(sessionID: session.id, directory: directory, workspace: workspace)
             didDeleteSession = true
+            offlineCache?.removeTranscript(sessionID: session.id, directory: directory, workspace: workspace)
             stop()
             return true
         } catch { sessionDetailsError = error.localizedDescription; return false }
@@ -1384,6 +1404,12 @@ final class OpenCodeSessionStore: ObservableObject {
             } else {
                 scheduleMessageRefresh()
             }
+        case "vcs.branch.updated":
+            // v1 streams only this location's events; v2's `/api/event` streams every project's.
+            if !event.isV2 || event.location == .init(directory: directory, workspaceID: workspace) {
+                reportedBranch = OpenCodeReportedBranch(
+                    name: event.properties["branch"]?.stringValue?.trimmedNonEmpty, eventID: event.id)
+            }
         case "session.diff":
             if let value: [OpenCodeDiff] = decode(event.properties["diff"]) {
                 diffMutationGeneration &+= 1
@@ -1515,16 +1541,108 @@ final class OpenCodeSessionStore: ObservableObject {
 
     private func publishTranscript() {
         if revertMessageID == nil { revertedUserMessages = [] }
-        if let revertMessageID, let boundary = transcript.messages.firstIndex(where: { $0.id == revertMessageID }) {
-            messages = Array(transcript.messages.prefix(boundary))
+        // The saved transcript stands in until the server's arrives. Events streamed
+        // before then update it rather than replace it, so history stays in view.
+        let source = cachedMessages.map { Self.overlay(transcript.messages, on: $0) } ?? transcript.messages
+        if let revertMessageID, let boundary = source.firstIndex(where: { $0.id == revertMessageID }) {
+            messages = Array(source.prefix(boundary))
         } else {
-            messages = transcript.messages
+            messages = source
         }
         updateCurrentTurnActivityTracking()
         updateUnansweredPromptRecovery()
         updateUsage()
         trackSubagents(OpenCodeSubagentTask.sessionIDs(in: transcript.messages))
         transcriptRevision &+= 1
+        if hasServerTranscript { scheduleOfflineTranscriptSave() }
+    }
+
+    // MARK: Offline transcript
+
+    /// Shows the saved transcript while the server's loads. It never enters the
+    /// reducer, so streamed events and the server's snapshot reconcile exactly as
+    /// they would without it.
+    private func restoreOfflineTranscript() {
+        guard let offlineCache, !hasServerTranscript, cachedMessages == nil else { return }
+        let sessionID = session.id, directory = self.directory, workspace = self.workspace
+        offlineRestoreTask?.cancel()
+        offlineRestoreTask = Task { [weak self] in
+            let saved = await offlineCache.transcript(sessionID: sessionID, directory: directory, workspace: workspace)
+            guard let self, !Task.isCancelled, let saved, !saved.messages.isEmpty, isRunning,
+                  !hasServerTranscript else { return }
+            cachedMessages = saved.messages
+            savedMessages = saved.messages
+            offlineTranscript = OpenCodeOfflineTranscriptInfo(savedAt: saved.savedAt, isTruncated: saved.isTruncated)
+            publishTranscript()
+        }
+    }
+
+    private func didLoadServerTranscript() {
+        hasServerTranscript = true
+        discardOfflineTranscript()
+    }
+
+    private func discardOfflineTranscript() {
+        offlineRestoreTask?.cancel()
+        offlineRestoreTask = nil
+        cachedMessages = nil
+        if offlineTranscript != nil { offlineTranscript = nil }
+    }
+
+    /// Streamed messages, applied over the saved ones: a message both hold keeps its
+    /// saved parts and takes the streamed ones, and a new message joins in order.
+    nonisolated static func overlay(
+        _ live: [OpenCodeMessageEnvelope], on saved: [OpenCodeMessageEnvelope]
+    ) -> [OpenCodeMessageEnvelope] {
+        guard !live.isEmpty else { return saved }
+        var merged = saved
+        for message in live {
+            guard let index = merged.firstIndex(where: { $0.id == message.id }) else {
+                merged.append(message)
+                continue
+            }
+            var parts = merged[index].parts
+            for part in message.parts {
+                if let partIndex = parts.firstIndex(where: { $0.id == part.id }) {
+                    parts[partIndex] = part
+                } else {
+                    parts.append(part)
+                }
+            }
+            merged[index] = OpenCodeMessageEnvelope(info: message.info, parts: parts)
+        }
+        return merged.sorted { ($0.info.time.created, $0.id) < ($1.info.time.created, $1.id) }
+    }
+
+    /// Streaming updates the transcript many times a second. Save once it has been
+    /// quiet for 2 seconds, and at least every 30 seconds while a long reply streams.
+    private func scheduleOfflineTranscriptSave() {
+        guard offlineCache != nil else { return }
+        let now = ContinuousClock.now
+        let pendingSince = offlineSavePendingSince ?? now
+        offlineSavePendingSince = pendingSince
+        let delay = max(.zero, min(.seconds(2), pendingSince + .seconds(30) - now))
+        offlineSaveTask?.cancel()
+        offlineSaveTask = Task { [weak self] in
+            do { try await Task.sleep(for: delay) } catch { return }
+            self?.saveOfflineTranscriptNow()
+        }
+    }
+
+    /// Saves pending transcript changes right away, for example before the app
+    /// leaves the foreground.
+    func saveOfflineTranscriptNow() {
+        offlineSaveTask?.cancel()
+        offlineSaveTask = nil
+        offlineSavePendingSince = nil
+        guard let offlineCache, hasServerTranscript, !didDeleteSession, transcript.messages != savedMessages else { return }
+        savedMessages = transcript.messages
+        if transcript.messages.isEmpty {
+            // Nothing to show offline; an older copy would only mislead.
+            offlineCache.removeTranscript(sessionID: session.id, directory: directory, workspace: workspace)
+        } else {
+            offlineCache.saveTranscript(transcript.messages, sessionID: session.id, directory: directory, workspace: workspace)
+        }
     }
 
     private func updateUsage() {
@@ -1982,6 +2100,7 @@ final class OpenCodeSessionStore: ObservableObject {
                   mutationBaseline == transcriptMutationGeneration
             else { return }
             transcript.replace(with: messages)
+            didLoadServerTranscript()
             publishTranscript()
         } catch is CancellationError {
             return

@@ -36,17 +36,33 @@ struct OpenCodeConnectedView: View {
         self.openNewSession = openNewSession
         _client = State(initialValue: client)
         _workspace = StateObject(wrappedValue: OpenCodeWorkspaceStore(service: client))
-        _browser = StateObject(wrappedValue: OpenCodeSessionBrowserStore(service: client))
+        _browser = StateObject(wrappedValue: OpenCodeSessionBrowserStore(service: client, cache: client.offlineCache))
         _attention = StateObject(wrappedValue: OpenCodeSessionAttentionStore(serverID: client.profile.id))
     }
 
     @State private var canArchiveSessions = false
     @State private var archiveError: String?
+    @State private var canOpenTerminal = false
+    @State private var terminalRoute: OpenCodeTerminalRoute?
+    @State private var canOpenStatus = false
+    @State private var statusRoute: OpenCodeProjectStatusRoute?
+    @State private var canManageWorktrees = false
+    @State private var worktreeRoute: OpenCodeWorktreeRoute?
 
     var body: some View {
         List {
             Group {
-                if let error = creationError ?? archiveError ?? workspace.errorMessage {
+                if let savedAt = offlineSavedAt {
+                    Section {
+                        OpenCodeOfflineNotice(subject: .sessions, savedAt: savedAt, detail: workspace.errorMessage,
+                                              isRetrying: workspace.isLoading) {
+                            Task { await reload() }
+                        }
+                    }
+                    if let error = creationError ?? archiveError {
+                        Section { ErrorBanner(message: error) }
+                    }
+                } else if let error = creationError ?? archiveError ?? workspace.errorMessage {
                     Section { ErrorBanner(message: error) }
                 }
                 if !browser.groups.isEmpty && (groupByProject || !visibleSessions(browser.sessions).isEmpty) {
@@ -84,7 +100,7 @@ struct OpenCodeConnectedView: View {
                         }
                     }
                 }
-                if browser.isLoading {
+                if browser.isLoading || (workspace.isLoading && browser.cachedAt != nil && offlineSavedAt == nil) {
                     Section {
                         BYOTActivityView(.loading, title: "Refreshing sessions", layout: .inline)
                     }
@@ -180,6 +196,12 @@ struct OpenCodeConnectedView: View {
             .background(BYOTBrand.canvas)
         }
         .toolbar {
+            if canOpenStatus && !projects.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) { statusMenu }
+            }
+            if canOpenTerminal && !projects.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) { terminalMenu }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu("Session list options", systemImage: "line.3.horizontal.decrease") {
                     Toggle("Group by project", isOn: $groupByProject)
@@ -211,6 +233,11 @@ struct OpenCodeConnectedView: View {
                 do { try await Task.sleep(for: .seconds(15)) }
                 catch { break }
                 guard !Task.isCancelled else { break }
+                // Offline with saved sessions on screen: keep trying to reconnect.
+                if offlineSavedAt != nil {
+                    await reload()
+                    continue
+                }
                 guard workspace.compatibility != nil,
                       workspace.compatibility?.state != .unsupported else { continue }
                 await browser.load(projects: projects)
@@ -223,6 +250,67 @@ struct OpenCodeConnectedView: View {
         .navigationDestination(item: $createdRoute) { route in
             sessionView(route, startsWithComposerFocused: true)
         }
+        .navigationDestination(item: $terminalRoute) { route in
+            OpenCodeTerminalScreen(client: client, route: route)
+        }
+        .navigationDestination(item: $statusRoute) { route in
+            OpenCodeProjectStatusScreen(client: client, route: route)
+        }
+        .navigationDestination(item: $worktreeRoute) { route in
+            OpenCodeWorktreesScreen(client: client, route: route, attention: attention)
+        }
+    }
+
+    /// Like the terminal: one project opens straight away; several ask which one.
+    @ViewBuilder
+    private var statusMenu: some View {
+        let projects = projects.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        if projects.count == 1, let project = projects.first {
+            Button("Status", systemImage: "gauge.with.dots.needle.33percent") { openStatus(of: project) }
+                .tint(BYOTBrand.chromeTint)
+                .accessibilityHint("Shows MCP servers, language servers and settings for \(project.displayName)")
+                .accessibilityIdentifier("open-status")
+        } else {
+            Menu("Status", systemImage: "gauge.with.dots.needle.33percent") {
+                Section("Show the status of") {
+                    ForEach(projects) { project in
+                        Button(project.displayName) { openStatus(of: project) }
+                    }
+                }
+            }
+            .tint(BYOTBrand.chromeTint)
+            .accessibilityIdentifier("open-status")
+        }
+    }
+
+    private func openStatus(of project: OpenCodeProject) {
+        statusRoute = OpenCodeProjectStatusRoute(directory: project.worktree, projectName: project.displayName)
+    }
+
+    /// One project opens straight away; several ask which project's shell to open.
+    @ViewBuilder
+    private var terminalMenu: some View {
+        let projects = projects.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        if projects.count == 1, let project = projects.first {
+            Button("Terminal", systemImage: "apple.terminal") { openTerminal(in: project) }
+                .tint(BYOTBrand.chromeTint)
+                .accessibilityHint("Opens a shell in \(project.displayName)")
+                .accessibilityIdentifier("open-terminal")
+        } else {
+            Menu("Terminal", systemImage: "apple.terminal") {
+                Section("Open a terminal in") {
+                    ForEach(projects) { project in
+                        Button(project.displayName) { openTerminal(in: project) }
+                    }
+                }
+            }
+            .tint(BYOTBrand.chromeTint)
+            .accessibilityIdentifier("open-terminal")
+        }
+    }
+
+    private func openTerminal(in project: OpenCodeProject) {
+        terminalRoute = OpenCodeTerminalRoute(directory: project.worktree, projectName: project.displayName)
     }
 
     @ViewBuilder
@@ -252,6 +340,24 @@ struct OpenCodeConnectedView: View {
                     createSession(in: group.project)
                 }
                 .disabled(isCreating)
+                if canOpenTerminal {
+                    Button("Terminal in \(group.project.displayName)", systemImage: "apple.terminal") {
+                        openTerminal(in: group.project)
+                    }
+                }
+                if canOpenStatus {
+                    Button("Status of \(group.project.displayName)", systemImage: "gauge.with.dots.needle.33percent") {
+                        openStatus(of: group.project)
+                    }
+                }
+                // Worktrees need a Git project and a server with the worktree routes.
+                if canManageWorktrees && group.project.vcs == "git" {
+                    Button(worktreesTitle(group.project), systemImage: "arrow.triangle.branch") {
+                        worktreeRoute = OpenCodeWorktreeRoute(directory: group.project.worktree,
+                                                              projectName: group.project.displayName)
+                    }
+                    .accessibilityIdentifier("worktrees-\(group.project.displayName)")
+                }
             } label: {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(group.project.displayName).font(.cleanBodySemibold)
@@ -332,6 +438,7 @@ struct OpenCodeConnectedView: View {
                     session: session,
                     status: browser.statuses[session.id],
                     projectName: showProject ? projectName(for: session) : nil,
+                    worktreeName: worktreeName(for: session),
                     attentionMessage: attentionIDs.contains(session.id) ? attention.failures[session.id] : nil
                 )
             }
@@ -444,6 +551,19 @@ struct OpenCodeConnectedView: View {
             ?? URL(fileURLWithPath: session.directory).lastPathComponent
     }
 
+    private func worktreesTitle(_ project: OpenCodeProject) -> String {
+        let count = project.sandboxes.count
+        return count == 0 ? "Worktrees of \(project.displayName)" : "Worktrees of \(project.displayName) (\(count))"
+    }
+
+    /// Sessions started in a worktree run in one of their project's `sandboxes`.
+    private func worktreeName(for session: OpenCodeSession) -> String? {
+        let directory = OpenCodeWorktree.key(session.directory)
+        guard projects.contains(where: { $0.sandboxes.contains { OpenCodeWorktree.key($0) == directory } })
+        else { return nil }
+        return OpenCodeWorktree.name(of: directory)
+    }
+
     private func visibleSessions(_ sessions: [OpenCodeSession]) -> [OpenCodeSession] {
         sort.ordered(sessions.filter {
             search.isEmpty || $0.title.localizedStandardContains(search)
@@ -456,8 +576,16 @@ struct OpenCodeConnectedView: View {
         Set(attention.failures.keys.filter { browser.statuses[$0]?.isActive != true })
     }
 
+    /// When the saved sessions on screen were saved, while the server can't be reached.
+    private var offlineSavedAt: Date? {
+        guard workspace.compatibility == nil, workspace.errorMessage != nil else { return nil }
+        return browser.cachedAt
+    }
+
     private var projects: [OpenCodeProject] {
-        var result = workspace.projects
+        // Until the server lists its projects, use the saved list's. A failed first
+        // listing must not reload, and so re-save, the list without them.
+        var result = workspace.projects.isEmpty ? browser.cachedProjects : workspace.projects
         if let directory = client.profile.normalizedDirectory,
            !result.contains(where: { $0.worktree == directory }) {
             result.append(Self.project(directory: directory))
@@ -481,8 +609,26 @@ struct OpenCodeConnectedView: View {
         guard workspace.compatibility != nil else { return }
         // Swipe to archive only where the server can archive (v1 today).
         async let support = try? client.sessionFeatureSupport()
+        // Terminals appear only where the server offers PTYs (v1 /pty, v2 /api/pty).
+        let terminalProbe = projects.first.map {
+            OpenCodeTerminalService(client: client, route: OpenCodeTerminalRoute(directory: $0.worktree))
+        }
+        async let terminals = terminalProbe?.isAvailable() ?? false
+        // Status reads the negotiated schema only; it sends no request of its own.
+        let statusProbe = projects.first.map {
+            OpenCodeServerContextService(client: client, route: OpenCodeProjectStatusRoute(directory: $0.worktree))
+        }
+        async let status = statusProbe?.isAvailable() ?? false
+        // Worktree rows appear only where the server lists worktrees (v1, or a v2 schema with the routes).
+        let worktreeProbe = projects.first { $0.vcs == "git" }.map {
+            OpenCodeWorktreeService(client: client, route: OpenCodeWorktreeRoute(directory: $0.worktree))
+        }
+        async let worktrees = worktreeProbe?.isAvailable() ?? false
         await browser.load(projects: projects)
         canArchiveSessions = await support?.archive ?? false
+        canOpenTerminal = await terminals
+        canOpenStatus = await status
+        canManageWorktrees = await worktrees
         await attention.refresh(sessions: browser.sessions, service: client)
     }
 

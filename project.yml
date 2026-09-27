@@ -9,12 +9,21 @@ settings:
     CURRENT_PROJECT_VERSION: 1
     SWIFT_VERSION: 6.0
     DEVELOPMENT_TEAM: 449BD89VDV
+packages:
+  # Terminal emulator for the PTY screen. 1.10.1 is the newest release without
+  # build-tool plugins or benchmark dependencies in its manifest; later ones need
+  # plugin trust in command-line and archive builds.
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.10.1
 targets:
   BYOT:
     type: application
     platform: iOS
     sources:
       - Sources
+    dependencies:
+      - package: SwiftTerm
     info:
       path: Sources/Info.plist
       properties:

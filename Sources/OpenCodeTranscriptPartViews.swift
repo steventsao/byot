@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Lets transcript rows open the session diff at a specific file.
+/// What transcript rows need to name changed files the way the session diff
+/// does: shorter paths relative to the worktree.
 struct OpenCodeDiffNavigator: Sendable {
     let diffs: [OpenCodeDiff]
     let directory: String
-    let open: @MainActor @Sendable (_ diffID: String) -> Void
 }
 
 private struct OpenCodeDiffNavigatorKey: EnvironmentKey {
@@ -224,14 +224,18 @@ struct OpenCodeStepSummaryView: View {
 
 // MARK: - Patch
 
-/// The files one step changed. Each file with a session diff opens it.
+/// The files one step changed. Where the server can review changes, each
+/// file opens the reviewer at that file, pinned to the step's turn.
 struct OpenCodePatchPartView: View {
     let files: [String]
+    let turnMessageID: String?
     @Environment(\.openCodeDiffNavigator) private var navigator
+    @Environment(\.openCodeReviewChanges) private var reviewChanges
     @State private var isExpanded: Bool
 
-    init(files: [String]) {
+    init(files: [String], turnMessageID: String? = nil) {
         self.files = files
+        self.turnMessageID = turnMessageID
         _isExpanded = State(initialValue: files.count <= 3)
     }
 
@@ -259,9 +263,9 @@ struct OpenCodePatchPartView: View {
 
     @ViewBuilder
     private func row(_ file: OpenCodePatchFile) -> some View {
-        if let diffID = file.diffID, let navigator {
+        if let reviewChanges {
             Button {
-                navigator.open(diffID)
+                reviewChanges(OpenCodeDiffReviewRequest(messageID: turnMessageID, files: [file.path]))
             } label: {
                 label(file, linked: true)
             }

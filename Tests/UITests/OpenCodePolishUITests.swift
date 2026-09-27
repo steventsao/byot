@@ -113,7 +113,8 @@ final class OpenCodePolishUITests: XCTestCase {
         let file = app.buttons["Sources/App.swift"]
         XCTAssertTrue(file.waitForExistence(timeout: 5))
         file.tap()
-        XCTAssertTrue(app.navigationBars["Session changes"].waitForExistence(timeout: 5))
+        // The reviewer opens pinned to the step's turn, straight into the tapped file.
+        XCTAssertTrue(app.navigationBars["App.swift"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Guard the empty state'")).firstMatch.waitForExistence(timeout: 5))
         screenshot(app, name: "patch-opens-diff")
     }

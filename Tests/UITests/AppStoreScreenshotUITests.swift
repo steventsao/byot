@@ -32,17 +32,14 @@ final class AppStoreScreenshotUITests: XCTestCase {
         capture("05-turn-complete")
 
         let changes = app.buttons["Changes"]
-        expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: changes)
-        waitForExpectations(timeout: 10)
+        XCTAssertTrue(changes.waitForExistence(timeout: 10), app.debugDescription)
         changes.tap()
-        XCTAssertTrue(app.navigationBars["Session changes"].waitForExistence(timeout: 5), app.debugDescription)
-        // Disclosure labels report as not hittable; expand bottom-up so one
-        // expanded patch cannot displace the next row before it is tapped.
-        for file in ["src/routes/upload.ts", "src/middleware/rateLimit.ts"] {
-            let row = app.staticTexts[file]
-            XCTAssertTrue(row.waitForExistence(timeout: 5), app.debugDescription)
-            row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        }
+        XCTAssertTrue(app.navigationBars["Changes"].waitForExistence(timeout: 5), app.debugDescription)
+        let route = app.buttons["diff-file-src/routes/upload.ts"]
+        XCTAssertTrue(route.waitForExistence(timeout: 5), app.debugDescription)
+        route.tap()
+        XCTAssertTrue(app.navigationBars["upload.ts"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.scrollViews["diff-lines"].waitForExistence(timeout: 5), app.debugDescription)
         capture("06-review-changes")
     }
 

@@ -62,16 +62,39 @@ enum OpenCodeSessionSort: String, CaseIterable, Identifiable {
 final class OpenCodeSessionBrowserStore: ObservableObject {
     @Published private(set) var groups: [OpenCodeSessionGroup] = []
     @Published private(set) var isLoading = false
+    /// When the sessions shown were saved, while they come from this device's cache
+    /// and the server has not answered yet. `nil` once a load reaches the server.
+    @Published private(set) var cachedAt: Date?
     private let service: any OpenCodeSessionBrowsing
+    private let cache: OpenCodeOfflineCacheScope?
     private var generation = 0
     // Archived from this list. A load already in flight must not bring them back.
     private var archivedIDs: Set<String> = []
+    private var savedGroups: [OpenCodeCachedSessionList.Group]?
 
-    init(service: any OpenCodeSessionBrowsing) { self.service = service }
+    init(service: any OpenCodeSessionBrowsing, cache: OpenCodeOfflineCacheScope? = nil) {
+        self.service = service
+        self.cache = cache
+        // Restore synchronously, so the first frame already lists the last-known sessions.
+        if let saved = cache?.sessionList() {
+            groups = saved.groups.map { saved in
+                // Statuses are live state. A saved "busy" would claim work that may have ended.
+                var group = OpenCodeSessionGroup(project: saved.project, sessions: saved.sessions)
+                group.isLoaded = true
+                return group
+            }
+            savedGroups = saved.groups
+            cachedAt = saved.savedAt
+        }
+    }
+
+    /// The projects of the restored list, so the workspace can name them before it connects.
+    var cachedProjects: [OpenCodeProject] { cachedAt == nil ? [] : groups.map(\.project) }
 
     func markArchived(_ id: String) {
         archivedIDs.insert(id)
         for index in groups.indices { groups[index].sessions.removeAll { $0.id == id } }
+        saveToCache()
     }
 
     func unmarkArchived(_ id: String) { archivedIDs.remove(id) }
@@ -161,6 +184,7 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
             return group
         }
         let targets = groups.map(\.project)
+        let previousSessions = Dictionary(groups.map { ($0.id, $0.sessions) }, uniquingKeysWith: { first, _ in first })
         isLoading = true
         defer { if generation == requestGeneration { isLoading = false } }
         let service = service
@@ -172,7 +196,8 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
                 guard next < targets.count else { return }
                 let project = targets[next]
                 next += 1
-                tasks.addTask { await Self.fetch(project: project, service: service) }
+                let previous = previousSessions[project.worktree] ?? []
+                tasks.addTask { await Self.fetch(project: project, previous: previous, service: service) }
             }
             for _ in 0..<min(3, targets.count) { enqueue() }
             for await loaded in tasks {
@@ -189,28 +214,79 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
                 enqueue()
             }
         }
+        guard !Task.isCancelled, generation == requestGeneration else { return }
+        // Reconciled: the list now reflects the server, including removed projects.
+        cachedAt = nil
+        saveToCache()
+    }
+
+    /// Saves the last-known list. A project that failed this time keeps the sessions
+    /// it had, which is still the best offline answer. Unchanged lists are not rewritten.
+    private func saveToCache() {
+        guard let cache, cachedAt == nil else { return }
+        let snapshot = groups.map { OpenCodeCachedSessionList.Group(project: $0.project, sessions: $0.sessions) }
+        guard snapshot != savedGroups else { return }
+        savedGroups = snapshot
+        cache.saveSessionList(snapshot)
     }
 
     nonisolated private static func fetch(
-        project: OpenCodeProject, service: any OpenCodeSessionBrowsing
+        project: OpenCodeProject, previous: [OpenCodeSession], service: any OpenCodeSessionBrowsing
     ) async -> OpenCodeSessionGroup {
         async let sessionsResult = capture { try await service.listSessions(directory: project.worktree) }
         async let statusesResult = capture { try await service.sessionStatuses(directory: project.worktree, workspace: nil) }
-        let (sessions, statuses) = await (sessionsResult, statusesResult)
+        // Sessions started in a worktree live under its own directory, not the project's.
+        async let worktreesResult = fetchWorktrees(of: project, previous: previous, service: service)
+        let (sessions, statuses, worktrees) = await (sessionsResult, statusesResult, worktreesResult)
         var group = OpenCodeSessionGroup(project: project)
         var errors: [String] = []
         switch sessions {
         case .success(let sessions):
-            group.sessions = sessions.filter { $0.parentID == nil && $0.time.archived == nil }
+            group.sessions = (sessions + worktrees.sessions).filter { $0.parentID == nil && $0.time.archived == nil }
             group.isLoaded = true
         case .failure(let error): errors.append(error.localizedDescription)
         }
         switch statuses {
-        case .success(let statuses): group.statuses = statuses
+        case .success(let statuses): group.statuses = statuses.merging(worktrees.statuses) { current, _ in current }
         case .failure(let error): errors.append("Status unavailable: \(error.localizedDescription)")
         }
         group.error = errors.isEmpty ? nil : errors.joined(separator: "\n")
         return group
+    }
+
+    /// Lists each worktree (`sandboxes`) a few at a time. A worktree that can't be listed
+    /// keeps the sessions it had, and never marks the whole project as failed.
+    nonisolated private static func fetchWorktrees(
+        of project: OpenCodeProject, previous: [OpenCodeSession], service: any OpenCodeSessionBrowsing
+    ) async -> (sessions: [OpenCodeSession], statuses: [String: OpenCodeSessionStatus]) {
+        var seen: Set<String> = [project.worktree]
+        let directories = project.sandboxes.filter { seen.insert($0).inserted }
+        guard !directories.isEmpty else { return ([], [:]) }
+        var sessions: [OpenCodeSession] = []
+        var statuses: [String: OpenCodeSessionStatus] = [:]
+        await withTaskGroup(of: (String, Result<[OpenCodeSession], Error>, [String: OpenCodeSessionStatus]?).self) { tasks in
+            var next = 0
+            func enqueue() {
+                guard next < directories.count else { return }
+                let directory = directories[next]
+                next += 1
+                tasks.addTask {
+                    async let listed = capture { try await service.listSessions(directory: directory) }
+                    async let status = capture { try await service.sessionStatuses(directory: directory, workspace: nil) }
+                    return (directory, await listed, try? await status.get())
+                }
+            }
+            for _ in 0..<min(3, directories.count) { enqueue() }
+            for await (directory, listed, status) in tasks {
+                switch listed {
+                case .success(let listed): sessions += listed
+                case .failure: sessions += previous.filter { $0.directory == directory }
+                }
+                statuses.merge(status ?? [:]) { current, _ in current }
+                enqueue()
+            }
+        }
+        return (sessions, statuses)
     }
 
     nonisolated private static func capture<Value: Sendable>(

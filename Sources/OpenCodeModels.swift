@@ -170,6 +170,8 @@ struct OpenCodeMessageInfo: Codable, Identifiable, Equatable, Sendable {
     var cost: Double? = nil
     var tokens: OpenCodeTokenUsage? = nil
     var summary: Bool? = nil
+    /// The prompt an assistant reply answers; its turn's diff is keyed by this id.
+    var parentID: String? = nil
 }
 
 struct OpenCodeMessageTime: Codable, Equatable, Sendable {
@@ -613,27 +615,48 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
     // Current v2 envelopes carry prompt metadata (for example displayText)
     // beside `data`; the message projection copies it onto the message.
     var metadata: [String: OpenCodeJSONValue]? = nil
+    /// v2's `location` envelope. `/api/event` streams every project's events, so
+    /// project-level events (not tied to a session) must be matched against it.
+    var location: Location? = nil
+
+    struct Location: Codable, Equatable, Sendable {
+        let directory: String
+        var workspaceID: String?
+    }
 
     var sessionID: String? {
         properties["sessionID"]?.stringValue ?? properties["form"]?.objectValue?["sessionID"]?.stringValue
     }
 
-    private enum CodingKeys: String, CodingKey { case id, type, properties, data, created, metadata }
+    private enum CodingKeys: String, CodingKey { case id, type, properties, data, created, metadata, location, payload, directory }
     init(
         id: String, type: String, properties: [String: OpenCodeJSONValue], created: Double? = nil, isV2: Bool = false,
-        metadata: [String: OpenCodeJSONValue]? = nil
+        metadata: [String: OpenCodeJSONValue]? = nil, location: Location? = nil
     ) {
         self.id = id; self.type = type; self.properties = properties; self.created = created; self.isV2 = isV2
         self.metadata = metadata
+        self.location = location
     }
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        // v1 `/global/event` wraps every project's events as `{directory, project, payload}`.
+        // Some payloads (`sync`) carry neither an ID nor properties; "global" is no location.
+        if container.contains(.payload) {
+            let payload = try container.nestedContainer(keyedBy: CodingKeys.self, forKey: .payload)
+            id = try payload.decodeIfPresent(String.self, forKey: .id) ?? ""
+            type = try payload.decode(String.self, forKey: .type)
+            properties = (try? payload.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: .properties)) ?? [:]
+            let directory = try? container.decodeIfPresent(String.self, forKey: .directory)
+            location = directory.flatMap { $0 == "global" ? nil : Location(directory: $0) }
+            return
+        }
         id = try container.decode(String.self, forKey: .id)
         type = try container.decode(String.self, forKey: .type)
         created = try container.decodeIfPresent(Double.self, forKey: .created)
         isV2 = container.contains(.data)
         properties = try container.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: isV2 ? .data : .properties) ?? [:]
         metadata = isV2 ? try? container.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: .metadata) : nil
+        location = try? container.decodeIfPresent(Location.self, forKey: .location)
     }
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -642,6 +665,7 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
         try container.encodeIfPresent(created, forKey: .created)
         try container.encode(properties, forKey: isV2 ? .data : .properties)
         try container.encodeIfPresent(metadata, forKey: .metadata)
+        try container.encodeIfPresent(location, forKey: .location)
     }
 }
 
@@ -656,6 +680,7 @@ extension OpenCodeMessageInfo {
         agent = try c.decodeIfPresent(String.self, forKey: .agent)
         finish = try c.decodeIfPresent(String.self, forKey: .finish)
         error = try c.decodeIfPresent(OpenCodeMessageError.self, forKey: .error)
+        parentID = try c.decodeIfPresent(String.self, forKey: .parentID)
         let raw = try OpenCodeJSONValue(from: decoder).objectValue
         let model = raw?["model"]?.objectValue
         variant = try c.decodeIfPresent(String.self, forKey: .variant) ?? model?["variant"]?.stringValue

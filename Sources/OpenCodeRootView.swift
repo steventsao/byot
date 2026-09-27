@@ -141,7 +141,7 @@ struct OpenCodeRootView: View {
                 profilePendingRemoval = nil
             }
         } message: {
-            Text("The saved password will also be deleted from this iPhone.")
+            Text("The saved password and the sessions kept for offline viewing will also be deleted from this iPhone.")
         }
         .alert(
             "Couldn’t remove server",

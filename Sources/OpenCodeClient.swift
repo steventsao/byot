@@ -5,6 +5,8 @@ import Foundation
 struct OpenCodeClient: Sendable {
     let profile: OpenCodeServerProfile
     let transport: any OpenCodeHTTPTransport
+    /// This server's last-known sessions and transcripts on this device, if caching is on.
+    let offlineCache: OpenCodeOfflineCacheScope?
     private let connection: OpenCodeConnection
     private let actions: OpenCodeActions
 
@@ -12,21 +14,25 @@ struct OpenCodeClient: Sendable {
         profile: OpenCodeServerProfile,
         password: String,
         session: URLSession = .shared,
-        serverProtocol: OpenCodeServerProtocol? = nil
+        serverProtocol: OpenCodeServerProtocol? = nil,
+        offlineCache: OpenCodeOfflineCache? = .shared
     ) {
         self.init(
             profile: profile,
             transport: OpenCodeTransport(profile: profile, password: password, session: session),
-            serverProtocol: serverProtocol
+            serverProtocol: serverProtocol,
+            offlineCache: offlineCache
         )
     }
 
     init(
         profile: OpenCodeServerProfile, transport: any OpenCodeHTTPTransport,
-        serverProtocol: OpenCodeServerProtocol? = nil
+        serverProtocol: OpenCodeServerProtocol? = nil,
+        offlineCache: OpenCodeOfflineCache? = .shared
     ) {
         self.profile = profile
         self.transport = transport
+        self.offlineCache = offlineCache.map { OpenCodeOfflineCacheScope(cache: $0, profile: profile) }
         actions = OpenCodeActions(transport: transport)
         connection = OpenCodeConnection(
             source: OpenCodeLiveConnectionSource(transport: transport, profile: profile),
