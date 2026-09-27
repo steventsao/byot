@@ -411,14 +411,24 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
 
     var created: Double? = nil
     var isV2: Bool = false
+    /// v2's `location` envelope. `/api/event` streams every project's events, so
+    /// project-level events (not tied to a session) must be matched against it.
+    var location: Location? = nil
+
+    struct Location: Codable, Equatable, Sendable {
+        let directory: String
+        var workspaceID: String?
+    }
 
     var sessionID: String? {
         properties["sessionID"]?.stringValue ?? properties["form"]?.objectValue?["sessionID"]?.stringValue
     }
 
-    private enum CodingKeys: String, CodingKey { case id, type, properties, data, created }
-    init(id: String, type: String, properties: [String: OpenCodeJSONValue], created: Double? = nil, isV2: Bool = false) {
+    private enum CodingKeys: String, CodingKey { case id, type, properties, data, created, location }
+    init(id: String, type: String, properties: [String: OpenCodeJSONValue], created: Double? = nil, isV2: Bool = false,
+         location: Location? = nil) {
         self.id = id; self.type = type; self.properties = properties; self.created = created; self.isV2 = isV2
+        self.location = location
     }
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -427,6 +437,7 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
         created = try container.decodeIfPresent(Double.self, forKey: .created)
         isV2 = container.contains(.data)
         properties = try container.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: isV2 ? .data : .properties) ?? [:]
+        location = try? container.decodeIfPresent(Location.self, forKey: .location)
     }
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -434,6 +445,7 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
         try container.encode(type, forKey: .type)
         try container.encodeIfPresent(created, forKey: .created)
         try container.encode(properties, forKey: isV2 ? .data : .properties)
+        try container.encodeIfPresent(location, forKey: .location)
     }
 }
 

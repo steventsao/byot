@@ -1255,7 +1255,11 @@ final class OpenCodeSessionStore: ObservableObject {
                 scheduleMessageRefresh()
             }
         case "vcs.branch.updated":
-            reportedBranch = OpenCodeReportedBranch(name: event.properties["branch"]?.stringValue?.trimmedNonEmpty)
+            // v1 streams only this location's events; v2's `/api/event` streams every project's.
+            if !event.isV2 || event.location == .init(directory: directory, workspaceID: workspace) {
+                reportedBranch = OpenCodeReportedBranch(
+                    name: event.properties["branch"]?.stringValue?.trimmedNonEmpty, eventID: event.id)
+            }
         case "session.diff":
             if let value: [OpenCodeDiff] = decode(event.properties["diff"]) {
                 diffMutationGeneration &+= 1

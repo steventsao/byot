@@ -26,6 +26,8 @@ struct OpenCodeSessionView: View {
     @State private var canOpenStatus = false
     /// The project's checked-out branch, shown beside the project name.
     @State private var branch: String?
+    /// Bumped by each branch event, so a slower fetch never overwrites a newer report.
+    @State private var branchGeneration = 0
     private let client: OpenCodeClient
     private let terminalService: OpenCodeTerminalService
     private let contextService: OpenCodeServerContextService
@@ -448,7 +450,9 @@ struct OpenCodeSessionView: View {
             await refreshBranch()
         }
         .onChange(of: store.reportedBranch) { _, reported in
-            if let reported { branch = reported.name }
+            guard let reported else { return }
+            branchGeneration &+= 1
+            branch = reported.name
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -537,8 +541,9 @@ struct OpenCodeSessionView: View {
     }
 
     private func refreshBranch() async {
+        let generation = branchGeneration
         let current = await contextService.currentBranch()
-        if !Task.isCancelled { branch = current }
+        if !Task.isCancelled, generation == branchGeneration { branch = current }
     }
 
     private var sessionStatus: some View {

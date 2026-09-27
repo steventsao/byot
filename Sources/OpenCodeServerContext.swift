@@ -38,9 +38,11 @@ struct OpenCodeProjectPaths: Equatable, Sendable {
 }
 
 /// A branch switch from the `vcs.branch.updated` event. `name` is `nil` for a detached
-/// HEAD, so the wrapper tells "no report yet" apart from "reported no branch".
+/// HEAD, so the wrapper tells "no report yet" apart from "reported no branch". The event
+/// ID makes every report a change, even one naming the branch an earlier report named.
 struct OpenCodeReportedBranch: Equatable, Sendable {
     let name: String?
+    var eventID = ""
 }
 
 /// `Vcs.FileStatus`: one changed file in the working tree, without its patch.
@@ -387,8 +389,9 @@ struct OpenCodeServerConfiguration: Equatable, Sendable {
     static let redactionMark = "••••••"
 
     /// Removes credentials before anything reaches the screen or the pasteboard: values
-    /// under key-, token-, secret- and password-like names, and every value in `headers`
-    /// and `env` maps, which commonly carry `Authorization` headers and API keys.
+    /// under key-, token-, secret- and password-like names, every value in `headers` and
+    /// `env` maps, which commonly carry `Authorization` headers and API keys, and user info
+    /// and secret-named query values inside URLs.
     static func redacted(_ value: OpenCodeJSONValue, hideAll: Bool = false) -> OpenCodeJSONValue {
         switch value {
         case .object(let object):
@@ -403,17 +406,45 @@ struct OpenCodeServerConfiguration: Equatable, Sendable {
             return .object(result)
         case .array(let array):
             return .array(array.map { redacted($0, hideAll: hideAll) })
-        case .string, .number, .bool:
+        case .string(let string):
+            return hideAll ? hidden(value) : .string(redactedURL(string))
+        case .number, .bool:
             return hideAll ? hidden(value) : value
         case .null:
             return value
         }
     }
 
+    /// Separators are ignored, so `apiKey`, `api_key` and `API-KEY` match alike, as do
+    /// provider options such as `secretAccessKey`, `accessKeyId` and `privateKey`.
     static func isSecretKey(_ key: String) -> Bool {
-        let key = key.lowercased().replacingOccurrences(of: "-", with: "_")
-        if ["key", "authorization", "bearer", "credentials", "cookie"].contains(key) { return true }
-        return ["apikey", "api_key", "_key", "token", "secret", "password", "passphrase"].contains { key.hasSuffix($0) }
+        let key = key.lowercased().filter { $0 != "_" && $0 != "-" }
+        if ["auth", "authorization", "bearer", "cookie", "sig"].contains(key) { return true }
+        if ["secret", "password", "passphrase", "credential", "accesskey"].contains(where: key.contains) { return true }
+        return ["key", "keyid", "token", "signature"].contains { key.hasSuffix($0) }
+    }
+
+    /// `https://user:pass@host/…?key=…` keeps its host and path; the rest is hidden.
+    static func redactedURL(_ string: String) -> String {
+        guard string.contains("://"), let components = URLComponents(string: string),
+              let original = components.string else { return string }
+        let secretQuery = components.percentEncodedQueryItems?.contains { isSecretKey($0.name) } == true
+        guard components.rangeOfUser != nil || secretQuery else { return string }
+        var result = ""
+        var cursor = original.startIndex
+        if let user = components.rangeOfUser {
+            result += original[cursor..<user.lowerBound] + redactionMark
+            cursor = components.rangeOfPassword?.upperBound ?? user.upperBound
+        }
+        if secretQuery, let range = components.rangeOfQuery, let items = components.percentEncodedQueryItems {
+            result += original[cursor..<range.lowerBound]
+            result += items.map { item in
+                if isSecretKey(item.name) { return "\(item.name)=\(redactionMark)" }
+                return item.value.map { "\(item.name)=\($0)" } ?? item.name
+            }.joined(separator: "&")
+            cursor = range.upperBound
+        }
+        return result + original[cursor...]
     }
 
     private static func isSecretMap(_ key: String) -> Bool {

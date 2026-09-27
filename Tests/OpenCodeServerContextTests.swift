@@ -118,7 +118,8 @@ struct OpenCodeServerContextModelTests {
     @Test("Secret-looking names are hidden wherever they appear; ordinary keys are kept")
     func redaction() {
         for key in ["apiKey", "api_key", "API-KEY", "key", "token", "accessToken", "refresh_token", "clientSecret",
-                    "password", "passphrase", "Authorization", "private_key"] {
+                    "password", "passphrase", "Authorization", "private_key", "privateKey", "secretAccessKey",
+                    "accessKeyId", "sessionToken", "client_credentials", "sig"] {
             #expect(OpenCodeServerConfiguration.isSecretKey(key), "\(key)")
         }
         for key in ["keybinds", "max_tokens", "model", "baseURL", "url", "enabled", "tokenizer"] {
@@ -130,6 +131,16 @@ struct OpenCodeServerContextModelTests {
             "secret": .null,
         ]))
         let mark = OpenCodeJSONValue.string(OpenCodeServerConfiguration.redactionMark)
+        let urls = OpenCodeServerConfiguration.redacted(.object([
+            "baseURL": .string("https://user:pw@proxy.example.com/v1?region=us&api_key=Q%20KEY"),
+            "url": .string("https://ghp_TOKEN@example.com/mcp"),
+            "plain": .string("https://example.com/v1?region=us"),
+        ]))
+        let text = OpenCodeServerConfiguration.text(urls)
+        #expect(!text.contains("pw") && !text.contains("KEY") && !text.contains("ghp_TOKEN"))
+        #expect(urls.objectValue?["baseURL"] == .string("https://\(OpenCodeServerConfiguration.redactionMark)@proxy.example.com/v1?region=us&api_key=\(OpenCodeServerConfiguration.redactionMark)"))
+        #expect(urls.objectValue?["url"] == .string("https://\(OpenCodeServerConfiguration.redactionMark)@example.com/mcp"))
+        #expect(urls.objectValue?["plain"] == .string("https://example.com/v1?region=us"))
         #expect(redacted == .object([
             "list": .array([.object(["token": mark, "name": .string("n")])]),
             "env": .object(["A": mark, "nested": .object(["B": mark]), "flag": .bool(true)]),

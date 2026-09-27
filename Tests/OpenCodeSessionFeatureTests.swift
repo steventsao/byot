@@ -267,9 +267,33 @@ struct OpenCodeSessionFeatureTests {
         let store = makeStore(FeatureStoreService())
         #expect(store.reportedBranch == nil)
         store.handle(OpenCodeEvent(id: "b1", type: "vcs.branch.updated", properties: ["branch": .string("feature/status")]))
-        #expect(store.reportedBranch == OpenCodeReportedBranch(name: "feature/status"))
-        store.handle(OpenCodeEvent(id: "b2", type: "vcs.branch.updated", properties: [:], isV2: true))
-        #expect(store.reportedBranch == OpenCodeReportedBranch(name: nil))
+        #expect(store.reportedBranch == OpenCodeReportedBranch(name: "feature/status", eventID: "b1"))
+        let here = OpenCodeEvent.Location(directory: "/project")
+        store.handle(OpenCodeEvent(id: "b2", type: "vcs.branch.updated", properties: [:], isV2: true, location: here))
+        #expect(store.reportedBranch == OpenCodeReportedBranch(name: nil, eventID: "b2"))
+        // A repeat of an earlier branch is still a new report, so the header follows it.
+        store.handle(OpenCodeEvent(id: "b3", type: "vcs.branch.updated", properties: ["branch": .string("feature/status")]))
+        #expect(store.reportedBranch == OpenCodeReportedBranch(name: "feature/status", eventID: "b3"))
+    }
+
+    @Test("v2 streams every project's events, so another location's branch switch is ignored")
+    @MainActor
+    func branchEventsFromOtherLocations() throws {
+        let store = makeStore(FeatureStoreService())
+        let other = try JSONDecoder().decode(OpenCodeEvent.self, from: Data(#"""
+            {"id":"b1","type":"vcs.branch.updated","data":{"branch":"elsewhere"},"location":{"directory":"/other"}}
+            """#.utf8))
+        #expect(other.location == OpenCodeEvent.Location(directory: "/other"))
+        store.handle(other)
+        store.handle(OpenCodeEvent(id: "b2", type: "vcs.branch.updated", properties: ["branch": .string("unplaced")], isV2: true))
+        store.handle(OpenCodeEvent(id: "b3", type: "vcs.branch.updated", properties: ["branch": .string("workspace")], isV2: true,
+                                   location: .init(directory: "/project", workspaceID: "wrk_other")))
+        #expect(store.reportedBranch == nil)
+        let here = try JSONDecoder().decode(OpenCodeEvent.self, from: Data(#"""
+            {"id":"b4","type":"vcs.branch.updated","data":{"branch":"main"},"location":{"directory":"/project"}}
+            """#.utf8))
+        store.handle(here)
+        #expect(store.reportedBranch == OpenCodeReportedBranch(name: "main", eventID: "b4"))
     }
 
     private static let model = OpenCodeModelOption(providerID: "provider", providerName: "Provider", modelID: "model", modelName: "Model", status: nil)
