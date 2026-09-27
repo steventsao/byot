@@ -437,7 +437,9 @@ struct OpenCodeSessionView: View {
     /// nearest earlier prompt in the transcript.
     private func turnMessageID(for message: OpenCodeMessageEnvelope) -> String? {
         if let parentID = message.info.parentID { return parentID }
-        guard let index = store.messages.firstIndex(where: { $0.id == message.id }) else { return nil }
+        // Only patch rows use it; skip the transcript scan for every other message.
+        guard message.parts.contains(where: { $0.type == "patch" }),
+              let index = store.messages.firstIndex(where: { $0.id == message.id }) else { return nil }
         return store.messages[..<index].last { $0.info.role == "user" }?.id
     }
 

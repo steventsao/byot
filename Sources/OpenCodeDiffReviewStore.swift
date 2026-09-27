@@ -29,11 +29,11 @@ final class OpenCodeDiffReviewStore: ObservableObject {
     @Published private(set) var files: [OpenCodeDiffFile] = []
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var branch: OpenCodeVcsBranch?
-    @Published private(set) var isRefreshing = false
     private(set) var turnMessageID: String?
     private(set) var isPinnedTurn = false
     private var availability: OpenCodeDiffAvailability?
     private var sessionDiffs: [OpenCodeDiff] = []
+    private var lastOpen: (request: OpenCodeDiffReviewRequest, latestTurnMessageID: String?)?
     private let service: any OpenCodeDiffReviewServicing
     private let directory: String
     private var generation = 0
@@ -51,12 +51,21 @@ final class OpenCodeDiffReviewStore: ObservableObject {
     func open(_ request: OpenCodeDiffReviewRequest, latestTurnMessageID: String?, sessionDiffs: [OpenCodeDiff]) async {
         generation &+= 1
         let openGeneration = generation
+        lastOpen = (request, latestTurnMessageID)
         isPinnedTurn = request.messageID != nil && request.messageID != latestTurnMessageID
         turnMessageID = request.messageID ?? latestTurnMessageID
         self.sessionDiffs = sessionDiffs
         files = []
         phase = .loading
-        let availability = await service.availability()
+        let availability: OpenCodeDiffAvailability
+        do {
+            availability = try await service.availability()
+        } catch {
+            guard openGeneration == generation, !Task.isCancelled, !(error is CancellationError) else { return }
+            source = nil
+            phase = .failed(error.localizedDescription)
+            return
+        }
         guard openGeneration == generation, !Task.isCancelled else { return }
         self.availability = availability
         branch = availability.branch
@@ -76,11 +85,18 @@ final class OpenCodeDiffReviewStore: ObservableObject {
         await load(source)
     }
 
-    /// Pull to refresh keeps the current list visible until the new one arrives.
-    func refresh() async {
-        guard let source else { return }
-        isRefreshing = true
-        defer { isRefreshing = false }
+    /// Pull to refresh keeps the current list visible until the new one arrives. It negotiates
+    /// again when nothing loaded yet (unreachable server, no prompt) or a newer prompt was sent
+    /// while the latest turn was shown; a turn pinned from the transcript stays pinned.
+    func refresh(latestTurnMessageID latest: String? = nil) async {
+        guard let lastOpen else { return }
+        let latest = latest ?? lastOpen.latestTurnMessageID
+        let followsNewTurn = !isPinnedTurn && latest != nil && latest != turnMessageID
+            && source != .uncommitted && source != .branch
+        guard let source, !followsNewTurn else {
+            await open(lastOpen.request, latestTurnMessageID: latest, sessionDiffs: sessionDiffs)
+            return
+        }
         await load(source, keepingFiles: true)
     }
 
@@ -117,8 +133,9 @@ final class OpenCodeDiffReviewStore: ObservableObject {
         }
         do {
             let diffs = try await service.diffs(source, messageID: source == .turn ? turnMessageID : nil)
+            let normalized = await Self.normalize(diffs, directory: directory)
             guard request == generation, !Task.isCancelled else { return }
-            files = OpenCodeDiffFile.normalized(diffs, directory: directory)
+            files = normalized
             phase = .loaded
         } catch is CancellationError {
         } catch {
@@ -126,6 +143,11 @@ final class OpenCodeDiffReviewStore: ObservableObject {
             if !keepingFiles || files.isEmpty { files = [] }
             phase = .failed(error.localizedDescription)
         }
+    }
+
+    /// Branch diffs can carry hundreds of full patches; keep that work off the main actor.
+    private nonisolated static func normalize(_ diffs: [OpenCodeDiff], directory: String) async -> [OpenCodeDiffFile] {
+        OpenCodeDiffFile.normalized(diffs, directory: directory)
     }
 
     nonisolated static func sources(

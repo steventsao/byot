@@ -132,7 +132,7 @@ struct OpenCodeDiffReviewServiceTests {
             }
         }
         let service = makeService(transport, protocol: .v1)
-        let availability = await service.availability()
+        let availability = try await service.availability()
         #expect(availability == .init(turn: true, uncommitted: true, branch: .init(current: "feature", defaultBranch: "main")))
         let turn = try await service.diffs(.turn, messageID: "msg_user")
         #expect(turn.first?.patch == patch)
@@ -151,13 +151,30 @@ struct OpenCodeDiffReviewServiceTests {
     }
 
     @Test("v1 servers without /vcs keep turn review and hide working-copy review")
-    func v1WithoutVcs() async {
+    func v1WithoutVcs() async throws {
         let html = DiffTestTransport(profile: profile) { _ in .init(data: Data("<!doctype html>".utf8), mime: "text/html") }
-        #expect(await makeService(html, protocol: .v1).availability() == .init(turn: true, uncommitted: false, branch: nil))
+        #expect(try await makeService(html, protocol: .v1).availability() == .init(turn: true, uncommitted: false, branch: nil))
         let missing = DiffTestTransport(profile: profile) { _ in .init(data: Data(), mime: "application/json", status: 404) }
-        #expect(await makeService(missing, protocol: .v1).availability().uncommitted == false)
-        let nonGit = DiffTestTransport(profile: profile) { _ in .json([String: String]()) }
-        #expect(await makeService(nonGit, protocol: .v1).availability() == .init(turn: true, uncommitted: false, branch: .init(current: nil, defaultBranch: nil)))
+        #expect(try await makeService(missing, protocol: .v1).availability().uncommitted == false)
+        // Live 1.18.21 outside a repository: {"branch":null,"default_branch":null}.
+        let nonGit = DiffTestTransport(profile: profile) { _ in .json(["branch": NSNull(), "default_branch": NSNull()]) }
+        #expect(try await makeService(nonGit, protocol: .v1).availability() == .init(turn: true, uncommitted: false, branch: .init(current: nil, defaultBranch: nil)))
+    }
+
+    @Test("A detached HEAD keeps working-copy review but offers no branch comparison")
+    func v1DetachedHead() async throws {
+        let detached = DiffTestTransport(profile: profile) { _ in .json(["default_branch": "main"]) }
+        let availability = try await makeService(detached, protocol: .v1).availability()
+        #expect(availability.uncommitted)
+        #expect(availability.branch?.comparesWithDefault == false)
+    }
+
+    @Test("An unreachable server is a retryable failure, not a missing feature")
+    func unreachable() async {
+        let service = OpenCodeDiffReviewService(sessionID: "ses_review", directory: "/repo/app", workspace: nil) {
+            throw OpenCodeConnectionError.httpStatus(502, nil)
+        }
+        await #expect(throws: OpenCodeConnectionError.self) { try await service.availability() }
     }
 
     @Test("v2 reviews the working copy through the pinned beta schema and checks location")
@@ -169,7 +186,7 @@ struct OpenCodeDiffReviewServiceTests {
             return envelope([["file": "a.txt", "patch": patch, "additions": 1, "deletions": 0, "status": "modified"]])
         }
         let service = makeService(transport, protocol: .v2, schema: try schema())
-        let availability = await service.availability()
+        let availability = try await service.availability()
         #expect(availability.turn == false)
         #expect(availability.uncommitted)
         #expect(availability.branch?.comparesWithDefault == false)
@@ -196,7 +213,7 @@ struct OpenCodeDiffReviewServiceTests {
         }
         let bare = DiffTestTransport(profile: profile) { _ in .json([]) }
         let service = makeService(bare, protocol: .v2, schema: .object(["paths": .object([:])]))
-        let availability = await service.availability()
+        let availability = try await service.availability()
         #expect(!availability.turn && !availability.uncommitted && availability.unavailableReason != nil)
         await #expect(throws: OpenCodeDiffReviewError.unsupported(.uncommitted)) { try await service.diffs(.uncommitted, messageID: nil) }
         #expect(bare.requests.isEmpty)
@@ -286,6 +303,35 @@ struct OpenCodeDiffReviewStoreTests {
         #expect(store.sources == [.turn])
     }
 
+    @Test("A failed negotiation shows a retry that negotiates again")
+    func retryNegotiation() async {
+        let service = FakeDiffService(availability: .init(turn: true), diffs: [.turn: [diff]], availabilityFailures: 1)
+        let store = OpenCodeDiffReviewStore(service: service, directory: "/repo")
+        await store.open(OpenCodeDiffReviewRequest(), latestTurnMessageID: "msg", sessionDiffs: [])
+        if case .failed = store.phase {} else { Issue.record("An unreachable server must offer a retry") }
+        #expect(store.source == nil)
+        await store.refresh()
+        #expect(store.source == .turn)
+        #expect(store.files.map(\.path) == ["a.txt"])
+    }
+
+    @Test("Refreshing the latest turn follows a newer prompt; a pinned turn stays put")
+    func refreshFollowsLatestTurn() async {
+        let service = FakeDiffService(availability: .init(turn: true), diffs: [.turn: [diff]])
+        let latest = OpenCodeDiffReviewStore(service: service, directory: "/repo")
+        await latest.open(OpenCodeDiffReviewRequest(), latestTurnMessageID: nil, sessionDiffs: [])
+        if case .unavailable = latest.phase {} else { Issue.record("No prompt yet means nothing to review") }
+        await latest.refresh(latestTurnMessageID: "msg_new")
+        #expect(latest.source == .turn)
+        #expect(latest.turnMessageID == "msg_new")
+
+        let pinned = OpenCodeDiffReviewStore(service: service, directory: "/repo")
+        await pinned.open(OpenCodeDiffReviewRequest(messageID: "msg_old"), latestTurnMessageID: "msg_mid", sessionDiffs: [])
+        await pinned.refresh(latestTurnMessageID: "msg_new")
+        #expect(pinned.turnMessageID == "msg_old")
+        #expect(await service.calls == ["turn:msg_new", "turn:msg_old", "turn:msg_old"])
+    }
+
     @Test("A slow earlier source cannot replace the newer selection")
     func staleResponses() async throws {
         let service = FakeDiffService(availability: .init(turn: true, uncommitted: true),
@@ -308,14 +354,23 @@ private actor FakeDiffService: OpenCodeDiffReviewServicing {
     private(set) var calls: [String] = []
 
     init(availability: OpenCodeDiffAvailability, diffs: [OpenCodeDiffSource: [OpenCodeDiff]] = [:],
-         failing: Set<OpenCodeDiffSource> = [], delayed: Set<OpenCodeDiffSource> = []) {
+         failing: Set<OpenCodeDiffSource> = [], delayed: Set<OpenCodeDiffSource> = [], availabilityFailures: Int = 0) {
         availabilityValue = availability
+        self.availabilityFailures = availabilityFailures
         responses = diffs
         self.failing = failing
         self.delayed = delayed
     }
 
-    func availability() async -> OpenCodeDiffAvailability { availabilityValue }
+    private var availabilityFailures: Int
+
+    func availability() async throws -> OpenCodeDiffAvailability {
+        guard availabilityFailures == 0 else {
+            availabilityFailures -= 1
+            throw OpenCodeConnectionError.httpStatus(502, "offline")
+        }
+        return availabilityValue
+    }
 
     func diffs(_ source: OpenCodeDiffSource, messageID: String?) async throws -> [OpenCodeDiff] {
         calls.append("\(source.rawValue):\(messageID ?? "-")")

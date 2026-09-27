@@ -80,12 +80,21 @@ struct OpenCodeDiffReviewView: View {
                     } header: {
                         summary
                     } footer: {
-                        if let caption { Text(caption).font(.cleanCaption) }
+                        VStack(alignment: .leading, spacing: 6) {
+                            if let caption { Text(caption) }
+                            // A failed pull to refresh keeps the last list; say it may be stale.
+                            if case .failed(let message) = store.phase {
+                                Label("Couldn’t refresh. \(message.agentDisplayErrorText)",
+                                      systemImage: "exclamationmark.triangle")
+                                    .foregroundStyle(BYOTBrand.diffDeletion)
+                            }
+                        }
+                        .font(.cleanCaption)
                     }
                 }
             }
             .overlay { stateOverlay }
-            .refreshable { await store.refresh() }
+            .refreshable { await store.refresh(latestTurnMessageID: latestTurnMessageID) }
             .navigationTitle("Changes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -168,7 +177,9 @@ struct OpenCodeDiffReviewView: View {
             } description: {
                 Text(message.agentDisplayErrorText)
             } actions: {
-                Button("Try again", systemImage: "arrow.clockwise") { Task { await store.refresh() } }
+                Button("Try again", systemImage: "arrow.clockwise") {
+                    Task { await store.refresh(latestTurnMessageID: latestTurnMessageID) }
+                }
                     .buttonStyle(.borderedProminent)
                     .foregroundStyle(BYOTBrand.accentInk)
             }

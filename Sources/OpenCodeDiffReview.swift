@@ -37,6 +37,10 @@ struct OpenCodeVcsBranch: Equatable, Sendable {
     let current: String?
     let defaultBranch: String?
 
+    /// OpenCode reports neither name outside a git repository. A detached HEAD
+    /// still resolves the default branch, so its working copy stays reviewable.
+    var isRepository: Bool { current != nil || defaultBranch != nil }
+
     /// OpenCode returns an empty branch diff while checked out on the default branch.
     var comparesWithDefault: Bool {
         guard let current, let defaultBranch else { return false }
@@ -102,7 +106,10 @@ struct OpenCodeDiffFile: Identifiable, Equatable, Sendable {
         let root = directory.replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
         var seen = Set<String>()
         return diffs.enumerated().compactMap { index, diff in
-            let parsed = diff.patch.map(OpenCodeUnifiedDiff.parse)
+            // Parsing a whole patch is only needed when the server omitted a field it describes.
+            let needsPatch = diff.file?.trimmedNonEmpty == nil || diff.status == nil
+                || (diff.additions == 0 && diff.deletions == 0)
+            let parsed = needsPatch ? diff.patch.map(OpenCodeUnifiedDiff.parse) : nil
             guard var path = diff.file?.trimmedNonEmpty ?? parsed?.path else {
                 // A path-less entry cannot be matched or navigated; keep it reviewable.
                 return OpenCodeDiffFile(path: "Changed file \(index + 1)", status: .modified,
@@ -360,7 +367,8 @@ enum OpenCodeDiffRow: Identifiable, Equatable, Sendable {
 // MARK: - Service
 
 protocol OpenCodeDiffReviewServicing: Sendable {
-    func availability() async -> OpenCodeDiffAvailability
+    /// Throws only when the server can't be reached; missing routes resolve to hidden sources.
+    func availability() async throws -> OpenCodeDiffAvailability
     func diffs(_ source: OpenCodeDiffSource, messageID: String?) async throws -> [OpenCodeDiff]
 }
 
@@ -402,18 +410,19 @@ struct OpenCodeDiffReviewService: OpenCodeDiffReviewServicing {
         self.context = context
     }
 
-    func availability() async -> OpenCodeDiffAvailability {
-        guard let connection = try? await context() else { return .none }
+    func availability() async throws -> OpenCodeDiffAvailability {
+        // A connection failure is retryable, not a missing feature.
+        let connection = try await context()
         if connection.serverProtocol == .v1 {
             // Servers that predate /vcs answer 404 or the web app's HTML; both mean no VCS review.
             let branch = try? await vcsBranch(connection)
-            return .init(turn: true, uncommitted: branch?.current != nil, branch: branch)
+            return .init(turn: true, uncommitted: branch?.isRepository == true, branch: branch)
         }
         guard connection.supports("/api/vcs/diff") else {
             return .init(unavailableReason: "This OpenCode 2 server does not provide file changes yet.")
         }
         let branch = connection.supports("/api/vcs") ? try? await vcsBranch(connection) : nil
-        return .init(turn: false, uncommitted: true, branch: branch)
+        return .init(turn: false, uncommitted: branch?.isRepository ?? true, branch: branch)
     }
 
     func diffs(_ source: OpenCodeDiffSource, messageID: String?) async throws -> [OpenCodeDiff] {
