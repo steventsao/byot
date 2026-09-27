@@ -28,9 +28,7 @@ Sessions and servers
 
 Outside the app
 • Approval notifications: choose Allow once or Reject right from the notification.
-• Live Activity and Dynamic Island while a turn runs, plus Home Screen and Lock Screen widgets for sessions that need you.
 • Siri and Shortcuts: "Ask OpenCode in byot", "What needs me in byot".
-• Share a link, photo or file to byot from another app.
 • iPad: sessions sit beside the conversation. With a keyboard, try ⌘N, ⌘K, ⌘[ and ⌘], ⌘↩ and ⌘. (period).
 • Simplified Chinese: change byot's language in iOS Settings → Apps → byot.
 

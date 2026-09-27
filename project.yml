@@ -35,11 +35,9 @@ targets:
       # Home-screen widget and Live Activity UI. Remove this entry (and the
       # App Group key in Sources/BYOT.entitlements) to ship without it; see
       # docs/releases/1.0.31-signing.md.
-      - target: BYOTWidgets
       # Share-sheet entry that hands text, links, images and files to the
       # composer. Remove this entry to ship without it; see
       # docs/releases/1.0.31-signing.md.
-      - target: BYOTShare
     info:
       path: Sources/Info.plist
       properties:
