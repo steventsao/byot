@@ -17,7 +17,10 @@ struct OpenCodeSessionView: View {
     @State private var isShowingTasks = false
     @State private var isShowingNewSession = false
     @State private var nextSession: OpenCodeSessionRoute?
+    @State private var terminalRoute: OpenCodeTerminalRoute?
+    @State private var canOpenTerminal = false
     private let client: OpenCodeClient
+    private let terminalService: OpenCodeTerminalService
     private let serverName: String
     private let attention: OpenCodeSessionAttentionStore?
     private let startsWithComposerFocused: Bool
@@ -35,6 +38,8 @@ struct OpenCodeSessionView: View {
         serverName = client.profile.name
         self.attention = attention
         self.startsWithComposerFocused = startsWithComposerFocused
+        terminalService = OpenCodeTerminalService(
+            client: client, route: OpenCodeTerminalRoute(directory: directory, workspace: session.workspaceID))
         _store = StateObject(
             wrappedValue: OpenCodeSessionStore(
                 client: client,
@@ -332,6 +337,13 @@ struct OpenCodeSessionView: View {
                     Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
                     Button("Review changes", systemImage: "plusminus") { diffRequest = OpenCodeDiffReviewRequest() }
                         .accessibilityIdentifier("session-menu-review-changes")
+                    if canOpenTerminal {
+                        Button("Terminal", systemImage: "apple.terminal") {
+                            terminalRoute = OpenCodeTerminalRoute(
+                                directory: terminalService.directory, workspace: terminalService.workspace)
+                        }
+                        .accessibilityIdentifier("session-menu-terminal")
+                    }
                     if push.credentials[client.profile.id] != nil {
                         Button(push.isMuted(serverID: client.profile.id, sessionID: store.session.id) ? "Unmute notifications" : "Mute notifications", systemImage: "bell.slash") {
                             Task {
@@ -375,6 +387,9 @@ struct OpenCodeSessionView: View {
         .navigationDestination(item: $nextSession) { route in
             OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory, attention: attention)
         }
+        .navigationDestination(item: $terminalRoute) { route in
+            OpenCodeTerminalScreen(client: client, route: route)
+        }
         .navigationDestination(isPresented: $isShowingNewSession) {
             OpenCodeNewSessionView(profiles: [client.profile], initialProfile: client.profile, makeClient: { _ in client })
         }
@@ -405,6 +420,7 @@ struct OpenCodeSessionView: View {
             Button("OK") { notificationError = nil }
         } message: { Text(notificationError ?? "") }
         .task { await store.start() }
+        .task { canOpenTerminal = await terminalService.isAvailable() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.refreshAfterForeground() }
         }

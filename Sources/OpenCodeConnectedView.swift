@@ -42,6 +42,8 @@ struct OpenCodeConnectedView: View {
 
     @State private var canArchiveSessions = false
     @State private var archiveError: String?
+    @State private var canOpenTerminal = false
+    @State private var terminalRoute: OpenCodeTerminalRoute?
 
     var body: some View {
         List {
@@ -180,6 +182,9 @@ struct OpenCodeConnectedView: View {
             .background(BYOTBrand.canvas)
         }
         .toolbar {
+            if canOpenTerminal && !projects.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) { terminalMenu }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu("Session list options", systemImage: "line.3.horizontal.decrease") {
                     Toggle("Group by project", isOn: $groupByProject)
@@ -223,6 +228,35 @@ struct OpenCodeConnectedView: View {
         .navigationDestination(item: $createdRoute) { route in
             sessionView(route, startsWithComposerFocused: true)
         }
+        .navigationDestination(item: $terminalRoute) { route in
+            OpenCodeTerminalScreen(client: client, route: route)
+        }
+    }
+
+    /// One project opens straight away; several ask which project's shell to open.
+    @ViewBuilder
+    private var terminalMenu: some View {
+        let projects = projects.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        if projects.count == 1, let project = projects.first {
+            Button("Terminal", systemImage: "apple.terminal") { openTerminal(in: project) }
+                .tint(BYOTBrand.chromeTint)
+                .accessibilityHint("Opens a shell in \(project.displayName)")
+                .accessibilityIdentifier("open-terminal")
+        } else {
+            Menu("Terminal", systemImage: "apple.terminal") {
+                Section("Open a terminal in") {
+                    ForEach(projects) { project in
+                        Button(project.displayName) { openTerminal(in: project) }
+                    }
+                }
+            }
+            .tint(BYOTBrand.chromeTint)
+            .accessibilityIdentifier("open-terminal")
+        }
+    }
+
+    private func openTerminal(in project: OpenCodeProject) {
+        terminalRoute = OpenCodeTerminalRoute(directory: project.worktree, projectName: project.displayName)
     }
 
     @ViewBuilder
@@ -252,6 +286,11 @@ struct OpenCodeConnectedView: View {
                     createSession(in: group.project)
                 }
                 .disabled(isCreating)
+                if canOpenTerminal {
+                    Button("Terminal in \(group.project.displayName)", systemImage: "apple.terminal") {
+                        openTerminal(in: group.project)
+                    }
+                }
             } label: {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(group.project.displayName).font(.cleanBodySemibold)
@@ -481,8 +520,14 @@ struct OpenCodeConnectedView: View {
         guard workspace.compatibility != nil else { return }
         // Swipe to archive only where the server can archive (v1 today).
         async let support = try? client.sessionFeatureSupport()
+        // Terminals appear only where the server offers PTYs (v1 /pty, v2 /api/pty).
+        let terminalProbe = projects.first.map {
+            OpenCodeTerminalService(client: client, route: OpenCodeTerminalRoute(directory: $0.worktree))
+        }
+        async let terminals = terminalProbe?.isAvailable() ?? false
         await browser.load(projects: projects)
         canArchiveSessions = await support?.archive ?? false
+        canOpenTerminal = await terminals
         await attention.refresh(sessions: browser.sessions, service: client)
     }
 
