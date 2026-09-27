@@ -80,7 +80,7 @@ enum BYOTPushActionOutcome: Equatable, Sendable {
         case .alreadyHandled: ("Request already handled", "This request is no longer waiting for a response.")
         case .needsReview: ("Open byot to respond", "This request needs a response in the app.")
         case .serverChanged: ("Couldn’t send your response", "The saved server has changed or was removed. Open byot to review it.")
-        case .failed: ("Couldn’t send your response", "Your server couldn’t be reached. Open byot to try again.")
+        case .failed: ("Couldn’t send your response", "Your server couldn’t be reached or didn’t accept it. Open byot to try again.")
         }
     }
 }
@@ -133,7 +133,7 @@ enum BYOTPushActionResponder {
                 try await service.reply(to: permission, directory: route.directory, workspace: route.workspace,
                                         reply: action == .allowOnce ? .once : .reject)
                 return .sent
-            } catch { return .failed }
+            } catch { return replyFailure(error) }
         case .reply(let text):
             let lookup = await pending(
                 legacy: { try await service.questions(directory: route.directory, workspace: route.workspace) },
@@ -144,8 +144,15 @@ enum BYOTPushActionResponder {
             do {
                 try await service.answer(question, directory: route.directory, workspace: route.workspace, answers: answers)
                 return .sent
-            } catch { return .failed }
+            } catch { return replyFailure(error) }
         }
+    }
+
+    /// OpenCode answers 404 when the request was resolved between the lookup and
+    /// the reply, for example from the desktop; that is not a delivery failure.
+    private static func replyFailure(_ error: any Error) -> BYOTPushActionOutcome {
+        if case .httpStatus(404, _)? = error as? OpenCodeConnectionError { return .alreadyHandled }
+        return .failed
     }
 
     /// A quick reply can only answer a single question: it selects the option whose

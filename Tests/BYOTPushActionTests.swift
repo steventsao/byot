@@ -93,6 +93,15 @@ struct BYOTPushActionTests {
         let service = FakeActionService()
         await service.set(permissions: [permission("per_1", session: "ses_1")], failsReplies: true)
         #expect(await BYOTPushActionResponder.perform(.reject, route: route(requestID: "per_1"), service: service) == .failed)
+        // A request resolved elsewhere after the lookup is reported as handled, not as a failure.
+        await service.set(permissions: [permission("per_1", session: "ses_1")], resolvedBeforeReply: true)
+        #expect(await BYOTPushActionResponder.perform(.allowOnce, route: route(requestID: "per_1"), service: service) == .alreadyHandled)
+        let open = question("que_1", questions: [OpenCodeQuestion(question: "Branch?", header: "Branch", options: [],
+                                                                   multiple: nil, custom: true)])
+        await service.set(questions: [open], resolvedBeforeReply: true)
+        #expect(await BYOTPushActionResponder.perform(.reply("main"), route: route(requestID: "que_1"), service: service) == .alreadyHandled)
+        #expect(await service.permissionReplies.isEmpty)
+        #expect(await service.answers.isEmpty)
         await service.set(permissions: [permission("per_1", session: "ses_1")], hangs: true)
         #expect(await BYOTPushActionResponder.perform(.allowOnce, route: route(requestID: "per_1"), service: service,
                                                       timeout: .milliseconds(50)) == .failed)
@@ -225,19 +234,21 @@ private actor FakeActionService: BYOTPushActionService {
     private var failsLookups = false
     private var failsReplies = false
     private var hangs = false
+    private var resolvedBeforeReply = false
     private(set) var lookups: [String] = []
     private(set) var permissionReplies: [String] = []
     private(set) var answers: [String] = []
 
     func set(permissions: [OpenCodePermissionRequest]? = nil, v2Permissions: [OpenCodePermissionRequest]? = nil,
              questions: [OpenCodeQuestionRequest]? = nil, failsLookups: Bool = false, failsReplies: Bool = false,
-             hangs: Bool = false) {
+             hangs: Bool = false, resolvedBeforeReply: Bool = false) {
         if let permissions { legacyPermissions = permissions }
         if let v2Permissions { v2PermissionList = v2Permissions }
         if let questions { questionList = questions }
         self.failsLookups = failsLookups
         self.failsReplies = failsReplies
         self.hangs = hangs
+        self.resolvedBeforeReply = resolvedBeforeReply
     }
 
     func permissions(directory: String, workspace: String?) async throws -> [OpenCodePermissionRequest] {
@@ -262,10 +273,12 @@ private actor FakeActionService: BYOTPushActionService {
                reply: OpenCodePermissionReply) async throws {
         if hangs { try await Task.sleep(for: .seconds(30)) }
         if failsReplies { throw OpenCodeConnectionError.server("rejected") }
+        if resolvedBeforeReply { throw OpenCodeConnectionError.httpStatus(404, "Permission request not found") }
         permissionReplies.append("\(permission.id):\(reply.rawValue)")
     }
 
     func answer(_ question: OpenCodeQuestionRequest, directory: String, workspace: String?, answers: [[String]]) async throws {
+        if resolvedBeforeReply { throw OpenCodeConnectionError.httpStatus(404, "Question request not found") }
         self.answers.append("\(question.id):\(answers.flatMap { $0 }.joined(separator: ","))")
     }
 }
