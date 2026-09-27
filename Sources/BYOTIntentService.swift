@@ -26,6 +26,8 @@ enum BYOTIntentError: LocalizedError, Equatable, Sendable {
     case projectOnOtherServer
     case unsupported(server: String, detail: String)
     case unreachable(server: String)
+    /// The server answered with an error, such as a rejected password.
+    case failed(server: String, detail: String)
     case notSent(server: String, detail: String)
 
     var errorDescription: String? {
@@ -39,6 +41,7 @@ enum BYOTIntentError: LocalizedError, Equatable, Sendable {
         case .projectOnOtherServer: "That project is on a different server. Choose the server again."
         case .unsupported(let server, let detail): "byot can’t start sessions on \(server). \(detail)"
         case .unreachable(let server): "Couldn’t reach \(server). Check that it’s running and connected, then try again."
+        case .failed(let server, let detail): "\(server) returned an error. \(detail)"
         case .notSent(let server, let detail): "\(server) didn’t accept the prompt. \(detail)"
         }
     }
@@ -217,14 +220,17 @@ struct BYOTIntentService: Sendable {
         let service = makeService(profile)
         let listed: [OpenCodeProject]
         do { listed = try await bounded { try await service.listProjects() } }
-        catch { throw BYOTIntentError.unreachable(server: profile.name) }
+        catch { throw Self.failure(error, profile: profile, rejected: BYOTIntentError.failed) }
         return Self.projects(listed, profile: profile)
     }
 
+    /// Projects a new session can start in. V1 also lists a catch-all
+    /// "global" project at "/"; starting an agent there would run it in the
+    /// server's root directory, so Siri never offers or picks it.
     static func projects(_ listed: [OpenCodeProject], profile: OpenCodeServerProfile) -> [BYOTIntentProject] {
-        browsable(listed, profile: profile).map {
-            BYOTIntentProject(serverID: profile.id, directory: $0.worktree, name: $0.displayName)
-        }
+        browsable(listed, profile: profile)
+            .filter { !($0.id == "global" && $0.worktree == "/") }
+            .map { BYOTIntentProject(serverID: profile.id, directory: $0.worktree, name: $0.displayName) }
     }
 
     /// Unique projects, most recently updated first, with the profile's
@@ -254,7 +260,7 @@ struct BYOTIntentService: Sendable {
 
         let compatibility: OpenCodeCompatibilitySummary
         do { compatibility = try await bounded { try await service.probeCompatibility() } }
-        catch { throw BYOTIntentError.unreachable(server: profile.name) }
+        catch { throw Self.failure(error, profile: profile, rejected: BYOTIntentError.failed) }
         guard compatibility.state != .unsupported else {
             throw BYOTIntentError.unsupported(server: profile.name,
                                               detail: compatibility.detail ?? "This OpenCode version isn’t supported.")
@@ -269,7 +275,7 @@ struct BYOTIntentService: Sendable {
         } else {
             let listed: [OpenCodeProject]
             do { listed = try await bounded { try await service.listProjects() } }
-            catch { throw BYOTIntentError.unreachable(server: profile.name) }
+            catch { throw Self.failure(error, profile: profile, rejected: BYOTIntentError.failed) }
             let projects = Self.projects(listed, profile: profile)
             guard !projects.isEmpty else { throw BYOTIntentError.noProjects(server: profile.name) }
             guard projects.count == 1 else { throw BYOTIntentError.needsProject }
@@ -328,11 +334,17 @@ struct BYOTIntentService: Sendable {
         return result
     }
 
-    private static func failure(_ error: any Error, profile: OpenCodeServerProfile) -> BYOTIntentError {
+    /// A timeout or network failure means the server couldn't be reached; any
+    /// other error is the server's answer, such as a rejected password, and
+    /// is passed on rather than blamed on the connection.
+    private static func failure(
+        _ error: any Error, profile: OpenCodeServerProfile,
+        rejected: (String, String) -> BYOTIntentError = BYOTIntentError.notSent
+    ) -> BYOTIntentError {
         if error is CancellationError || (error as? URLError) != nil {
             return .unreachable(server: profile.name)
         }
-        return .notSent(server: profile.name, detail: error.localizedDescription)
+        return rejected(profile.name, error.localizedDescription)
     }
 
     // MARK: Sessions needing attention
@@ -500,7 +512,11 @@ struct BYOTIntentService: Sendable {
             try? await Task.sleep(for: timeout)
             work.cancel()
         }
-        await work.value
+        await withTaskCancellationHandler {
+            await work.value
+        } onCancel: {
+            work.cancel()
+        }
         deadline.cancel()
         return !work.isCancelled
     }

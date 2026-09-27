@@ -161,9 +161,12 @@ struct BYOTAttentionSnippet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if report.sessions.isEmpty {
-                summaryRow(symbol: "checkmark.circle.fill", tint: BYOTBrand.accent,
-                           title: report.checkedServers == 0 ? "Couldn’t check sessions" : "Nothing needs you",
+            if report.checkedServers == 0 {
+                summaryRow(symbol: "wifi.exclamationmark", tint: .orange,
+                           title: "Couldn’t reach \(BYOTAttentionReport.list(report.unreachable))",
+                           detail: "Check that the server is running, then try again.")
+            } else if report.sessions.isEmpty {
+                summaryRow(symbol: "checkmark.circle.fill", tint: BYOTBrand.accent, title: "Nothing needs you",
                            detail: report.runningCount > 0
                                ? (report.runningCount == 1 ? "1 session is running" : "\(report.runningCount) sessions are running")
                                : nil)
@@ -178,7 +181,7 @@ struct BYOTAttentionSnippet: View {
                         .foregroundStyle(BYOTBrand.mutedInk)
                 }
             }
-            if !report.unreachable.isEmpty {
+            if report.checkedServers > 0, !report.unreachable.isEmpty {
                 Label("Couldn’t fully check \(BYOTAttentionReport.list(report.unreachable))",
                       systemImage: "wifi.exclamationmark")
                     .font(.cleanCaption)

@@ -66,8 +66,12 @@ struct BYOTIntentTests {
     @Test("Without a configured directory Ask uses the only project, and asks when there are several")
     func askResolvesProject() async throws {
         let fake = FakeIntentService()
-        await fake.set(projects: [project("/repo/one", updated: 1)])
+        // V1 always lists its catch-all global project; it never counts as a choice.
+        let global = OpenCodeProject(id: "global", worktree: "/", vcs: nil, name: nil,
+                                     time: OpenCodeProjectTime(created: 0, updated: 9), sandboxes: [])
+        await fake.set(projects: [global, project("/repo/one", updated: 1)])
         let service = service([mini.id: fake], profiles: [mini])
+        #expect(try await service.projects(serverID: mini.id).map(\.directory) == ["/repo/one"])
         let result = try await service.ask(prompt: "Hi", serverID: mini.id, directory: nil)
         #expect(await fake.createdDirectories == ["/repo/one"])
         #expect(result.session.projectName == "one")
@@ -76,7 +80,7 @@ struct BYOTIntentTests {
         await #expect(throws: BYOTIntentError.needsProject) {
             try await service.ask(prompt: "Hi", serverID: mini.id, directory: nil)
         }
-        await fake.set(projects: [])
+        await fake.set(projects: [global])
         await #expect(throws: BYOTIntentError.noProjects(server: "Mac mini")) {
             try await service.ask(prompt: "Hi", serverID: mini.id, directory: nil)
         }
@@ -110,7 +114,12 @@ struct BYOTIntentTests {
         await #expect(throws: BYOTIntentError.unreachable(server: "Mac mini")) {
             try await service.ask(prompt: "Hi", serverID: nil, directory: "/repo")
         }
-        await fake.set(hangs: false, rejectsPrompts: true)
+        await fake.set(hangs: false, rejectsProbe: true)
+        await #expect(throws: BYOTIntentError.failed(server: "Mac mini",
+                                                     detail: "OpenCode rejected the username or password.")) {
+            try await service.ask(prompt: "Hi", serverID: nil, directory: "/repo")
+        }
+        await fake.set(rejectsProbe: false, rejectsPrompts: true)
         await #expect(throws: BYOTIntentError.notSent(server: "Mac mini", detail: "OpenCode returned 400: No provider")) {
             try await service.ask(prompt: "Hi", serverID: nil, directory: "/repo")
         }
@@ -294,6 +303,7 @@ private actor FakeIntentService: BYOTIntentServing {
     private var catalog = OpenCodeComposerCatalog()
     private var failsProjects = false
     private var hangs = false
+    private var rejectsProbe = false
     private var rejectsPrompts = false
     private(set) var createdDirectories: [String] = []
     private(set) var sentPrompts: [OpenCodeQueuedPrompt] = []
@@ -302,7 +312,8 @@ private actor FakeIntentService: BYOTIntentServing {
              sessions: [String: [OpenCodeSession]]? = nil, statuses: [String: OpenCodeSessionStatus]? = nil,
              pending: Set<String>? = nil, messages: [String: [OpenCodeMessageEnvelope]]? = nil,
              providers: [OpenCodeProviderModels]? = nil, catalog: OpenCodeComposerCatalog? = nil,
-             failsProjects: Bool? = nil, hangs: Bool? = nil, rejectsPrompts: Bool? = nil) {
+             failsProjects: Bool? = nil, hangs: Bool? = nil, rejectsProbe: Bool? = nil,
+             rejectsPrompts: Bool? = nil) {
         if let compatibility { self.compatibility = compatibility }
         if let projects { self.projects = projects }
         if let sessions { self.sessions = sessions }
@@ -313,6 +324,7 @@ private actor FakeIntentService: BYOTIntentServing {
         if let catalog { self.catalog = catalog }
         if let failsProjects { self.failsProjects = failsProjects }
         if let hangs { self.hangs = hangs }
+        if let rejectsProbe { self.rejectsProbe = rejectsProbe }
         if let rejectsPrompts { self.rejectsPrompts = rejectsPrompts }
     }
 
@@ -322,6 +334,7 @@ private actor FakeIntentService: BYOTIntentServing {
 
     func probeCompatibility() async throws -> OpenCodeCompatibilitySummary {
         try await wait()
+        if rejectsProbe { throw OpenCodeConnectionError.httpStatus(401, nil) }
         return OpenCodeCompatibilitySummary(verdict: compatibility, health: OpenCodeHealth(healthy: true, version: "1.18.29"),
                                             capabilityProbe: .unavailable)
     }
