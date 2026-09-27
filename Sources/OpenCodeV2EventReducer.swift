@@ -26,10 +26,11 @@ struct OpenCodeV2EventReducer: Sendable {
 
     private var seen: Set<String> = []
     private var order: [String] = []
-    // Server block IDs (textID, reasoningID) are provider scoped, so they are
-    // remembered per message and resolved to the ordinal part IDs that
-    // snapshot normalization also produces.
-    private var blocks: [String: String] = [:]
+    // Server block IDs (textID, reasoningID) are provider scoped and may
+    // repeat, so each ordinal part ID that snapshot normalization also
+    // produces remembers the block ID it streamed; fragments then resolve to
+    // the latest part with that ID, as upstream's findLast does.
+    private var blockIDs: [String: String] = [:]
     private var blockOrder: [String] = []
     // Shell projections, by callID, so shell.ended can fill in the output.
     private var shells: [String: [String: OpenCodeJSONValue]] = [:]
@@ -127,11 +128,11 @@ struct OpenCodeV2EventReducer: Sendable {
         switch type {
         case "session.text.started", "session.reasoning.started":
             let kind = type == "session.reasoning.started" ? "reasoning" : "text"
-            if knownBlockIndex(kind: kind, data: data, in: messages[index]) != nil { return .unchanged }
-            // Older beta snapshots include ordinals; later ones follow last-of-kind.
+            // Older beta snapshots include ordinals; otherwise every start opens
+            // the next block, even when a provider reuses a block ID.
             let ordinal = data["ordinal"]?.numberValue.map(Int.init) ?? messages[index].parts.filter { $0.type == kind }.count
             let id = OpenCodeV2Normalization.streamPartID(messageID: messageID, kind: kind, ordinal: ordinal)
-            rememberBlock(kind: kind, data: data, messageID: messageID, partID: id)
+            rememberBlock(kind: kind, data: data, partID: id)
             guard !messages[index].parts.contains(where: { $0.id == id }) else { return .unchanged }
             messages[index].parts.append(part(id: id, messageID: messageID, sessionID: sessionID, type: kind, text: ""))
             return .changed
@@ -140,11 +141,17 @@ struct OpenCodeV2EventReducer: Sendable {
             let partIndex: Int
             if let resolved = blockIndex(kind: kind, data: data, in: messages[index]) {
                 partIndex = resolved
-            } else if data["ordinal"] == nil, !messages[index].parts.contains(where: { $0.type == kind }) {
+                // A block adopted after a refetch keeps streaming by its ID.
+                if blockIDs[messages[index].parts[partIndex].id] == nil {
+                    rememberBlock(kind: kind, data: data, partID: messages[index].parts[partIndex].id)
+                }
+            } else if data["ordinal"] == nil {
                 // The block start was missed (for example before a reconnect);
-                // open it here so the fragment still streams in place.
-                let id = OpenCodeV2Normalization.streamPartID(messageID: messageID, kind: kind, ordinal: 0)
-                rememberBlock(kind: kind, data: data, messageID: messageID, partID: id)
+                // open the next block here so the fragment still streams in place.
+                let ordinal = messages[index].parts.filter { $0.type == kind }.count
+                let id = OpenCodeV2Normalization.streamPartID(messageID: messageID, kind: kind, ordinal: ordinal)
+                guard !messages[index].parts.contains(where: { $0.id == id }) else { return .unresolved }
+                rememberBlock(kind: kind, data: data, partID: id)
                 messages[index].parts.append(part(id: id, messageID: messageID, sessionID: sessionID, type: kind, text: ""))
                 partIndex = messages[index].parts.count - 1
             } else {
@@ -245,33 +252,26 @@ struct OpenCodeV2EventReducer: Sendable {
         data[kind == "reasoning" ? "reasoningID" : "textID"]?.stringValue
     }
 
-    private static func blockKey(messageID: String, kind: String, serverID: String) -> String {
-        "\(messageID)\u{1F}\(kind)\u{1F}\(serverID)"
-    }
-
-    private mutating func rememberBlock(kind: String, data: [String: OpenCodeJSONValue], messageID: String, partID: String) {
+    private mutating func rememberBlock(kind: String, data: [String: OpenCodeJSONValue], partID: String) {
         guard let serverID = Self.blockServerID(kind: kind, data: data) else { return }
-        let key = Self.blockKey(messageID: messageID, kind: kind, serverID: serverID)
-        if blocks.updateValue(partID, forKey: key) == nil { blockOrder.append(key) }
-        if blockOrder.count > Self.memoryLimit { blocks.removeValue(forKey: blockOrder.removeFirst()) }
+        if blockIDs.updateValue(serverID, forKey: partID) == nil { blockOrder.append(partID) }
+        if blockOrder.count > Self.memoryLimit { blockIDs.removeValue(forKey: blockOrder.removeFirst()) }
     }
 
-    /// The part a server block ID already resolved to, if it is still present.
-    private func knownBlockIndex(kind: String, data: [String: OpenCodeJSONValue], in message: OpenCodeMessageEnvelope) -> Int? {
-        guard let serverID = Self.blockServerID(kind: kind, data: data),
-              let partID = blocks[Self.blockKey(messageID: message.id, kind: kind, serverID: serverID)]
-        else { return nil }
-        return message.parts.firstIndex { $0.id == partID }
-    }
-
-    /// Resolves a delta or end to its part: explicit ordinal, then a known
-    /// block ID, then the latest block of that kind (as upstream's findLast).
+    /// Resolves a delta or end to its part: explicit ordinal, then the latest
+    /// block streamed under that block ID, then the latest block of that kind
+    /// unless that block already belongs to a different block ID.
     private func blockIndex(kind: String, data: [String: OpenCodeJSONValue], in message: OpenCodeMessageEnvelope) -> Int? {
         if let ordinal = data["ordinal"]?.numberValue {
             let id = OpenCodeV2Normalization.streamPartID(messageID: message.id, kind: kind, ordinal: Int(ordinal))
             return message.parts.firstIndex { $0.id == id }
         }
-        return knownBlockIndex(kind: kind, data: data, in: message) ?? message.parts.lastIndex { $0.type == kind }
+        guard let latest = message.parts.lastIndex(where: { $0.type == kind }) else { return nil }
+        guard let serverID = Self.blockServerID(kind: kind, data: data) else { return latest }
+        if let known = message.parts.lastIndex(where: { $0.type == kind && blockIDs[$0.id] == serverID }) { return known }
+        // An unseen block ID whose predecessor streamed under another ID is a
+        // block whose start was missed; it must not overwrite that predecessor.
+        return blockIDs[message.parts[latest].id] == nil ? latest : nil
     }
 
     // MARK: Messages

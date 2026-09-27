@@ -1321,8 +1321,10 @@ final class OpenCodeSessionStore: ObservableObject {
             applyV2Transcript(event)
         case "session.next.step.ended", "session.next.step.failed":
             applyV2Transcript(event)
-            // A tool-calls finish is always followed by another step.
-            if event.properties["finish"]?.stringValue != "tool-calls" { scheduleTurnSettlement() }
+            // Any step can be the last one: tool calls stop continuing after a
+            // provider error or the agent's step limit. The next step.started
+            // cancels the probe while the server still owns the drain.
+            scheduleTurnSettlement(afterFailure: event.type == "session.next.step.failed")
         default:
             applyV2Transcript(event)
         }
@@ -1341,27 +1343,40 @@ final class OpenCodeSessionStore: ObservableObject {
         }
     }
 
-    /// Current v2 servers report no idle event, so after a final step the
-    /// store asks the authoritative active-session list with a short backoff.
-    private func scheduleTurnSettlement() {
+    /// Current v2 servers report no idle event, so after each step the store
+    /// asks the authoritative active-session list with a short backoff, then
+    /// keeps checking at the last interval until the drain ends. A failed
+    /// final step settles like session.error so queued prompts stay paused.
+    private func scheduleTurnSettlement(afterFailure: Bool) {
         cancelTurnSettlement()
         let baseline = statusMutationGeneration
         turnSettlementTask = Task { [weak self] in
-            for delay in Self.turnSettlementDelays {
-                try? await Task.sleep(for: delay)
+            var attempt = 0
+            while true {
+                let delays = Self.turnSettlementDelays
+                try? await Task.sleep(for: delays[min(attempt, delays.count - 1)])
+                attempt += 1
                 guard !Task.isCancelled, let store = self, store.isRunning else { return }
+                // Another path (reconciliation, Stop) already settled the turn.
+                guard store.status.isActive, baseline == store.statusMutationGeneration else {
+                    store.turnSettlementTask = nil
+                    return
+                }
                 guard let statuses = try? await store.service.sessionStatuses(
                     directory: store.directory, workspace: store.workspace
                 ) else { continue }
                 guard !Task.isCancelled, baseline == store.statusMutationGeneration else { return }
                 guard statuses[store.session.id]?.isActive != true else { continue }
                 store.turnSettlementTask = nil
-                store.statusMutationGeneration &+= 1
-                store.applyEventStatus(.idle)
+                if afterFailure {
+                    store.settleTurnLocally(dismissingUnansweredPrompt: false)
+                } else {
+                    store.statusMutationGeneration &+= 1
+                    store.applyEventStatus(.idle)
+                }
                 store.scheduleMessageRefresh()
                 return
             }
-            self?.turnSettlementTask = nil
         }
     }
 

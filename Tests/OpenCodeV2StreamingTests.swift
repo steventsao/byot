@@ -56,6 +56,33 @@ struct OpenCodeV2StreamingTests {
         #expect(stream.parts.map(\.type) == ["reasoning", "text", "text"])
     }
 
+    @Test("A reused block ID opens a new block, and an unseen ID never overwrites its predecessor")
+    func reusedAndUnseenBlockIDs() throws {
+        var stream = LiveStream()
+        try stream.send("step.started", #""agent":"build","model":{"id":"m","providerID":"p"}"#)
+        try stream.send("text.started", #""textID":"txt-0""#)
+        try stream.send("text.delta", #""textID":"txt-0","delta":"One""#)
+        // Upstream pushes a new block per start and streams into the latest one.
+        #expect(try stream.send("text.started", #""textID":"txt-0""#) == .changed)
+        try stream.send("text.delta", #""textID":"txt-0","delta":"Two""#)
+        #expect(stream.parts.map(\.text) == ["One", "Two"])
+        // The start of a third block was missed; its fragments open that block.
+        #expect(try stream.send("text.delta", #""textID":"txt-9","delta":"Thr""#) == .changed)
+        try stream.send("text.ended", #""textID":"txt-9","text":"Three""#)
+        #expect(stream.parts.map(\.id) == ["msg_live:text:0", "msg_live:text:1", "msg_live:text:2"])
+        #expect(stream.parts.map(\.text) == ["One", "Two", "Three"])
+    }
+
+    @Test("A refetched pending tool keeps its partial input")
+    func pendingSnapshotInput() throws {
+        let raw = #"{"id":"msg_a","type":"assistant","time":{"created":1},"content":[{"type":"tool","id":"call_1","name":"read","time":{"created":1},"state":{"status":"pending","input":"{\"path\": \"a"}}]}"#
+        let object = try JSONDecoder().decode([String: OpenCodeJSONValue].self, from: Data(raw.utf8))
+        let tool = try #require(OpenCodeV2Normalization.message(object, sessionID: "ses_live")?.parts.first)
+        #expect(tool.state?.status == "pending")
+        #expect(tool.state?.raw == #"{"path": "a"#)
+        #expect(tool.state?.input == nil)
+    }
+
     @Test("Tool input, progress checkpoints and results update one tool part in place")
     func toolLifecycle() throws {
         var stream = LiveStream()
@@ -220,9 +247,9 @@ struct OpenCodeV2StreamingTests {
         #expect(store.messages.map(\.id) == ["msg_a"])
         let probesBefore = await service.statusCalls
         store.handle(try LiveStream.envelope("session.next.step.ended", 2, #""assistantMessageID":"msg_a","finish":"tool-calls","cost":0,"tokens":{"input":1,"output":1,"reasoning":0,"cache":{"read":0,"write":0}}"#))
-        try await Task.sleep(for: .milliseconds(300))
-        // A tool-calls finish is followed by another step, so nothing is probed.
-        #expect(await service.statusCalls == probesBefore)
+        for _ in 0..<100 where await service.statusCalls == probesBefore { try await Task.sleep(for: .milliseconds(10)) }
+        // Between tool steps the server still owns the drain, so it stays busy.
+        #expect(await service.statusCalls > probesBefore)
         #expect(store.status == .busy)
 
         store.handle(try LiveStream.envelope("session.next.step.started", 3, #""assistantMessageID":"msg_b","agent":"build","model":{"id":"m","providerID":"p"}"#))
@@ -235,6 +262,34 @@ struct OpenCodeV2StreamingTests {
         for _ in 0..<100 where await service.statusCalls == probesBefore { try await Task.sleep(for: .milliseconds(10)) }
         // The server can still own the drain briefly after the final step.
         #expect(store.status == .busy)
+        await service.setActive(false)
+        for _ in 0..<300 where store.status != .idle { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(store.status == .idle)
+        #expect(store.isStatusReady)
+    }
+
+    @MainActor
+    @Test("A turn that ends after tool calls or a failed step still settles to idle")
+    func storeSettlesAfterToolCallsAndFailures() async throws {
+        let service = LiveStoreService()
+        let store = makeStore(service)
+        await store.start()
+        defer { store.stop() }
+
+        await service.setActive(true)
+        store.handle(try LiveStream.envelope("session.next.step.started", 1, #""assistantMessageID":"msg_a","agent":"build","model":{"id":"m","providerID":"p"}"#))
+        #expect(store.status == .busy)
+        // The agent's step limit can end a turn on a tool-calls finish.
+        store.handle(try LiveStream.envelope("session.next.step.ended", 2, #""assistantMessageID":"msg_a","finish":"tool-calls","cost":0,"tokens":{"input":1,"output":1,"reasoning":0,"cache":{"read":0,"write":0}}"#))
+        await service.setActive(false)
+        for _ in 0..<300 where store.status != .idle { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(store.status == .idle)
+
+        await service.setActive(true)
+        store.handle(try LiveStream.envelope("session.next.step.started", 3, #""assistantMessageID":"msg_b","agent":"build","model":{"id":"m","providerID":"p"}"#))
+        #expect(store.status == .busy)
+        store.handle(try LiveStream.envelope("session.next.step.failed", 4, #""assistantMessageID":"msg_b","error":{"type":"unknown","message":"Provider request failed with HTTP 401"}"#))
+        #expect(store.messages.last?.info.error?.displayMessage == "Provider request failed with HTTP 401")
         await service.setActive(false)
         for _ in 0..<300 where store.status != .idle { try await Task.sleep(for: .milliseconds(10)) }
         #expect(store.status == .idle)
