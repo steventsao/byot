@@ -92,9 +92,14 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             if ProcessInfo.processInfo.arguments.contains("--transcript-parts") {
                 sessions.append(Self.session("ses_parts", title: "Rich transcript"))
             }
+            if ProcessInfo.processInfo.arguments.contains("--usage") {
+                sessions.append(Self.session("ses_usage", title: "Token budget"))
+            }
             body = sessions
         case "/session/ses_parts/message":
             body = Self.richTranscript()
+        case "/session/ses_usage/message":
+            body = Self.usageTranscript()
         case "/session/ses_parts/diff":
             body = [["file": "Sources/App.swift", "additions": 3, "deletions": 1, "status": "modified",
                      "patch": "@@ -1,3 +1,5 @@\n import SwiftUI\n+// Guard the empty state.\n+let isEmpty = items.isEmpty\n"]]
@@ -110,6 +115,11 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
         case "/permission" where ProcessInfo.processInfo.arguments.contains("--pending-action"):
             body = [["id": "per_1", "sessionID": "ses_history", "permission": "edit",
                      "patterns": ["Sources/App.swift"], "metadata": [:], "always": ["Sources/*"]]] as [[String: Any]]
+        case "/provider" where ProcessInfo.processInfo.arguments.contains("--usage"):
+            body = ["all": [["id": "anthropic", "name": "Anthropic", "models": [
+                "claude-sonnet-4-5": ["id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5",
+                                      "limit": ["context": 200_000, "output": 64_000]],
+            ]]], "connected": ["anthropic"], "default": [:]] as [String: Any]
         case "/provider":
             body = ["all": [], "connected": [], "default": [:]] as [String: Any]
         case let path where path.hasPrefix("/api/"):
@@ -180,6 +190,34 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             ]),
             message("msg_p4", role: "assistant", at: 4_000, [
                 part("p4_text", "msg_p4", ["type": "text", "text": "Summary: fixed the empty-state crash in `Sources/App.swift`."]),
+            ]),
+        ]
+    }
+
+    /// Two turns on a model with a 200K window; the latest reply fills 72% of it.
+    private static func usageTranscript() -> [[String: Any]] {
+        func message(_ id: String, role: String, at time: Int, cost: Double = 0, parts: [[String: Any]]) -> [String: Any] {
+            var info: [String: Any] = ["id": id, "sessionID": "ses_usage", "role": role, "agent": "build",
+                                       "time": ["created": time, "completed": time + 500]]
+            if role == "assistant" {
+                info.merge(["providerID": "anthropic", "modelID": "claude-sonnet-4-5", "mode": "build", "cost": cost]) { $1 }
+            }
+            return ["info": info, "parts": parts.map { $0.merging(["sessionID": "ses_usage", "messageID": id]) { $1 } }]
+        }
+        func step(_ id: String, cost: Double, input: Int, output: Int, cacheRead: Int) -> [String: Any] {
+            ["id": id, "type": "step-finish", "reason": "stop", "cost": cost,
+             "tokens": ["input": input, "output": output, "reasoning": 0, "cache": ["read": cacheRead, "write": 0]]]
+        }
+        return [
+            message("msg_u1", role: "user", at: 1_000, parts: [["id": "u1_text", "type": "text", "text": "Map the upload pipeline."]]),
+            message("msg_a1", role: "assistant", at: 2_000, cost: 0.84, parts: [
+                ["id": "a1_text", "type": "text", "text": "Uploads flow through `UploadQueue`, then `ChunkWriter`, then the storage adapter."],
+                step("a1_step", cost: 0.84, input: 96_000, output: 2_400, cacheRead: 0),
+            ]),
+            message("msg_u2", role: "user", at: 3_000, parts: [["id": "u2_text", "type": "text", "text": "Add retries with backoff."]]),
+            message("msg_a2", role: "assistant", at: 4_000, cost: 0.4, parts: [
+                ["id": "a2_text", "type": "text", "text": "Added exponential backoff with jitter to `ChunkWriter`, capped at five attempts."],
+                step("a2_step", cost: 0.4, input: 12_000, output: 3_200, cacheRead: 128_800),
             ]),
         ]
     }

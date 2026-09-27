@@ -130,6 +130,68 @@ final class OpenCodePolishUITests: XCTestCase {
     }
 
     @MainActor
+    func testContextMeterOpensUsageDetails() {
+        let app = launch(["--usage"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Token budget'")).firstMatch.tap()
+        let meter = app.buttons["session-context-meter"]
+        XCTAssertTrue(meter.waitForExistence(timeout: 10))
+        XCTAssertEqual(meter.value as? String, "72 percent used, 144,000 of 200,000 tokens")
+        XCTAssertTrue(meter.isHittable)
+        XCTAssertGreaterThanOrEqual(app.descendants(matching: .any).matching(identifier: "transcript-step-summary").count, 2)
+        screenshot(app, name: "context-meter")
+
+        meter.tap()
+        XCTAssertTrue(app.navigationBars["Context and usage"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, containing: "72% of context used").exists)
+        XCTAssertTrue(element(app, containing: "Claude Sonnet 4.5").exists)
+        XCTAssertTrue(element(app, containing: "$1.24").exists)
+        // The sheet opens at half height; the token totals sit below the fold.
+        app.collectionViews.firstMatch.swipeUp()
+        XCTAssertTrue(element(app, containing: "242,400").waitForExistence(timeout: 5))
+        screenshot(app, name: "context-usage-sheet")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Context and usage"].waitForNonExistence(timeout: 5))
+
+        app.buttons["session-actions"].tap()
+        app.buttons["Session details"].tap()
+        XCTAssertTrue(app.navigationBars["Session details"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, containing: "$1.24").waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testContextMeterAtLargestTextSize() {
+        let app = launch(["--usage", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Token budget'")).firstMatch.tap()
+        let meter = app.buttons["session-context-meter"]
+        XCTAssertTrue(meter.waitForExistence(timeout: 10))
+        XCTAssertTrue(meter.isHittable)
+        XCTAssertLessThanOrEqual(meter.frame.maxX, app.windows.firstMatch.frame.maxX)
+        screenshot(app, name: "context-meter-xxxl")
+        meter.tap()
+        XCTAssertTrue(app.navigationBars["Context and usage"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, containing: "72% of context used").exists)
+        screenshot(app, name: "context-usage-sheet-xxxl")
+    }
+
+    @MainActor
+    func testContextUsageInDarkAppearance() {
+        let app = launch(["--usage", "-byot.appearance", "dark"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Token budget'")).firstMatch.tap()
+        let meter = app.buttons["session-context-meter"]
+        XCTAssertTrue(meter.waitForExistence(timeout: 10))
+        screenshot(app, name: "context-meter-dark")
+        meter.tap()
+        XCTAssertTrue(app.navigationBars["Context and usage"].waitForExistence(timeout: 5))
+        screenshot(app, name: "context-usage-sheet-dark")
+    }
+
+    @MainActor
+    private func element(_ app: XCUIApplication, containing text: String) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)).firstMatch
+    }
+
+    @MainActor
     private func launch(_ arguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--polish-ui-tests"] + arguments

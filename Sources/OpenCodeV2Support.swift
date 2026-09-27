@@ -190,7 +190,9 @@ enum OpenCodeV2Normalization {
                     modelID: model?["id"]?.stringValue,
                     providerID: model?["providerID"]?.stringValue,
                     finish: object["finish"]?.stringValue,
-                    error: error
+                    error: error,
+                    cost: object["cost"]?.numberValue,
+                    tokens: OpenCodeTokenUsage(object["tokens"])
                 ),
                 parts: parts
             )

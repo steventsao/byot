@@ -139,6 +139,12 @@ struct OpenCodeMessageInfo: Codable, Identifiable, Equatable, Sendable {
     let finish: String?
     let error: OpenCodeMessageError?
     var variant: String? = nil
+    // Assistant accounting: v1 keeps the reply's summed `cost` and its last
+    // step's `tokens`; v2 assistant messages are one step each. `summary`
+    // marks the v1 reply that wrote a compaction summary.
+    var cost: Double? = nil
+    var tokens: OpenCodeTokenUsage? = nil
+    var summary: Bool? = nil
 }
 
 struct OpenCodeMessageTime: Codable, Equatable, Sendable {
@@ -257,7 +263,23 @@ struct OpenCodeTokenUsage: Codable, Equatable, Sendable {
     }
 
     /// Every token the step consumed or produced, as OpenCode counts context usage.
-    var total: Double { reportedTotal ?? input + output + reasoning + cacheRead + cacheWrite }
+    var total: Double { reportedTotal ?? contextTokens }
+
+    /// The step's footprint in the context window, summed from its parts the
+    /// way OpenCode's sidebar and context panel count it.
+    var contextTokens: Double { input + output + reasoning + cacheRead + cacheWrite }
+
+    static let zero = OpenCodeTokenUsage(input: 0, output: 0)
+
+    /// Session totals add steps part by part; a reported total survives only
+    /// when a step supplied one.
+    static func + (lhs: OpenCodeTokenUsage, rhs: OpenCodeTokenUsage) -> OpenCodeTokenUsage {
+        OpenCodeTokenUsage(
+            input: lhs.input + rhs.input, output: lhs.output + rhs.output,
+            reasoning: lhs.reasoning + rhs.reasoning, cacheRead: lhs.cacheRead + rhs.cacheRead,
+            cacheWrite: lhs.cacheWrite + rhs.cacheWrite,
+            reportedTotal: lhs.reportedTotal == nil && rhs.reportedTotal == nil ? nil : lhs.total + rhs.total)
+    }
 
     private enum CodingKeys: String, CodingKey { case input, output, reasoning, cache, total }
     private enum CacheKeys: String, CodingKey { case read, write }
@@ -577,5 +599,9 @@ extension OpenCodeMessageInfo {
         variant = try c.decodeIfPresent(String.self, forKey: .variant) ?? model?["variant"]?.stringValue
         modelID = try c.decodeIfPresent(String.self, forKey: .modelID) ?? model?["modelID"]?.stringValue
         providerID = try c.decodeIfPresent(String.self, forKey: .providerID) ?? model?["providerID"]?.stringValue
+        // User messages reuse `summary` for an object; only the assistant flag matters here.
+        cost = try? c.decodeIfPresent(Double.self, forKey: .cost)
+        tokens = try? c.decodeIfPresent(OpenCodeTokenUsage.self, forKey: .tokens)
+        summary = try? c.decodeIfPresent(Bool.self, forKey: .summary)
     }
 }

@@ -31,7 +31,20 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var actionErrorMessage: String?
     @Published private(set) var actionInFlightID: String?
     @Published private(set) var transcriptRevision = 0
-    @Published private(set) var providerModels: [OpenCodeProviderModels] = []
+    @Published private(set) var providerModels: [OpenCodeProviderModels] = [] {
+        didSet {
+            catalogModels = providerModels.flatMap(\.models)
+            modelContextLimits = Dictionary(
+                catalogModels.compactMap { model in model.contextLimit.map { (model.qualifiedID, $0) } },
+                uniquingKeysWith: { first, _ in first })
+            updateUsage()
+        }
+    }
+    /// Context and spend, recomputed as the transcript and model catalog change.
+    @Published private(set) var usage = OpenCodeSessionUsage()
+    /// Context windows by `provider/model`, for per-step context shares.
+    private(set) var modelContextLimits: [String: Int] = [:]
+    private var catalogModels: [OpenCodeModelOption] = []
     @Published private(set) var selectedModel: OpenCodeModelOption?
     @Published private(set) var composerCatalog = OpenCodeComposerCatalog()
     @Published private(set) var selectedAgentID: String?
@@ -63,6 +76,9 @@ final class OpenCodeSessionStore: ObservableObject {
     private var featureMutationGeneration = 0
     private var todoMutationGeneration = 0
     private var revertedUserMessages: [OpenCodeMessageEnvelope] = []
+    // The server's active context and the newest message when it was read;
+    // a transcript that has moved on makes it stale.
+    private var serverContextWindow: (anchor: String?, messages: [OpenCodeMessageEnvelope])?
     let directory: String
     let remoteFiles: OpenCodeRemoteFileStore?
     let serverID: UUID
@@ -1398,7 +1414,31 @@ final class OpenCodeSessionStore: ObservableObject {
         }
         updateCurrentTurnActivityTracking()
         updateUnansweredPromptRecovery()
+        updateUsage()
         transcriptRevision &+= 1
+    }
+
+    private func updateUsage() {
+        var next = OpenCodeSessionUsage(messages: messages, models: catalogModels)
+        if let window = serverContextWindow, window.anchor == messages.last?.id {
+            next = next.reconciled(activeContext: window.messages)
+        }
+        // Streaming republishes the transcript per token; only real changes publish.
+        if next != usage { usage = next }
+    }
+
+    /// Reads the server's own active context where it offers one. Failure is
+    /// quiet: the transcript's last compaction already answers the question.
+    func refreshContextWindow() async {
+        guard let featureService, sessionFeatures.contextWindow else { return }
+        let anchor = messages.last?.id
+        do {
+            guard let window = try await featureService.sessionContextMessages(
+                sessionID: session.id, directory: directory, workspace: workspace),
+                anchor == messages.last?.id else { return }
+            serverContextWindow = (anchor, window)
+            updateUsage()
+        } catch {}
     }
 
     private func applyReconciledStatus(_ value: OpenCodeSessionStatus) {

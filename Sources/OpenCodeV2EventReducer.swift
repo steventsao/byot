@@ -182,7 +182,8 @@ struct OpenCodeV2EventReducer: Sendable {
             let finish = data["finish"]?.stringValue ?? (error == nil ? nil : "error")
             messages[index].info = OpenCodeMessageInfo(id: old.id, sessionID: old.sessionID, role: old.role,
                 time: OpenCodeMessageTime(created: old.time.created, completed: created), agent: old.agent,
-                modelID: old.modelID, providerID: old.providerID, finish: finish, error: error, variant: old.variant)
+                modelID: old.modelID, providerID: old.providerID, finish: finish, error: error, variant: old.variant,
+                cost: data["cost"]?.numberValue ?? old.cost, tokens: OpenCodeTokenUsage(data["tokens"]) ?? old.tokens)
             // step.ended carries the step's accounting and changed files; the
             // projection exposes them on the message, so both paths agree.
             let stepParts = OpenCodeV2Normalization.stepParts(

@@ -25,6 +25,7 @@ struct OpenCodeSessionDetailsView: View {
                     .accessibilityIdentifier("session-rename")
                     if !store.sessionFeatures.rename { Text("Renaming is unavailable on this server.").font(.cleanCaption).foregroundStyle(.secondary) }
                 }
+                OpenCodeSessionUsageSections(usage: store.usage)
                 Section("Related sessions") {
                     if let parent = store.parentSession {
                         Button { openSession(parent) } label: {
@@ -89,6 +90,7 @@ struct OpenCodeSessionDetailsView: View {
                 Text("This removes the conversation from the server. It cannot be undone.")
             }
             .task { await store.loadRelatedSessions() }
+            .task(id: store.usage.context?.messageID) { await store.refreshContextWindow() }
         }
     }
 }

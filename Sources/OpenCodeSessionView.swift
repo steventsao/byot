@@ -14,6 +14,7 @@ struct OpenCodeSessionView: View {
     @State private var hasPositionedTranscript = false
     @State private var isShowingDetails = false
     @State private var isShowingTasks = false
+    @State private var isShowingUsage = false
     @State private var isShowingNewSession = false
     @State private var nextSession: OpenCodeSessionRoute?
     private let client: OpenCodeClient
@@ -286,11 +287,15 @@ struct OpenCodeSessionView: View {
                 HStack(spacing: 12) {
                     sessionContext
                     Spacer(minLength: 8)
+                    contextMeter
                     sessionStatus
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     sessionContext
-                    sessionStatus
+                    HStack(spacing: 12) {
+                        contextMeter
+                        sessionStatus
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -313,6 +318,7 @@ struct OpenCodeSessionView: View {
             )
         }
         .environment(\.openCodeRemoteFiles, store.remoteFiles)
+        .environment(\.openCodeContextLimits, store.modelContextLimits)
         .environment(\.openCodeDiffNavigator, OpenCodeDiffNavigator(diffs: store.diffs, directory: store.directory) { diffID in
             diffSheet = OpenCodeDiffSheet(focusedDiffID: diffID)
         })
@@ -322,6 +328,8 @@ struct OpenCodeSessionView: View {
                     Button("Message queue", systemImage: "list.bullet.rectangle") { isShowingQueue = true }
                         .accessibilityIdentifier("session-queue")
                     Button("Session details", systemImage: "info.circle") { isShowingDetails = true }
+                    Button("Context and usage", systemImage: "gauge.with.dots.needle.33percent") { isShowingUsage = true }
+                        .accessibilityIdentifier("session-usage")
                     Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
                     if push.credentials[client.profile.id] != nil {
                         Button(push.isMuted(serverID: client.profile.id, sessionID: store.session.id) ? "Unmute notifications" : "Mute notifications", systemImage: "bell.slash") {
@@ -359,6 +367,9 @@ struct OpenCodeSessionView: View {
                 isShowingDetails = false
                 nextSession = OpenCodeSessionRoute(session: session)
             }
+        }
+        .sheet(isPresented: $isShowingUsage) {
+            OpenCodeSessionUsageView(store: store)
         }
         .sheet(isPresented: $isShowingTasks) {
             OpenCodeTaskProgressView(progress: store.todoProgress, supportsSnapshot: store.sessionFeatures.todoSnapshot)
@@ -433,6 +444,13 @@ struct OpenCodeSessionView: View {
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel("Server \(serverName), project \(store.directory)")
+    }
+
+    @ViewBuilder
+    private var contextMeter: some View {
+        if let meter = OpenCodeContextMeterPresentation(usage: store.usage) {
+            OpenCodeContextMeter(presentation: meter) { isShowingUsage = true }
+        }
     }
 
     private var sessionStatus: some View {
@@ -572,18 +590,28 @@ private struct OpenCodeScrollMetricsKey: PreferenceKey {
 /// compaction sit outside the pill.
 private struct OpenCodeMessageView: View {
     let message: OpenCodeMessageEnvelope
+    @Environment(\.openCodeContextLimits) private var contextLimits
 
     private var isUser: Bool { message.info.role == "user" }
+
+    private var contextLimit: Int? {
+        guard let providerID = message.info.providerID, let modelID = message.info.modelID else { return nil }
+        return contextLimits["\(providerID)/\(modelID)"]
+    }
 
     var body: some View {
         let items = OpenCodeTranscriptLayout.items(for: message.parts, inPrompt: isUser)
         let bubble = isUser ? items.filter { !$0.isBanner } : items
         let banners = isUser ? items.filter(\.isBanner) : []
+        let reply = OpenCodeStepSummary(reply: message, contextLimit: contextLimit)
         VStack(alignment: .leading, spacing: 12) {
-            if !bubble.isEmpty || message.info.error != nil {
+            if !bubble.isEmpty || message.info.error != nil || reply != nil {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(bubble) { item in
-                        OpenCodeTranscriptItemView(item: item, isUser: isUser)
+                        OpenCodeTranscriptItemView(item: item, isUser: isUser, contextLimit: contextLimit)
+                    }
+                    if let reply {
+                        OpenCodeStepSummaryView(summary: reply)
                     }
                     if let error = message.info.error {
                         Label(error.displayMessage, systemImage: "exclamationmark.triangle.fill")
@@ -603,7 +631,7 @@ private struct OpenCodeMessageView: View {
                 .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
             }
             ForEach(banners) { item in
-                OpenCodeTranscriptItemView(item: item, isUser: false)
+                OpenCodeTranscriptItemView(item: item, isUser: false, contextLimit: nil)
             }
         }
         .accessibilityElement(children: .contain)
@@ -614,13 +642,14 @@ private struct OpenCodeMessageView: View {
 private struct OpenCodeTranscriptItemView: View {
     let item: OpenCodeTranscriptItem
     let isUser: Bool
+    let contextLimit: Int?
 
     var body: some View {
         switch item {
         case .images(let parts):
             OpenCodeInlineImageGallery(parts: parts)
         case .part(let part):
-            OpenCodePartView(part: part, isUser: isUser)
+            OpenCodePartView(part: part, isUser: isUser, contextLimit: contextLimit)
         }
     }
 }
@@ -628,6 +657,7 @@ private struct OpenCodeTranscriptItemView: View {
 private struct OpenCodePartView: View {
     let part: OpenCodePart
     let isUser: Bool
+    let contextLimit: Int?
 
     var body: some View {
         switch part.type {
@@ -685,7 +715,7 @@ private struct OpenCodePartView: View {
                 }
             }
         case "step-finish":
-            if let summary = OpenCodeStepSummary(part: part) {
+            if let summary = OpenCodeStepSummary(part: part, contextLimit: contextLimit) {
                 OpenCodeStepSummaryView(summary: summary)
             }
         case "snapshot":

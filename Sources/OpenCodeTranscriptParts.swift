@@ -178,10 +178,27 @@ struct OpenCodeStepSummary: Equatable, Sendable {
     let details: [Detail]
     let accessibilityLabel: String
 
-    init?(part: OpenCodePart, locale: Locale = .current) {
+    /// `contextLimit` is the reply's model window; with it the breakdown
+    /// shows how much of the window the step filled.
+    init?(part: OpenCodePart, contextLimit: Int? = nil, locale: Locale = .current) {
         guard part.type == "step-finish" else { return nil }
-        let tokens = part.tokens
-        let cost = part.cost ?? 0
+        self.init(kind: "Step", tokens: part.tokens, cost: part.cost, reason: part.reason,
+                  contextLimit: contextLimit, locale: locale)
+    }
+
+    /// A reply whose server recorded accounting on the message but sent no
+    /// step-finish parts still gets a footer, built from the message.
+    init?(reply message: OpenCodeMessageEnvelope, contextLimit: Int? = nil, locale: Locale = .current) {
+        guard message.info.role == "assistant",
+              !message.parts.contains(where: { $0.type == "step-finish" && Self(part: $0) != nil })
+        else { return nil }
+        self.init(kind: "Reply", tokens: message.info.tokens, cost: message.info.cost, reason: message.info.finish,
+                  contextLimit: contextLimit, locale: locale)
+    }
+
+    private init?(kind: String, tokens: OpenCodeTokenUsage?, cost: Double?, reason: String?, contextLimit: Int?,
+                  locale: Locale) {
+        let cost = cost ?? 0
         guard (tokens?.total ?? 0) > 0 || cost > 0 else { return nil }
 
         var headline: [String] = []
@@ -197,6 +214,11 @@ struct OpenCodeStepSummary: Equatable, Sendable {
             for (label, value) in rows where value > 0 || label == "Input" || label == "Output" {
                 details.append(Detail(label: label, value: Self.full(value, locale: locale)))
             }
+            if let contextLimit, contextLimit > 0, tokens.contextTokens > 0 {
+                let percent = OpenCodeContextUsage.percent(tokens.contextTokens / Double(contextLimit))
+                details.append(Detail(label: "Context",
+                    value: "\(percent)% of \(Self.compact(Double(contextLimit), locale: locale))"))
+            }
         }
         if cost > 0 {
             let formatted = Self.cost(cost, locale: locale)
@@ -204,11 +226,11 @@ struct OpenCodeStepSummary: Equatable, Sendable {
             spoken.append("cost \(formatted)")
             details.append(Detail(label: "Cost", value: formatted))
         }
-        outcome = Self.outcome(part.reason)
+        outcome = Self.outcome(reason)
         if let outcome { details.append(Detail(label: "Finish", value: outcome)) }
-        title = (["Step"] + headline).joined(separator: " · ")
+        title = ([kind] + headline).joined(separator: " · ")
         self.details = details
-        accessibilityLabel = (["Step used " + spoken.joined(separator: ", ")] + [outcome].compactMap { $0 })
+        accessibilityLabel = (["\(kind) used " + spoken.joined(separator: ", ")] + [outcome].compactMap { $0 })
             .joined(separator: ". ")
     }
 
@@ -236,7 +258,7 @@ struct OpenCodeStepSummary: Equatable, Sendable {
 
     /// Small step costs keep enough precision to be distinguishable from zero.
     static func cost(_ value: Double, locale: Locale) -> String {
-        let digits = value < 0.01 ? 4 : 2
+        let digits = value > 0 && value < 0.01 ? 4 : 2
         return value.formatted(.currency(code: "USD").precision(.fractionLength(digits)).locale(locale))
     }
 }

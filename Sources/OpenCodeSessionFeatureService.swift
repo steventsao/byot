@@ -139,6 +139,14 @@ struct OpenCodeSessionFeatureService: Sendable {
         return try decodeDetails(value).session
     }
 
+    /// The v2 active context: every message after the last compaction.
+    func contextMessages(_ id: String) async throws -> [OpenCodeMessageEnvelope]? {
+        guard support.contextWindow else { return nil }
+        let response: OpenCodeJSONValue = try await context.transport.get(path(id) + ["context"], query: [])
+        guard let rows = response.objectValue?["data"]?.arrayValue else { throw OpenCodeConnectionError.invalidResponse }
+        return rows.compactMap { $0.objectValue.flatMap { OpenCodeV2Normalization.message($0, sessionID: id) } }
+    }
+
     private func cancelPendingUsers(_ id: String) async throws {
         // A staged boundary must not automatically consume a server-side user
         // prompt written against the previous history. Fail closed if the
@@ -213,5 +221,8 @@ extension OpenCodeClient: OpenCodeSessionFeatureServicing {
     }
     func forkSession(sessionID: String, directory: String, workspace: String?, beforeMessageID: String?) async throws -> OpenCodeSession {
         try await sessionFeatureService().fork(sessionID, directory: directory, workspace: workspace, beforeMessageID: beforeMessageID)
+    }
+    func sessionContextMessages(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeMessageEnvelope]? {
+        try await sessionFeatureService().contextMessages(sessionID)
     }
 }
