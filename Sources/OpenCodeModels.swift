@@ -133,6 +133,8 @@ struct OpenCodeMessageInfo: Codable, Identifiable, Equatable, Sendable {
     let finish: String?
     let error: OpenCodeMessageError?
     var variant: String? = nil
+    /// The prompt an assistant reply answers; its turn's diff is keyed by this id.
+    var parentID: String? = nil
 }
 
 struct OpenCodeMessageTime: Codable, Equatable, Sendable {
@@ -446,6 +448,7 @@ extension OpenCodeMessageInfo {
         agent = try c.decodeIfPresent(String.self, forKey: .agent)
         finish = try c.decodeIfPresent(String.self, forKey: .finish)
         error = try c.decodeIfPresent(OpenCodeMessageError.self, forKey: .error)
+        parentID = try c.decodeIfPresent(String.self, forKey: .parentID)
         let raw = try OpenCodeJSONValue(from: decoder).objectValue
         let model = raw?["model"]?.objectValue
         variant = try c.decodeIfPresent(String.self, forKey: .variant) ?? model?["variant"]?.stringValue

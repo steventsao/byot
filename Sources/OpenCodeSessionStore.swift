@@ -19,9 +19,6 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var questions: [OpenCodeQuestionRequest] = []
     @Published private(set) var diffs: [OpenCodeDiff] = []
     @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
-    var diffPresentation: OpenCodeSessionDiffPresentation {
-        OpenCodeSessionDiffPresentation(diffs: diffs, support: protocolCapabilities?.sessionDiff)
-    }
     @Published private(set) var status: OpenCodeSessionStatus = .idle
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false

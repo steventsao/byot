@@ -48,25 +48,6 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
     )
 }
 
-struct OpenCodeSessionDiffPresentation: Equatable, Sendable {
-    let diffs: [OpenCodeDiff]
-    private let support: OpenCodeFeatureSupport?
-
-    init(diffs: [OpenCodeDiff], support: OpenCodeFeatureSupport?) {
-        self.diffs = diffs
-        self.support = support
-    }
-
-    var canPresent: Bool {
-        !diffs.isEmpty || unavailableReason != nil
-    }
-
-    var unavailableReason: String? {
-        guard diffs.isEmpty else { return nil }
-        return support?.unavailableReason
-    }
-}
-
 enum OpenCodeSessionDiffReconciliation {
     static func shouldApplyFetchedSnapshot(
         support: OpenCodeFeatureSupport?,

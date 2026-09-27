@@ -5,7 +5,8 @@ struct OpenCodeSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
-    @State private var isShowingDiff = false
+    @StateObject private var diffReview: OpenCodeDiffReviewStore
+    @State private var diffRequest: OpenCodeDiffReviewRequest?
     @State private var isShowingQueue = false
     @ObservedObject private var push = BYOTPushNotifications.shared
     @State private var notificationError: String?
@@ -38,6 +39,12 @@ struct OpenCodeSessionView: View {
             wrappedValue: OpenCodeSessionStore(
                 client: client,
                 session: session,
+                directory: directory
+            )
+        )
+        _diffReview = StateObject(
+            wrappedValue: OpenCodeDiffReviewStore(
+                service: OpenCodeDiffReviewService(client: client, session: session, directory: directory),
                 directory: directory
             )
         )
@@ -313,6 +320,9 @@ struct OpenCodeSessionView: View {
             )
         }
         .environment(\.openCodeRemoteFiles, store.remoteFiles)
+        .environment(\.openCodeReviewChanges, OpenCodeReviewChangesAction { request in
+            diffRequest = request
+        })
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -320,6 +330,8 @@ struct OpenCodeSessionView: View {
                         .accessibilityIdentifier("session-queue")
                     Button("Session details", systemImage: "info.circle") { isShowingDetails = true }
                     Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
+                    Button("Review changes", systemImage: "plusminus") { diffRequest = OpenCodeDiffReviewRequest() }
+                        .accessibilityIdentifier("session-menu-review-changes")
                     if push.credentials[client.profile.id] != nil {
                         Button(push.isMuted(serverID: client.profile.id, sessionID: store.session.id) ? "Unmute notifications" : "Mute notifications", systemImage: "bell.slash") {
                             Task {
@@ -340,12 +352,12 @@ struct OpenCodeSessionView: View {
                 .accessibilityIdentifier("session-actions")
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Changes", systemImage: "doc.text.magnifyingglass") {
-                    isShowingDiff = true
+                Button("Changes", systemImage: "plusminus") {
+                    diffRequest = OpenCodeDiffReviewRequest()
                 }
                 .labelStyle(.iconOnly)
                 .tint(BYOTBrand.chromeTint)
-                .disabled(!store.diffPresentation.canPresent)
+                .accessibilityHint("Review files changed in this session")
             }
         }
         .sheet(isPresented: $isShowingQueue) {
@@ -376,8 +388,13 @@ struct OpenCodeSessionView: View {
         .onChange(of: store.didDeleteSession) { _, deleted in
             if deleted { isShowingDetails = false; dismiss() }
         }
-        .sheet(isPresented: $isShowingDiff) {
-            OpenCodeDiffView(diffs: store.diffs, unavailableReason: store.diffPresentation.unavailableReason)
+        .sheet(item: $diffRequest) { request in
+            OpenCodeDiffReviewView(
+                store: diffReview,
+                request: request,
+                latestTurnMessageID: store.messages.last { $0.info.role == "user" }?.id,
+                sessionDiffs: store.diffs
+            )
         }
         .sheet(isPresented: $isShowingRecoveryModelPicker) {
             OpenCodeModelPickerView(store: store)
@@ -412,8 +429,16 @@ struct OpenCodeSessionView: View {
                     }.disabled(store.actionUnavailableReason(.fork) != nil)
                 }
         } else {
-            OpenCodeMessageView(message: message)
+            OpenCodeMessageView(message: message, turnMessageID: turnMessageID(for: message))
         }
+    }
+
+    /// The user prompt an assistant reply answers: its declared parent, else the
+    /// nearest earlier prompt in the transcript.
+    private func turnMessageID(for message: OpenCodeMessageEnvelope) -> String? {
+        if let parentID = message.info.parentID { return parentID }
+        guard let index = store.messages.firstIndex(where: { $0.id == message.id }) else { return nil }
+        return store.messages[..<index].last { $0.info.role == "user" }?.id
     }
 
     private func rememberAttention() {
@@ -567,13 +592,14 @@ private struct OpenCodeScrollMetricsKey: PreferenceKey {
 /// full width beneath it, with no role headers.
 private struct OpenCodeMessageView: View {
     let message: OpenCodeMessageEnvelope
+    var turnMessageID: String? = nil
 
     private var isUser: Bool { message.info.role == "user" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(message.parts) { part in
-                OpenCodePartView(part: part, isUser: isUser)
+                OpenCodePartView(part: part, isUser: isUser, turnMessageID: turnMessageID)
             }
             if let error = message.info.error {
                 Label(error.displayMessage, systemImage: "exclamationmark.triangle.fill")
@@ -597,8 +623,10 @@ private struct OpenCodeMessageView: View {
 }
 
 private struct OpenCodePartView: View {
+    @Environment(\.openCodeReviewChanges) private var reviewChanges
     let part: OpenCodePart
     let isUser: Bool
+    var turnMessageID: String? = nil
 
     var body: some View {
         switch part.type {
@@ -628,17 +656,10 @@ private struct OpenCodePartView: View {
             OpenCodeRemoteFilePartView(part: part)
         case "patch":
             if let files = part.files, !files.isEmpty {
-                // Same glyph column as the tool rows' disclosure chevrons.
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "plusminus")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                    Text("Changed \(files.count) file\(files.count == 1 ? "" : "s")")
-                        .font(.cleanMono)
-                        .foregroundStyle(.secondary)
+                OpenCodePatchPartRow(files: files) {
+                    reviewChanges?(OpenCodeDiffReviewRequest(messageID: turnMessageID, files: files))
                 }
-                .padding(.vertical, 3)
+                .disabled(reviewChanges == nil)
             }
         case "subtask":
             VStack(alignment: .leading, spacing: 4) {
@@ -656,45 +677,41 @@ private struct OpenCodePartView: View {
     }
 }
 
-private struct OpenCodeDiffView: View {
-    @Environment(\.dismiss) private var dismiss
-    let diffs: [OpenCodeDiff]
-    let unavailableReason: String?
+/// A turn's patch summary; opens the reviewer pinned to that turn.
+private struct OpenCodePatchPartRow: View {
+    let files: [String]
+    let action: () -> Void
+
+    private var title: String {
+        guard files.count == 1, let file = files.first else { return "Changed \(files.count) files" }
+        return "Changed \(file.split(separator: "/").last.map(String.init) ?? file)"
+    }
 
     var body: some View {
-        NavigationStack {
-            List(diffs) { diff in
-                DisclosureGroup {
-                    if let patch = diff.patch, !patch.isEmpty {
-                        ScrollView(.horizontal) {
-                            Text(patch)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                                .padding(.vertical, 8)
-                        }
-                    }
-                } label: {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(diff.file ?? "Changed file")
-                            .font(.cleanBodySemibold)
-                        Text("+\(diff.additions) −\(diff.deletions)")
-                            .font(.cleanCaptionBold)
-                            .foregroundStyle(BYOTBrand.accent)
-                    }
-                }
+        Button(action: action) {
+            // Same glyph column as the tool rows' disclosure chevrons.
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "plusminus")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.cleanMono)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
-            .overlay {
-                if let unavailableReason {
-                    ContentUnavailableView("Session changes unavailable", systemImage: "doc.text.magnifyingglass", description: Text(unavailableReason))
-                }
-            }
-            .navigationTitle("Session changes")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
+            .padding(.vertical, 3)
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityHint("Reviews the changes from this turn")
+        .accessibilityIdentifier("transcript-patch")
     }
 }

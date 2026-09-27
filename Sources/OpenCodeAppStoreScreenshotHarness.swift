@@ -155,7 +155,7 @@ private enum AppStoreFixture {
                 - **`tests/upload.test.ts`**: covers bursts, the 429 response, and per-client isolation
                 """))
         }
-        var info: [String: Any] = ["id": "msg_agent", "sessionID": sessionID, "role": "assistant", "agent": "build",
+        var info: [String: Any] = ["id": "msg_agent", "sessionID": sessionID, "role": "assistant", "agent": "build", "parentID": "msg_user",
                                    "providerID": "local", "modelID": "coder-32b", "time": ["created": now - 230_000]]
         if phase == .done {
             info["time"] = ["created": now - 230_000, "completed": now - 20_000]
@@ -326,6 +326,8 @@ private final class OpenCodeAppStoreFixtureProtocol: URLProtocol, @unchecked Sen
         case session: body = AppStoreFixture.sessions[0]
         case session + "/message": body = AppStoreFixture.messages
         case session + "/diff": body = AppStoreFixture.diffs
+        case "/vcs": body = ["branch": "rate-limit-uploads", "default_branch": "main"]
+        case "/vcs/diff": body = AppStoreFixture.diffs
         case session + "/todo": body = AppStoreFixture.todos
         case "/permission": body = phase == .permission ? [AppStoreFixture.permission] : []
         case "/question": body = phase == .question ? [AppStoreFixture.question] : []
