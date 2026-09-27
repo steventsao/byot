@@ -161,6 +161,34 @@ struct OpenCodeV2StreamingTests {
         #expect(failed.agent == "build")
     }
 
+    @Test("A new step settles an assistant whose step never ended, as the projection does")
+    func nextStepSettlesUnfinishedAssistant() throws {
+        var stream = LiveStream()
+        try stream.send("step.started", #""agent":"build","model":{"id":"m","providerID":"p"}"#, messageID: "msg_a")
+        try stream.send("step.started", #""agent":"build","model":{"id":"m","providerID":"p"}"#, messageID: "msg_b")
+        #expect(stream.reducer.messages.map(\.info.time) == [
+            OpenCodeMessageTime(created: 1, completed: 2), OpenCodeMessageTime(created: 2, completed: nil),
+        ])
+        // A settled assistant keeps its own completion time.
+        try stream.send("step.ended", #""finish":"stop","cost":0,"tokens":{"input":1,"output":1,"reasoning":0,"cache":{"read":0,"write":0}}"#, messageID: "msg_b")
+        try stream.send("step.started", #""agent":"build","model":{"id":"m","providerID":"p"}"#, messageID: "msg_c")
+        #expect(stream.reducer.messages.map(\.info.time.completed) == [2, 3, nil])
+    }
+
+    @Test("A refetch while a tool runs matches the live part, progress output included")
+    func runningToolMatchesProjection() throws {
+        var stream = LiveStream()
+        try stream.send("step.started", #""agent":"build","model":{"id":"m","providerID":"p"}"#)
+        try stream.send("tool.input.started", #""callID":"call_1","name":"bash""#)
+        try stream.send("tool.called", #""callID":"call_1","tool":"bash","input":{"command":"ls"},"provider":{"executed":false}"#)
+        try stream.send("tool.progress", #""callID":"call_1","structured":{},"content":[{"type":"text","text":"a.txt\n"}]"#)
+        let raw = #"{"id":"msg_live","type":"assistant","time":{"created":1},"agent":"build","model":{"id":"m","providerID":"p"},"content":[{"type":"tool","id":"call_1","name":"bash","time":{"created":2,"ran":3},"state":{"status":"running","input":{"command":"ls"},"structured":{},"content":[{"type":"text","text":"a.txt\n"}]}}]}"#
+        let object = try JSONDecoder().decode([String: OpenCodeJSONValue].self, from: Data(raw.utf8))
+        let projected = try #require(OpenCodeV2Normalization.message(object, sessionID: "ses_live")?.parts.first)
+        #expect(projected.state?.output == "a.txt\n")
+        #expect(stream.tool == projected)
+    }
+
     @Test("Prompt, switch, context, shell and compaction events match refetched messages")
     func projectionEventsMatchSnapshots() throws {
         var reducer = OpenCodeTranscriptReducer()
@@ -297,6 +325,33 @@ struct OpenCodeV2StreamingTests {
     }
 
     @MainActor
+    @Test("A follow-up queued behind an optimistic turn sends once that turn's steps settle")
+    func storeDispatchesQueuedFollowUpAfterSteps() async throws {
+        let service = LiveStoreService()
+        let store = makeStore(service)
+        await store.start()
+        defer { store.stop() }
+
+        #expect(store.send("First"))
+        for _ in 0..<100 where store.isSending { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(await service.sent == ["First"])
+        // Still optimistically busy: the server has not reported the turn yet.
+        #expect(store.status == .busy)
+        #expect(store.send("Follow-up"))
+        #expect(store.queuedPrompts.map(\.text) == ["Follow-up"])
+
+        await service.setActive(true)
+        store.handle(try LiveStream.envelope("session.next.step.started", 1, #""assistantMessageID":"msg_a","agent":"build","model":{"id":"m","providerID":"p"}"#))
+        store.handle(try LiveStream.envelope("session.next.step.ended", 2, #""assistantMessageID":"msg_a","finish":"stop","cost":0,"tokens":{"input":1,"output":1,"reasoning":0,"cache":{"read":0,"write":0}}"#))
+        await service.setActive(false)
+        // Settlement sees the drain end well before queue recovery would give up.
+        for _ in 0..<150 where await service.sent.count < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(await service.sent == ["First", "Follow-up"])
+        #expect(store.queuedPrompts.isEmpty)
+        #expect(store.errorMessage == nil)
+    }
+
+    @MainActor
     @Test("Retries show until the next step and session.next reverts hide history")
     func storeRetryAndRevert() async throws {
         let service = LiveStoreService()
@@ -392,6 +447,7 @@ private final class FixtureToken {}
 private actor LiveStoreService: OpenCodeSessionServicing {
     private var active = false
     private(set) var statusCalls = 0
+    private(set) var sent: [String] = []
 
     func setActive(_ value: Bool) { active = value }
 
@@ -399,7 +455,7 @@ private actor LiveStoreService: OpenCodeSessionServicing {
     func connectedProviderModels(directory: String, workspace: String?) async throws -> [OpenCodeProviderModels] { [] }
     func messages(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeMessageEnvelope] { [] }
     func sendMessage(sessionID: String, directory: String, workspace: String?, model: OpenCodeModelOption?, text: String,
-                     attachments: [OpenCodePromptAttachment], promptID: UUID) async throws {}
+                     attachments: [OpenCodePromptAttachment], promptID: UUID) async throws { sent.append(text) }
     func abort(sessionID: String, directory: String, workspace: String?) async throws -> Bool { true }
     func diffs(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeDiff] { [] }
     func sessionStatuses(directory: String, workspace: String?) async throws -> [String: OpenCodeSessionStatus] {

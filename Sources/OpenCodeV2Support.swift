@@ -284,13 +284,14 @@ enum OpenCodeV2Normalization {
                 time: toolTime
             )
         default:
-            // Current servers project a pending tool's partial input as a string.
+            // Current servers project a pending tool's partial input as a
+            // string, and a running tool's latest progress checkpoint as content.
             return OpenCodeToolState(
                 status: status,
                 input: state["input"]?.objectValue,
                 raw: state["input"]?.stringValue,
                 title: nil,
-                output: nil,
+                output: toolOutputText(state["content"]),
                 error: nil,
                 time: toolTime
             )

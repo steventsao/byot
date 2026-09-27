@@ -116,6 +116,12 @@ struct OpenCodeV2EventReducer: Sendable {
 
         guard let messageID = data["assistantMessageID"]?.stringValue ?? data["messageID"]?.stringValue else { return .unresolved }
         if type == "session.step.started" {
+            // A new step supersedes an assistant that never settled (for
+            // example an interrupted step), as the projection records it.
+            if let open = messages.lastIndex(where: { $0.info.role == "assistant" }),
+               messages[open].id != messageID, messages[open].info.time.completed == nil {
+                messages[open].info.time = OpenCodeMessageTime(created: messages[open].info.time.created, completed: created)
+            }
             let existing = messages.first { $0.id == messageID }
             let model = data["model"]?.objectValue
             let info = OpenCodeMessageInfo(id: messageID, sessionID: sessionID, role: "assistant",

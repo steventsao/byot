@@ -126,7 +126,7 @@ struct OpenCodeMessageInfo: Codable, Identifiable, Equatable, Sendable {
     let id: String
     let sessionID: String
     let role: String
-    let time: OpenCodeMessageTime
+    var time: OpenCodeMessageTime
     let agent: String?
     let modelID: String?
     let providerID: String?

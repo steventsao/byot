@@ -1313,11 +1313,11 @@ final class OpenCodeSessionStore: ObservableObject {
         case "session.next.step.started":
             // Current v2 has no execution events on /api/event; a step is the
             // first sign of work and a new step supersedes any pending settle.
+            // Apply it even over an optimistic busy so the prompt queue records
+            // server activity and dispatches its follow-up when the turn ends.
             cancelTurnSettlement()
-            if status != .busy {
-                statusMutationGeneration &+= 1
-                applyEventStatus(.busy)
-            }
+            statusMutationGeneration &+= 1
+            applyEventStatus(.busy)
             applyV2Transcript(event)
         case "session.next.step.ended", "session.next.step.failed":
             applyV2Transcript(event)
