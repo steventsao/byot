@@ -162,6 +162,9 @@ enum OpenCodeV2Normalization {
                     continue
                 }
             }
+            parts += stepParts(messageID: id, sessionID: sessionID, finish: object["finish"]?.stringValue,
+                               cost: object["cost"]?.numberValue, tokens: object["tokens"],
+                               files: object["snapshot"]?.objectValue?["files"])
             return OpenCodeMessageEnvelope(
                 info: OpenCodeMessageInfo(
                     id: id,
@@ -179,6 +182,19 @@ enum OpenCodeV2Normalization {
                 ),
                 parts: parts
             )
+        case "compaction", "agent-switched", "model-switched":
+            // Conversation markers render as the matching v1 part types.
+            let model = object["model"]?.objectValue
+            var part = OpenCodePart(
+                id: "\(id):\(type)", sessionID: sessionID, messageID: id,
+                type: ["agent-switched": "agent", "model-switched": "model"][type] ?? type,
+                text: object["summary"]?.stringValue, mime: nil, filename: nil, url: nil, callID: nil, tool: nil,
+                state: nil, files: nil, description: nil, agent: nil)
+            part.auto = object["reason"]?.stringValue.map { $0 == "auto" }
+            part.name = object["agent"]?.stringValue ?? model?["id"]?.stringValue ?? model?["modelID"]?.stringValue
+            return OpenCodeMessageEnvelope(info: OpenCodeMessageInfo(id: id, sessionID: sessionID, role: "system",
+                time: OpenCodeMessageTime(created: created, completed: nil), agent: nil, modelID: nil, providerID: nil,
+                finish: nil, error: nil), parts: [part])
         default:
             let errorObject = object["error"]?.objectValue
             let text = [object["description"]?.stringValue, object["command"]?.stringValue,
@@ -192,6 +208,36 @@ enum OpenCodeV2Normalization {
                 parts: [textPart(messageID: id, sessionID: sessionID, kind: "text", ordinal: 0,
                     text: label + status + (text.isEmpty ? "" : "\n\n" + text))])
         }
+    }
+
+    /// Synthetic parts carrying a settled v2 step's accounting and changed
+    /// files, in the v1 step-finish and patch shapes. The snapshot projection
+    /// and step.ended both produce them, under the same IDs.
+    static func stepParts(
+        messageID: String, sessionID: String, finish: String?, cost: Double?,
+        tokens: OpenCodeJSONValue?, files: OpenCodeJSONValue?
+    ) -> [OpenCodePart] {
+        var parts: [OpenCodePart] = []
+        let paths = files?.arrayValue?.compactMap(\.stringValue) ?? []
+        if let usage = OpenCodeTokenUsage(tokens) {
+            var part = OpenCodePart(
+                id: "\(messageID):step-finish", sessionID: sessionID, messageID: messageID, type: "step-finish",
+                text: nil, mime: nil, filename: nil, url: nil, callID: nil, tool: nil, state: nil, files: nil,
+                description: nil, agent: nil)
+            part.reason = finish; part.cost = cost; part.tokens = usage
+            parts.append(part)
+        }
+        if !paths.isEmpty {
+            parts.append(OpenCodePart(
+                id: "\(messageID):patch", sessionID: sessionID, messageID: messageID, type: "patch", text: nil,
+                mime: nil, filename: nil, url: nil, callID: nil, tool: nil, state: nil, files: paths,
+                description: nil, agent: nil))
+        }
+        return parts
+    }
+
+    static func isStepPart(_ part: OpenCodePart) -> Bool {
+        part.id == "\(part.messageID):step-finish" || part.id == "\(part.messageID):patch"
     }
 
     static func toolState(

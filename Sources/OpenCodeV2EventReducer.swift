@@ -176,12 +176,20 @@ struct OpenCodeV2EventReducer: Sendable {
             messages[index].info = OpenCodeMessageInfo(id: old.id, sessionID: old.sessionID, role: old.role,
                 time: OpenCodeMessageTime(created: old.time.created, completed: created), agent: old.agent,
                 modelID: old.modelID, providerID: old.providerID, finish: finish, error: error, variant: old.variant)
+            // step.ended carries the step's accounting and changed files; the
+            // projection exposes them on the message, so both paths agree.
+            let stepParts = OpenCodeV2Normalization.stepParts(
+                messageID: messageID, sessionID: sessionID, finish: data["finish"]?.stringValue,
+                cost: data["cost"]?.numberValue, tokens: data["tokens"], files: data["files"])
+            messages[index].parts.removeAll(where: OpenCodeV2Normalization.isStepPart)
+            messages[index].parts += stepParts
             return .changed
         case "session.message.content.updated":
             let old = messages[index].info
             let object: [String: OpenCodeJSONValue] = ["id": .string(old.id), "type": .string("assistant"), "content": data["content"] ?? .array([])]
             guard let updated = OpenCodeV2Normalization.message(object, sessionID: sessionID) else { return .unresolved }
-            messages[index].parts = updated.parts
+            // Content snapshots omit step accounting; keep what step.ended added.
+            messages[index].parts = updated.parts + messages[index].parts.filter(OpenCodeV2Normalization.isStepPart)
             return .changed
         default:
             return .unresolved

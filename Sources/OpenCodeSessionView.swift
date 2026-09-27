@@ -5,7 +5,7 @@ struct OpenCodeSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
-    @State private var isShowingDiff = false
+    @State private var diffSheet: OpenCodeDiffSheet?
     @State private var isShowingQueue = false
     @ObservedObject private var push = BYOTPushNotifications.shared
     @State private var notificationError: String?
@@ -313,6 +313,9 @@ struct OpenCodeSessionView: View {
             )
         }
         .environment(\.openCodeRemoteFiles, store.remoteFiles)
+        .environment(\.openCodeDiffNavigator, OpenCodeDiffNavigator(diffs: store.diffs, directory: store.directory) { diffID in
+            diffSheet = OpenCodeDiffSheet(focusedDiffID: diffID)
+        })
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -341,7 +344,7 @@ struct OpenCodeSessionView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Changes", systemImage: "doc.text.magnifyingglass") {
-                    isShowingDiff = true
+                    diffSheet = OpenCodeDiffSheet(focusedDiffID: nil)
                 }
                 .labelStyle(.iconOnly)
                 .tint(BYOTBrand.chromeTint)
@@ -376,8 +379,9 @@ struct OpenCodeSessionView: View {
         .onChange(of: store.didDeleteSession) { _, deleted in
             if deleted { isShowingDetails = false; dismiss() }
         }
-        .sheet(isPresented: $isShowingDiff) {
-            OpenCodeDiffView(diffs: store.diffs, unavailableReason: store.diffPresentation.unavailableReason)
+        .sheet(item: $diffSheet) { sheet in
+            OpenCodeDiffView(diffs: store.diffs, unavailableReason: store.diffPresentation.unavailableReason,
+                             focusedDiffID: sheet.focusedDiffID)
         }
         .sheet(isPresented: $isShowingRecoveryModelPicker) {
             OpenCodeModelPickerView(store: store)
@@ -564,35 +568,60 @@ private struct OpenCodeScrollMetricsKey: PreferenceKey {
 }
 
 /// OpenCode's turn layout: the prompt is a trailing pill and the reply runs
-/// full width beneath it, with no role headers.
+/// full width beneath it, with no role headers. Conversation markers such as
+/// compaction sit outside the pill.
 private struct OpenCodeMessageView: View {
     let message: OpenCodeMessageEnvelope
 
     private var isUser: Bool { message.info.role == "user" }
 
     var body: some View {
+        let items = OpenCodeTranscriptLayout.items(for: message.parts)
+        let bubble = isUser ? items.filter { !$0.isBanner } : items
+        let banners = isUser ? items.filter(\.isBanner) : []
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(message.parts) { part in
-                OpenCodePartView(part: part, isUser: isUser)
+            if !bubble.isEmpty || message.info.error != nil {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(bubble) { item in
+                        OpenCodeTranscriptItemView(item: item, isUser: isUser)
+                    }
+                    if let error = message.info.error {
+                        Label(error.displayMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(.cleanCaption)
+                            .foregroundStyle(.red)
+                    }
+                }
+                .padding(.horizontal, isUser ? 16 : 0)
+                .padding(.vertical, isUser ? 10 : 0)
+                .background {
+                    if isUser {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(BYOTBrand.surface)
+                    }
+                }
+                .padding(.leading, isUser ? 48 : 0)
+                .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
             }
-            if let error = message.info.error {
-                Label(error.displayMessage, systemImage: "exclamationmark.triangle.fill")
-                    .font(.cleanCaption)
-                    .foregroundStyle(.red)
+            ForEach(banners) { item in
+                OpenCodeTranscriptItemView(item: item, isUser: false)
             }
         }
-        .padding(.horizontal, isUser ? 16 : 0)
-        .padding(.vertical, isUser ? 10 : 0)
-        .background {
-            if isUser {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(BYOTBrand.surface)
-            }
-        }
-        .padding(.leading, isUser ? 48 : 0)
-        .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(isUser ? "You" : message.info.agent ?? "OpenCode")
+    }
+}
+
+private struct OpenCodeTranscriptItemView: View {
+    let item: OpenCodeTranscriptItem
+    let isUser: Bool
+
+    var body: some View {
+        switch item {
+        case .images(let parts):
+            OpenCodeInlineImageGallery(parts: parts)
+        case .part(let part):
+            OpenCodePartView(part: part, isUser: isUser)
+        }
     }
 }
 
@@ -628,17 +657,7 @@ private struct OpenCodePartView: View {
             OpenCodeRemoteFilePartView(part: part)
         case "patch":
             if let files = part.files, !files.isEmpty {
-                // Same glyph column as the tool rows' disclosure chevrons.
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "plusminus")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                    Text("Changed \(files.count) file\(files.count == 1 ? "" : "s")")
-                        .font(.cleanMono)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 3)
+                OpenCodePatchPartView(files: files)
             }
         case "subtask":
             VStack(alignment: .leading, spacing: 4) {
@@ -650,37 +669,83 @@ private struct OpenCodePartView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        case "compaction":
+            OpenCodeCompactionDivider(presentation: OpenCodeCompactionPresentation(part: part))
+        case "retry":
+            OpenCodeRetryNotice(presentation: OpenCodeRetryPresentation(part: part))
+        case "agent", "model":
+            if let presentation = OpenCodeSwitchPresentation(part: part, inPrompt: isUser) {
+                if isUser {
+                    OpenCodeAgentMentionChip(presentation: presentation)
+                } else {
+                    OpenCodeTranscriptMarkerRow(symbol: presentation.symbol, title: presentation.title,
+                                                accessibilityLabel: presentation.accessibilityLabel)
+                }
+            }
+        case "step-finish":
+            if let summary = OpenCodeStepSummary(part: part) {
+                OpenCodeStepSummaryView(summary: summary)
+            }
+        case "snapshot":
+            if let snapshot = OpenCodeSnapshotPresentation(part: part) {
+                OpenCodeTranscriptMarkerRow(symbol: "clock.arrow.circlepath", title: snapshot.title,
+                                            accessibilityLabel: snapshot.accessibilityLabel)
+            }
         default:
             EmptyView()
         }
     }
 }
 
+/// One presentation of the session diff, optionally opened at a file.
+private struct OpenCodeDiffSheet: Identifiable {
+    let id = UUID()
+    let focusedDiffID: String?
+}
+
 private struct OpenCodeDiffView: View {
     @Environment(\.dismiss) private var dismiss
     let diffs: [OpenCodeDiff]
     let unavailableReason: String?
+    let focusedDiffID: String?
+    @State private var expanded: Set<String>
+
+    init(diffs: [OpenCodeDiff], unavailableReason: String?, focusedDiffID: String? = nil) {
+        self.diffs = diffs
+        self.unavailableReason = unavailableReason
+        self.focusedDiffID = focusedDiffID
+        _expanded = State(initialValue: focusedDiffID.map { [$0] } ?? [])
+    }
 
     var body: some View {
         NavigationStack {
-            List(diffs) { diff in
-                DisclosureGroup {
-                    if let patch = diff.patch, !patch.isEmpty {
-                        ScrollView(.horizontal) {
-                            Text(patch)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                                .padding(.vertical, 8)
+            ScrollViewReader { proxy in
+                List(diffs) { diff in
+                    DisclosureGroup(isExpanded: isExpanded(diff.id)) {
+                        if let patch = diff.patch, !patch.isEmpty {
+                            ScrollView(.horizontal) {
+                                Text(patch)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .padding(.vertical, 8)
+                            }
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(diff.file ?? "Changed file")
+                                .font(.cleanBodySemibold)
+                            Text("+\(diff.additions) −\(diff.deletions)")
+                                .font(.cleanCaptionBold)
+                                .foregroundStyle(BYOTBrand.accent)
                         }
                     }
-                } label: {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(diff.file ?? "Changed file")
-                            .font(.cleanBodySemibold)
-                        Text("+\(diff.additions) −\(diff.deletions)")
-                            .font(.cleanCaptionBold)
-                            .foregroundStyle(BYOTBrand.accent)
-                    }
+                    .id(diff.id)
+                }
+                .task {
+                    // Opened from a transcript file: bring that file's diff into view.
+                    guard let focusedDiffID, diffs.contains(where: { $0.id == focusedDiffID }) else { return }
+                    await Task.yield()
+                    proxy.scrollTo(focusedDiffID, anchor: .top)
                 }
             }
             .overlay {
@@ -696,5 +761,12 @@ private struct OpenCodeDiffView: View {
                 }
             }
         }
+    }
+
+    private func isExpanded(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { expanded.contains(id) },
+            set: { if $0 { expanded.insert(id) } else { expanded.remove(id) } }
+        )
     }
 }

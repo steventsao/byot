@@ -85,6 +85,51 @@ final class OpenCodePolishUITests: XCTestCase {
     }
 
     @MainActor
+    func testTranscriptPartsRenderAndOpenViewers() {
+        let app = launch(["--transcript-parts"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Rich transcript'")).firstMatch.tap()
+        let compaction = app.descendants(matching: .any)["transcript-compaction"]
+        XCTAssertTrue(compaction.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["transcript-retry"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["transcript-step-summary"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["transcript-patch"].exists)
+        XCTAssertTrue(app.staticTexts["Checkpoint · 9c1e2d4"].exists || app.otherElements["Workspace checkpoint 9c1e2d4"].exists)
+        screenshot(app, name: "transcript-parts-bottom")
+        app.scrollViews.firstMatch.swipeDown()
+        let image = app.buttons.matching(identifier: "transcript-image").firstMatch
+        XCTAssertTrue(image.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons.matching(identifier: "transcript-image").count, 2)
+        screenshot(app, name: "transcript-parts-top")
+
+        image.tap()
+        let done = app.buttons["image-viewer-done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["1 of 2"].exists)
+        screenshot(app, name: "image-viewer")
+        done.tap()
+        XCTAssertTrue(done.waitForNonExistence(timeout: 5))
+
+        app.scrollViews.firstMatch.swipeUp()
+        let file = app.buttons["Sources/App.swift"]
+        XCTAssertTrue(file.waitForExistence(timeout: 5))
+        file.tap()
+        XCTAssertTrue(app.navigationBars["Session changes"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Guard the empty state'")).firstMatch.waitForExistence(timeout: 5))
+        screenshot(app, name: "patch-opens-diff")
+    }
+
+    @MainActor
+    func testTranscriptPartsInDarkAppearance() {
+        let app = launch(["--transcript-parts", "-byot.appearance", "dark"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Rich transcript'")).firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["transcript-compaction"].waitForExistence(timeout: 10))
+        screenshot(app, name: "transcript-parts-dark-bottom")
+        app.scrollViews.firstMatch.swipeDown()
+        XCTAssertTrue(app.buttons.matching(identifier: "transcript-image").firstMatch.waitForExistence(timeout: 5))
+        screenshot(app, name: "transcript-parts-dark-top")
+    }
+
+    @MainActor
     private func launch(_ arguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--polish-ui-tests"] + arguments

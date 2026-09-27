@@ -166,6 +166,104 @@ struct OpenCodePart: Codable, Identifiable, Equatable, Sendable {
     let files: [String]?
     let description: String?
     let agent: String?
+    // Fields of the remaining v1 part types (packages/schema/src/v1/session.ts):
+    // agent `name`; compaction `auto`/`overflow`; retry `attempt`/`error`;
+    // step-finish `reason`/`cost`/`tokens`; snapshot and step `snapshot`;
+    // patch `hash`. They decode leniently so an unfamiliar shape never drops
+    // the part, and default to nil so memberwise construction stays compact.
+    var name: String? = nil
+    var auto: Bool? = nil
+    var overflow: Bool? = nil
+    var attempt: Int? = nil
+    var error: OpenCodeMessageError? = nil
+    var reason: String? = nil
+    var cost: Double? = nil
+    var tokens: OpenCodeTokenUsage? = nil
+    var snapshot: String? = nil
+    var hash: String? = nil
+}
+
+extension OpenCodePart {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        sessionID = try c.decode(String.self, forKey: .sessionID)
+        messageID = try c.decode(String.self, forKey: .messageID)
+        type = try c.decode(String.self, forKey: .type)
+        text = try c.decodeIfPresent(String.self, forKey: .text)
+        mime = try c.decodeIfPresent(String.self, forKey: .mime)
+        filename = try c.decodeIfPresent(String.self, forKey: .filename)
+        url = try c.decodeIfPresent(String.self, forKey: .url)
+        callID = try c.decodeIfPresent(String.self, forKey: .callID)
+        tool = try c.decodeIfPresent(String.self, forKey: .tool)
+        state = try c.decodeIfPresent(OpenCodeToolState.self, forKey: .state)
+        files = try c.decodeIfPresent([String].self, forKey: .files)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        agent = try c.decodeIfPresent(String.self, forKey: .agent)
+        name = try? c.decodeIfPresent(String.self, forKey: .name)
+        auto = try? c.decodeIfPresent(Bool.self, forKey: .auto)
+        overflow = try? c.decodeIfPresent(Bool.self, forKey: .overflow)
+        attempt = (try? c.decodeIfPresent(Double.self, forKey: .attempt)).map { Int($0) }
+        error = try? c.decodeIfPresent(OpenCodeMessageError.self, forKey: .error)
+        reason = try? c.decodeIfPresent(String.self, forKey: .reason)
+        cost = try? c.decodeIfPresent(Double.self, forKey: .cost)
+        tokens = try? c.decodeIfPresent(OpenCodeTokenUsage.self, forKey: .tokens)
+        snapshot = try? c.decodeIfPresent(String.self, forKey: .snapshot)
+        hash = try? c.decodeIfPresent(String.self, forKey: .hash)
+    }
+}
+
+/// Token accounting for one model step. v1 step-finish parts and v2
+/// step.ended events share this shape; `total` is optional upstream.
+struct OpenCodeTokenUsage: Codable, Equatable, Sendable {
+    var input: Double
+    var output: Double
+    var reasoning: Double
+    var cacheRead: Double
+    var cacheWrite: Double
+    var reportedTotal: Double?
+
+    init(input: Double, output: Double, reasoning: Double = 0, cacheRead: Double = 0, cacheWrite: Double = 0,
+         reportedTotal: Double? = nil) {
+        self.input = input; self.output = output; self.reasoning = reasoning
+        self.cacheRead = cacheRead; self.cacheWrite = cacheWrite; self.reportedTotal = reportedTotal
+    }
+
+    init?(_ value: OpenCodeJSONValue?) {
+        guard let object = value?.objectValue else { return nil }
+        let cache = object["cache"]?.objectValue
+        self.init(input: object["input"]?.numberValue ?? 0, output: object["output"]?.numberValue ?? 0,
+                  reasoning: object["reasoning"]?.numberValue ?? 0, cacheRead: cache?["read"]?.numberValue ?? 0,
+                  cacheWrite: cache?["write"]?.numberValue ?? 0, reportedTotal: object["total"]?.numberValue)
+    }
+
+    /// Every token the step consumed or produced, as OpenCode counts context usage.
+    var total: Double { reportedTotal ?? input + output + reasoning + cacheRead + cacheWrite }
+
+    private enum CodingKeys: String, CodingKey { case input, output, reasoning, cache, total }
+    private enum CacheKeys: String, CodingKey { case read, write }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let cache = try? c.nestedContainer(keyedBy: CacheKeys.self, forKey: .cache)
+        input = (try? c.decodeIfPresent(Double.self, forKey: .input)) ?? 0
+        output = (try? c.decodeIfPresent(Double.self, forKey: .output)) ?? 0
+        reasoning = (try? c.decodeIfPresent(Double.self, forKey: .reasoning)) ?? 0
+        cacheRead = (try? cache?.decodeIfPresent(Double.self, forKey: .read)) ?? 0
+        cacheWrite = (try? cache?.decodeIfPresent(Double.self, forKey: .write)) ?? 0
+        reportedTotal = try? c.decodeIfPresent(Double.self, forKey: .total)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(input, forKey: .input)
+        try c.encode(output, forKey: .output)
+        try c.encode(reasoning, forKey: .reasoning)
+        var cache = c.nestedContainer(keyedBy: CacheKeys.self, forKey: .cache)
+        try cache.encode(cacheRead, forKey: .read)
+        try cache.encode(cacheWrite, forKey: .write)
+        try c.encodeIfPresent(reportedTotal, forKey: .total)
+    }
 }
 
 struct OpenCodeToolState: Codable, Equatable, Sendable {
