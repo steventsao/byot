@@ -1,0 +1,94 @@
+# Build and unit-test the app on every pull request. No signing and no
+# secrets: the simulator build runs with CODE_SIGNING_ALLOWED=NO.
+# UI tests are left to scripts/ and run on demand; see docs/ci.md.
+name: iOS CI
+
+on:
+  pull_request:
+    paths-ignore:
+      - "web/**"
+      - "push/**"
+      - "**/*.md"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "web/**"
+      - "push/**"
+      - "**/*.md"
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  XCODE_APP: /Applications/Xcode_26.5.app
+  SIMULATOR: platform=iOS Simulator,name=iPhone 17,OS=26.5
+
+jobs:
+  test:
+    name: Build and unit tests
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      # SwiftTerm is pinned by exactVersion in project.yml, and the generated
+      # project (with its Package.resolved) is not committed.
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/SourcePackages
+          key: spm-${{ runner.os }}-${{ hashFiles('project.yml') }}
+
+      - name: Build for testing
+        run: |
+          if ! xcodebuild build-for-testing \
+            -project BYOT.xcodeproj \
+            -scheme BYOT \
+            -destination "$SIMULATOR" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            CODE_SIGNING_ALLOWED=NO \
+            > "$RUNNER_TEMP/build.log" 2>&1; then
+            grep -E ': error:' "$RUNNER_TEMP/build.log" || tail -n 200 "$RUNNER_TEMP/build.log"
+            exit 1
+          fi
+          grep -E '\*\* .* SUCCEEDED \*\*' "$RUNNER_TEMP/build.log"
+
+      - name: Unit tests
+        run: |
+          xcodebuild test-without-building \
+            -project BYOT.xcodeproj \
+            -scheme BYOT \
+            -destination "$SIMULATOR" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -only-testing:BYOTTests \
+            -resultBundlePath "$RUNNER_TEMP/BYOTTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BYOTTests-xcresult
+          path: |
+            ${{ runner.temp }}/BYOTTests.xcresult
+            ${{ runner.temp }}/build.log
+          retention-days: 7
