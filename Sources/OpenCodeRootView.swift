@@ -2,10 +2,14 @@ import SwiftUI
 
 struct OpenCodeRootView: View {
     let openAppNavigation: () -> Void
+    /// Set while the app covers this view, as with the About sheet, so the
+    /// keyboard shortcuts don't act on the screen beneath.
+    private let isCovered: Bool
     private let makeClient: (OpenCodeServerProfile, String) -> OpenCodeClient
 
     init(
         openAppNavigation: @escaping () -> Void,
+        isCovered: Bool = false,
         profileStore: OpenCodeProfileStore? = nil,
         push: BYOTPushNotifications = .shared,
         shares: BYOTShareCenter = .shared,
@@ -14,6 +18,7 @@ struct OpenCodeRootView: View {
         }
     ) {
         self.openAppNavigation = openAppNavigation
+        self.isCovered = isCovered
         self.makeClient = makeClient
         _profileStore = StateObject(wrappedValue: profileStore ?? OpenCodeProfileStore())
         _push = ObservedObject(wrappedValue: push)
@@ -130,6 +135,7 @@ struct OpenCodeRootView: View {
                     OpenCodeConnectedView(
                         client: makeClient(profile, profileStore.password(for: profile)),
                         openNewSession: openNewSession,
+                        openSession: { path = NavigationPath([$0]) },
                         selection: isSplit ? $splitDetail : nil,
                         request: listRequest
                     )
@@ -468,12 +474,14 @@ struct OpenCodeRootView: View {
     }
 
     private var isPresentingSheet: Bool {
-        profileEditor != nil || notificationProfile != nil || sharePicker != nil || profilePendingRemoval != nil
+        isCovered || profileEditor != nil || notificationProfile != nil || sharePicker != nil
+            || profilePendingRemoval != nil || profileRemovalError != nil || shares.notice != nil
+            || push.routingError != nil
     }
 
     private var appCommands: OpenCodeAppCommandActions {
         let availability = OpenCodeAppCommandActions.Availability(
-            hasServer: profileStore.activeProfile != nil, isSplit: isSplit, isPresentingSheet: isPresentingSheet)
+            hasServer: profileStore.activeProfile != nil, isPresentingSheet: isPresentingSheet)
         var actions = OpenCodeAppCommandActions()
         if availability.newSession { actions.newSession = { openNewSessionFromKeyboard() } }
         if availability.searchSessions { actions.searchSessions = { searchSessions() } }

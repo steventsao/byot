@@ -483,6 +483,7 @@ struct OpenCodeSessionView: View {
 
     private var isPresentingSheet: Bool {
         isShowingDiff || isShowingQueue || isShowingDetails || isShowingTasks || isShowingRecoveryModelPicker
+            || notificationError != nil
     }
 
     private var hasConversationContent: Bool {

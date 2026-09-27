@@ -54,6 +54,28 @@ final class OpenCodeKeyboardShortcutUITests: XCTestCase {
     }
 
     @MainActor
+    func testArchivingTheOpenSessionOpensItsNeighbour() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = launch(regularWidth: true)
+        // The top row: on an iPhone in landscape the lower ones sit under
+        // the search bar.
+        let active = app.buttons["session-active"]
+        XCTAssertTrue(active.waitForExistence(timeout: 10), app.debugDescription)
+        active.tap()
+        XCTAssertTrue(app.navigationBars["Fix checkout"].waitForExistence(timeout: 10), app.debugDescription)
+
+        // Like OpenCode's web app, the session below the archived one opens.
+        active.swipeLeft()
+        let archive = app.buttons["Archive"]
+        XCTAssertTrue(archive.waitForExistence(timeout: 5), app.debugDescription)
+        archive.tap()
+        XCTAssertTrue(app.navigationBars["Review billing"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(active.waitForNonExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.buttons["session-retry"].isSelected, app.debugDescription)
+        XCTAssertFalse(app.staticTexts["No session selected"].exists)
+    }
+
+    @MainActor
     func testStopShortcutEndsARunningTurn() throws {
         let app = launch(regularWidth: false)
         let active = app.buttons["session-active"]
@@ -83,10 +105,9 @@ final class OpenCodeKeyboardShortcutUITests: XCTestCase {
         search.typeText("docu")
         XCTAssertTrue(idle.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["session-active"].exists)
-        // Switching needs the sidebar, so it does nothing on iPhone.
-        app.typeKey("]", modifierFlags: .command)
-        XCTAssertTrue(search.exists)
-        XCTAssertFalse(app.navigationBars["Update documentation"].exists)
+        // Without a sidebar, ⌘] opens the next match in place of the list.
+        XCTAssertTrue(press("]", in: app, until: app.navigationBars["Update documentation"]), app.debugDescription)
+        XCTAssertTrue(app.navigationBars["Update documentation"].buttons["BackButton"].exists, app.debugDescription)
     }
 
     /// A key pressed while the simulator is still moving keyboard focus, right

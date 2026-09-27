@@ -455,9 +455,11 @@ struct OpenCodeSessionComposerView: View {
     }
 
     /// ⌘↩ and ⌘. for the conversation on screen. A conversation covered by
-    /// another, or by one of its sheets, offers neither.
+    /// another offers neither; one covered by its own sheet or alert also
+    /// holds back the root's shortcuts.
     private var keyboardCommands: OpenCodeComposerCommandActions? {
-        guard isOnScreen, keyboardCommandsEnabled, !isPresentingSheet else { return nil }
+        guard isOnScreen else { return nil }
+        guard keyboardCommandsEnabled, !isPresentingSheet else { return OpenCodeComposerCommandActions(isCovered: true) }
         let canSend = Self.sendsFromKeyboard(
             text: text, hasAttachments: !attachments.isEmpty || !remoteReferences.isEmpty,
             canSubmit: store.canSubmitPrompt, isImporting: isImportingAttachment)
@@ -470,7 +472,7 @@ struct OpenCodeSessionComposerView: View {
 
     private var isPresentingSheet: Bool {
         previewAttachment != nil || isShowingModelPicker || isShowingAgentPicker || isShowingRemoteFiles
-            || isShowingPhotoPicker || isShowingFileImporter
+            || isShowingPhotoPicker || isShowingFileImporter || attachmentErrorMessage != nil
     }
 
     // ⌘↩ sends whenever the send button would: a draft with text,

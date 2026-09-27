@@ -89,6 +89,15 @@ enum OpenCodeSessionListOrder {
             .flatMap(\.sessions)
             .filter { seen.insert($0.id).inserted }
     }
+
+    /// The session to open once `id` leaves the list, as OpenCode's web app
+    /// does when the open session is archived: the one below it, or else the
+    /// one above.
+    static func neighbour(of id: String, in orderedIDs: [String]) -> String? {
+        guard let index = orderedIDs.firstIndex(of: id) else { return nil }
+        if orderedIDs.indices.contains(index + 1) { return orderedIDs[index + 1] }
+        return index > 0 ? orderedIDs[index - 1] : nil
+    }
 }
 
 /// Something the root asks of the session list: the list owns the search
@@ -114,17 +123,17 @@ struct OpenCodeAppCommandActions {
     var nextSession: (@MainActor () -> Void)?
 
     /// Which shortcuts apply. Nothing works without a server or behind a
-    /// sheet; switching sessions needs the sidebar the order comes from.
+    /// sheet or alert.
     struct Availability: Equatable {
         var newSession: Bool
         var searchSessions: Bool
         var switchSessions: Bool
 
-        init(hasServer: Bool, isSplit: Bool, isPresentingSheet: Bool) {
+        init(hasServer: Bool, isPresentingSheet: Bool) {
             let isAvailable = hasServer && !isPresentingSheet
             newSession = isAvailable
             searchSessions = isAvailable
-            switchSessions = isAvailable && isSplit
+            switchSessions = isAvailable
         }
     }
 }
@@ -135,15 +144,21 @@ struct OpenCodeComposerCommandActions {
     var stop: (@MainActor () -> Void)?
     /// "Queue Message" while a turn runs, so the shortcut list says what ⌘↩ does.
     var sendTitle = "Send Message"
+    /// A sheet or alert of the conversation covers it, so no shortcut, the
+    /// root's included, should act on the screen beneath.
+    var isCovered = false
 
     /// What the shortcut list shows. The composer reports only changes to it.
     struct State: Equatable {
         var canSend: Bool
         var canStop: Bool
         var sendTitle: String
+        var isCovered = false
     }
 
-    var state: State { State(canSend: send != nil, canStop: stop != nil, sendTitle: sendTitle) }
+    var state: State {
+        State(canSend: send != nil, canStop: stop != nil, sendTitle: sendTitle, isCovered: isCovered)
+    }
 }
 
 /// The value offered by whichever of several stacked screens is on top, such
@@ -205,7 +220,7 @@ extension EnvironmentValues {
 struct OpenCodeKeyboardShortcuts: View {
     let app: OpenCodeAppCommandActions
     @ObservedObject var router: OpenCodeKeyboardRouter
-    /// Off while a sheet covers the screen the shortcuts act on.
+    /// Off while a sheet or alert covers the screen the shortcuts act on.
     let isEnabled: Bool
 
     private struct Shortcut {
@@ -227,6 +242,7 @@ struct OpenCodeKeyboardShortcuts: View {
     }
 
     var body: some View {
+        let isEnabled = isEnabled && router.top?.isCovered != true
         ZStack {
             ForEach(shortcuts, id: \.key.character) { shortcut in
                 Button(shortcut.title) { shortcut.action?() }

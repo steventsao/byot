@@ -96,19 +96,25 @@ struct OpenCodeAdaptiveNavigationTests {
         #expect(first.id != again.id)
     }
 
-    @Test("Shortcuts need a server and no sheet; switching sessions needs the sidebar")
+    @Test("Archiving the open session moves to the one below it, or else the one above")
+    func archiveNeighbour() {
+        let ids = ["a", "b", "c"]
+        #expect(OpenCodeSessionListOrder.neighbour(of: "a", in: ids) == "b")
+        #expect(OpenCodeSessionListOrder.neighbour(of: "b", in: ids) == "c")
+        #expect(OpenCodeSessionListOrder.neighbour(of: "c", in: ids) == "b")
+        #expect(OpenCodeSessionListOrder.neighbour(of: "only", in: ["only"]) == nil)
+        #expect(OpenCodeSessionListOrder.neighbour(of: "hidden", in: ids) == nil)
+    }
+
+    @Test("Shortcuts need a server and nothing covering the screen")
     func commandAvailability() {
         typealias Availability = OpenCodeAppCommandActions.Availability
-        let split = Availability(hasServer: true, isSplit: true, isPresentingSheet: false)
-        #expect(split.newSession && split.searchSessions && split.switchSessions)
-
-        let compact = Availability(hasServer: true, isSplit: false, isPresentingSheet: false)
-        #expect(compact.newSession && compact.searchSessions)
-        #expect(!compact.switchSessions)
+        let available = Availability(hasServer: true, isPresentingSheet: false)
+        #expect(available.newSession && available.searchSessions && available.switchSessions)
 
         for blocked in [
-            Availability(hasServer: false, isSplit: true, isPresentingSheet: false),
-            Availability(hasServer: true, isSplit: true, isPresentingSheet: true),
+            Availability(hasServer: false, isPresentingSheet: false),
+            Availability(hasServer: true, isPresentingSheet: true),
         ] {
             #expect(!blocked.newSession && !blocked.searchSessions && !blocked.switchSessions)
         }
@@ -138,6 +144,16 @@ struct OpenCodeAdaptiveNavigationTests {
         router.update(first, nil)
         router.update(first, nil)
         #expect(router.top == nil)
+    }
+
+    @Test("A conversation under its own sheet reports itself covered, holding back every shortcut")
+    func keyboardRouterCarriesCoveredConversation() {
+        let router = OpenCodeKeyboardRouter()
+        let conversation = UUID()
+        router.update(conversation, OpenCodeComposerCommandActions(isCovered: true))
+        #expect(router.top?.state == .init(canSend: false, canStop: false, sendTitle: "Send Message", isCovered: true))
+        router.update(conversation, OpenCodeComposerCommandActions(send: {}))
+        #expect(router.top?.state.isCovered == false)
     }
 
     @Test("⌘↩ sends whenever the send button would")

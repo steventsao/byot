@@ -58,7 +58,7 @@ private struct BYOTRootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        OpenCodeRootView(openAppNavigation: { isShowingAbout = true })
+        OpenCodeRootView(openAppNavigation: { isShowingAbout = true }, isCovered: isShowingAbout)
             .onChange(of: push.pendingDestination) { _, destination in
                 if destination != nil { isShowingAbout = false }
             }
