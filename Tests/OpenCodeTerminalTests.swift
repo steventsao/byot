@@ -82,6 +82,20 @@ struct OpenCodeTerminalWireTests {
         #expect(legacy.status == .running && legacy.title.isEmpty && legacy.shellName == nil)
     }
 
+    @Test("Shell choices use the short name unless two shells share it")
+    func shellChoices() throws {
+        let shells = [
+            OpenCodeTerminalShell(path: "/bin/zsh", name: "zsh"),
+            OpenCodeTerminalShell(path: "/bin/bash", name: "bash"),
+            OpenCodeTerminalShell(path: "/opt/homebrew/bin/bash", name: "bash"),
+            OpenCodeTerminalShell(path: "/bin/zsh", name: "zsh"),
+        ]
+        #expect(OpenCodeTerminalShell.choices(shells).map(\.label) == ["zsh", "/bin/bash", "/opt/homebrew/bin/bash"])
+        #expect(OpenCodeTerminalShell.choices([]).isEmpty)
+        let unnamed = try JSONDecoder().decode(OpenCodeTerminalShell.self, from: Data(#"{"path":"/usr/local/bin/fish"}"#.utf8))
+        #expect(unnamed == OpenCodeTerminalShell(path: "/usr/local/bin/fish", name: "fish", acceptable: true))
+    }
+
     @Test("New tabs take the lowest free Terminal number")
     func numbering() {
         #expect(OpenCodeTerminalStore.nextTitle(after: []) == "Terminal 1")
@@ -124,7 +138,7 @@ struct OpenCodeTerminalServiceTests {
         let service = makeService(transport, protocol: .v1, sockets: sockets)
         #expect(try await service.availability() == .available)
         #expect(try await service.list().map(\.id) == ["pty_1"])
-        #expect(try await service.create(title: "Terminal 2").id == "pty_1")
+        #expect(try await service.create(title: "Terminal 2", command: nil).id == "pty_1")
         try await service.update("pty_1", title: nil, size: OpenCodeTerminalSize(cols: 80, rows: 24))
         try await service.remove("pty_1")
         _ = try await service.connect("pty_1", cursor: 42)
@@ -139,6 +153,8 @@ struct OpenCodeTerminalServiceTests {
             #expect(query(request, "workspace") == "wrk_term")
         }
         #expect(try body(requests[2])["title"] as? String == "Terminal 2")
+        // The default shell is the server's choice, so no command is sent.
+        #expect(try body(requests[2])["command"] == nil)
         let size = try body(requests[3])["size"] as? [String: Int]
         #expect(size == ["cols": 80, "rows": 24])
         #expect(requests[5].value(forHTTPHeaderField: "x-opencode-ticket") == "1")
@@ -182,6 +198,34 @@ struct OpenCodeTerminalServiceTests {
         }
         await #expect(throws: OpenCodeConnectionError.self) { try await service.availability() }
         #expect(await service.isAvailable() == false)
+    }
+
+    @Test("v1 lists shells and starts the chosen one; servers without the list keep the default")
+    func shells() async throws {
+        let transport = TerminalTestTransport(profile: profile) { request in
+            switch (request.httpMethod!, request.url!.path) {
+            case ("GET", "/opencode/pty/shells"):
+                .raw(#"[{"path":"/bin/zsh","name":"zsh","acceptable":true},{"path":"/usr/bin/nu","name":"nu","acceptable":false}]"#)
+            default: .raw(Self.pty)
+            }
+        }
+        let service = makeService(transport, protocol: .v1)
+        let shells = try await service.shells()
+        #expect(shells.map(\.path) == ["/bin/zsh", "/usr/bin/nu"])
+        #expect(shells.map(\.acceptable) == [true, false])
+        _ = try await service.create(title: "Terminal 2", command: "/usr/bin/nu")
+        let requests = transport.requests
+        #expect(query(requests[0], "directory") == "/repo/app")
+        #expect(try body(requests[1])["command"] as? String == "/usr/bin/nu")
+
+        let missing = TerminalTestTransport(profile: profile) { _ in .init(data: Data(), mime: "application/json", status: 404) }
+        #expect(try await makeService(missing, protocol: .v1).shells().isEmpty)
+        let html = TerminalTestTransport(profile: profile) { _ in .init(data: Data("<!doctype html>".utf8), mime: "text/html") }
+        #expect(try await makeService(html, protocol: .v1).shells().isEmpty)
+        // The v2 schema has no shell list; nothing is requested.
+        let v2 = TerminalTestTransport(profile: profile) { _ in .json([]) }
+        #expect(try await makeService(v2, protocol: .v2, schema: try schema()).shells().isEmpty)
+        #expect(v2.requests.isEmpty)
     }
 
     @Test("v2 uses the location-scoped /api/pty routes from the pinned beta schema")
@@ -436,6 +480,28 @@ struct OpenCodeTerminalStoreTests {
         #expect(store.selectedID == store.terminals.last?.id)
     }
 
+    @Test("Shells load with the tabs; a chosen shell starts the new tab, and no list is not an error")
+    func shells() async {
+        let service = FakeTerminalService(info: nil, listed: [OpenCodePty(id: "pty_a", title: "Terminal 1")])
+        let bash = OpenCodeTerminalShell(path: "/bin/bash", name: "bash")
+        await service.setShells([bash])
+        let store = OpenCodeTerminalStore(service: service)
+        await store.load()
+        #expect(store.shells == [bash])
+        await store.newTerminal(shell: bash)
+        await store.newTerminal()
+        #expect(await service.commands == ["/bin/bash", nil])
+        #expect(store.terminals.map(\.pty.shellName) == [nil, "bash", nil])
+
+        let bare = FakeTerminalService(info: nil, listed: [OpenCodePty(id: "pty_a", title: "Terminal 1")])
+        await bare.setShells([], error: .httpStatus(500, "boom"))
+        let plain = OpenCodeTerminalStore(service: bare)
+        await plain.load()
+        #expect(plain.phase == .ready)
+        #expect(plain.shells.isEmpty)
+        #expect(plain.actionError == nil)
+    }
+
     @Test("Closing selects the neighbor; a failed close restores the tab")
     func close() async {
         let service = FakeTerminalService(info: nil, listed: [
@@ -523,6 +589,9 @@ private actor FakeTerminalService: OpenCodeTerminalServicing {
     private(set) var sizes: [OpenCodeTerminalSize] = []
     private(set) var titles: [String] = []
     private(set) var created: [String] = []
+    private(set) var commands: [String?] = []
+    private var shellsValue: [OpenCodeTerminalShell] = []
+    private var shellsError: OpenCodeConnectionError?
     private(set) var removed: [String] = []
     private var handedOut = 0
 
@@ -539,6 +608,10 @@ private actor FakeTerminalService: OpenCodeTerminalServicing {
     func setConnectError(_ value: OpenCodeTerminalDisconnect?) { connectError = value }
     func setRemoveFails(_ value: Bool) { removeFails = value }
     func setUpdateFails(_ value: Bool) { updateFails = value }
+    func setShells(_ value: [OpenCodeTerminalShell], error: OpenCodeConnectionError? = nil) {
+        shellsValue = value
+        shellsError = error
+    }
 
     /// Waits for the session's next connection attempt.
     func nextSocket() async throws -> FakeTerminalSocket {
@@ -554,9 +627,15 @@ private actor FakeTerminalService: OpenCodeTerminalServicing {
     func availability() async throws -> OpenCodeTerminalAvailability { availabilityValue }
     func list() async throws -> [OpenCodePty] { listedValue }
 
-    func create(title: String) async throws -> OpenCodePty {
+    func shells() async throws -> [OpenCodeTerminalShell] {
+        if let shellsError { throw shellsError }
+        return shellsValue
+    }
+
+    func create(title: String, command: String?) async throws -> OpenCodePty {
         created.append(title)
-        let pty = OpenCodePty(id: "pty_new_\(created.count)", title: title)
+        commands.append(command)
+        let pty = OpenCodePty(id: "pty_new_\(created.count)", title: title, command: command ?? "")
         listedValue.append(pty)
         return pty
     }

@@ -26,9 +26,17 @@ actor OpenCodeTerminalFixtureService: OpenCodeTerminalServicing {
 
     func list() async throws -> [OpenCodePty] { ptys }
 
-    func create(title: String) async throws -> OpenCodePty {
+    func shells() async throws -> [OpenCodeTerminalShell] {
+        [
+            OpenCodeTerminalShell(path: "/bin/zsh", name: "zsh"),
+            OpenCodeTerminalShell(path: "/bin/bash", name: "bash"),
+            OpenCodeTerminalShell(path: "/opt/homebrew/bin/bash", name: "bash"),
+        ]
+    }
+
+    func create(title: String, command: String?) async throws -> OpenCodePty {
         counter += 1
-        let pty = OpenCodePty(id: "pty_fixture_\(counter)", title: title, command: "/bin/zsh", cwd: "/Users/dev/byot")
+        let pty = OpenCodePty(id: "pty_fixture_\(counter)", title: title, command: command ?? "/bin/zsh", cwd: "/Users/dev/byot")
         ptys.append(pty)
         return pty
     }

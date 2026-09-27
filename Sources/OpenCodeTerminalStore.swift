@@ -328,6 +328,8 @@ final class OpenCodeTerminalStore: ObservableObject {
     @Published var selectedID: String?
     @Published private(set) var isCreating = false
     @Published var actionError: String?
+    /// Shells a new terminal can start; empty keeps the server's default only.
+    @Published private(set) var shells: [OpenCodeTerminalShell] = []
 
     let service: any OpenCodeTerminalServicing
     private var didOfferFirstTerminal = false
@@ -351,8 +353,11 @@ final class OpenCodeTerminalStore: ObservableObject {
                 phase = .unavailable(availability.unavailableReason ?? OpenCodeTerminalError.unsupported.localizedDescription)
                 return
             }
+            // The shell list is optional; a server without it still opens its default shell.
+            async let shells = try? service.shells()
             let listed = try await service.list()
             merge(listed)
+            self.shells = await shells ?? self.shells
             phase = .ready
             if terminals.isEmpty && !didOfferFirstTerminal {
                 didOfferFirstTerminal = true
@@ -366,12 +371,14 @@ final class OpenCodeTerminalStore: ObservableObject {
         }
     }
 
-    func newTerminal() async {
+    /// Opens a tab running `shell`, or the server's default shell when `nil`.
+    func newTerminal(shell: OpenCodeTerminalShell? = nil) async {
         guard !isCreating else { return }
         isCreating = true
         defer { isCreating = false }
         do {
-            let pty = try await service.create(title: Self.nextTitle(after: terminals.map(\.pty.title)))
+            let pty = try await service.create(title: Self.nextTitle(after: terminals.map(\.pty.title)),
+                                               command: shell?.path)
             let session = OpenCodeTerminalSession(pty: pty, service: service)
             terminals.append(session)
             selectedID = session.id

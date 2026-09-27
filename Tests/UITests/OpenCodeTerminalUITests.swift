@@ -77,6 +77,24 @@ final class OpenCodeTerminalUITests: XCTestCase {
         app.buttons["terminal-actions"].tap()
         XCTAssertTrue(app.buttons["Larger text"].waitForExistence(timeout: 5))
         attach("terminal-actions-menu")
+
+        // The server lists shells: another one opens from the actions menu, and two
+        // shells sharing a name are told apart by path.
+        app.buttons["New terminal with…"].tap()
+        XCTAssertTrue(app.buttons["Default shell"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.buttons["zsh"].exists)
+        XCTAssertTrue(app.buttons["/bin/bash"].exists)
+        attach("terminal-shell-menu")
+        app.buttons["/opt/homebrew/bin/bash"].tap()
+        let second = app.buttons["terminal-tab-Terminal 2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 5))
+        XCTAssertTrue(second.isSelected)
+
+        // Holding + offers the same list.
+        app.buttons["terminal-new"].press(forDuration: 1)
+        XCTAssertTrue(app.buttons["Default shell"].waitForExistence(timeout: 5), app.debugDescription)
+        app.buttons["Default shell"].tap()
+        XCTAssertTrue(app.buttons["terminal-tab-Terminal 3"].waitForExistence(timeout: 5))
     }
 
     @MainActor private func waitForValue(of element: XCUIElement, containing text: String) -> Bool {

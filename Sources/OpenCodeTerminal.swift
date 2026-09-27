@@ -60,6 +60,47 @@ struct OpenCodePty: Decodable, Identifiable, Equatable, Sendable {
     }
 }
 
+/// A shell the server can start, from v1 `GET /pty/shells`. `acceptable` marks shells the
+/// agent can also use for tool calls; any of them works for an interactive terminal.
+struct OpenCodeTerminalShell: Decodable, Identifiable, Equatable, Sendable {
+    let path: String
+    let name: String
+    var acceptable: Bool = true
+
+    var id: String { path }
+
+    init(path: String, name: String, acceptable: Bool = true) {
+        self.path = path
+        self.name = name
+        self.acceptable = acceptable
+    }
+
+    private enum CodingKeys: String, CodingKey { case path, name, acceptable }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode(String.self, forKey: .path)
+        let name = try container.decodeIfPresent(String.self, forKey: .name)?.trimmedNonEmpty
+        self.name = name ?? path.split(separator: "/").last.map(String.init) ?? path
+        acceptable = (try? container.decodeIfPresent(Bool.self, forKey: .acceptable)) ?? true
+    }
+
+    /// Menu labels in the server's order: the short name, or the full path where two
+    /// shells share a name (`/bin/bash` and `/opt/homebrew/bin/bash`), like the web app.
+    static func choices(_ shells: [Self]) -> [Choice] {
+        var seen = Set<String>()
+        let unique = shells.filter { seen.insert($0.path).inserted }
+        let counts = Dictionary(unique.map { ($0.name, 1) }, uniquingKeysWith: +)
+        return unique.map { Choice(shell: $0, label: (counts[$0.name] ?? 0) > 1 ? $0.path : $0.name) }
+    }
+
+    struct Choice: Identifiable, Equatable, Sendable {
+        let shell: OpenCodeTerminalShell
+        let label: String
+        var id: String { shell.path }
+    }
+}
+
 struct OpenCodeTerminalSize: Equatable, Sendable {
     let cols: Int
     let rows: Int
@@ -264,7 +305,10 @@ protocol OpenCodeTerminalServicing: Sendable {
     /// Throws only when the server can't be reached; a missing route resolves to unavailable.
     func availability() async throws -> OpenCodeTerminalAvailability
     func list() async throws -> [OpenCodePty]
-    func create(title: String) async throws -> OpenCodePty
+    /// Shells offered for new terminals; empty where the server doesn't list them.
+    func shells() async throws -> [OpenCodeTerminalShell]
+    /// `command` is a shell path from `shells()`; `nil` starts the server's default shell.
+    func create(title: String, command: String?) async throws -> OpenCodePty
     /// `nil` when the server no longer knows the PTY.
     func info(_ id: String) async throws -> OpenCodePty?
     func update(_ id: String, title: String?, size: OpenCodeTerminalSize?) async throws
@@ -338,11 +382,29 @@ struct OpenCodeTerminalService: OpenCodeTerminalServicing {
         return try await get(connection, [])
     }
 
-    func create(title: String) async throws -> OpenCodePty {
+    /// v1 lists the machine's shells; the v2 schema has no such route yet, so it is used
+    /// only once a schema advertises it. A server without the list keeps its default shell.
+    func shells() async throws -> [OpenCodeTerminalShell] {
         let connection = try await context()
-        struct Body: Encodable { let title: String }
+        let v2 = connection.serverProtocol == .v2
+        if v2 && !connection.supports("/api/pty/shells") { return [] }
+        let request = try connection.transport.makeRequest(
+            path: path(v2: v2, ["shells"]), query: locationQuery(v2: v2), method: "GET", body: nil)
+        do {
+            let shells: [OpenCodeTerminalShell] = try await decode(connection, request)
+            return shells
+        } catch let error as OpenCodeConnectionError where error.isUnsupportedRoute || error.isUnexpectedContent {
+            return []
+        } catch is DecodingError {
+            return []
+        }
+    }
+
+    func create(title: String, command: String?) async throws -> OpenCodePty {
+        let connection = try await context()
+        struct Body: Encodable { let title: String; let command: String? }
         let v2 = try requireSupport(connection)
-        let body = try JSONEncoder().encode(Body(title: title))
+        let body = try JSONEncoder().encode(Body(title: title, command: command?.trimmedNonEmpty))
         let request = try connection.transport.makeRequest(
             path: path(v2: v2, []), query: locationQuery(v2: v2), method: "POST", body: body)
         return try await decode(connection, request)

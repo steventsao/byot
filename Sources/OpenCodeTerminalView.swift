@@ -33,6 +33,7 @@ struct OpenCodeTerminalScreen: View {
                 OpenCodeTerminalTabStrip(
                     store: store,
                     newTerminal: newTerminal,
+                    newTerminalWithShell: newTerminal(shell:),
                     rename: beginRename,
                     close: requestClose
                 )
@@ -157,6 +158,12 @@ struct OpenCodeTerminalScreen: View {
         Menu {
             Button("New terminal", systemImage: "plus", action: newTerminal)
                 .disabled(store.phase != .ready || store.isCreating)
+            if store.phase == .ready && !store.shells.isEmpty {
+                Menu("New terminal with…", systemImage: "apple.terminal") {
+                    OpenCodeTerminalShellPicker(shells: store.shells, open: newTerminal(shell:))
+                }
+                .disabled(store.isCreating)
+            }
             if let session = store.selected {
                 Button("Paste", systemImage: "doc.on.clipboard") { cache.paste() }
                     .disabled(session.state != .connected)
@@ -200,6 +207,10 @@ struct OpenCodeTerminalScreen: View {
 
     private func newTerminal() {
         Task { await store.newTerminal() }
+    }
+
+    private func newTerminal(shell: OpenCodeTerminalShell?) {
+        Task { await store.newTerminal(shell: shell) }
     }
 
     private func beginRename(_ session: OpenCodeTerminalSession) {
@@ -333,6 +344,7 @@ private struct OpenCodeTerminalPane: View {
 private struct OpenCodeTerminalTabStrip: View {
     @ObservedObject var store: OpenCodeTerminalStore
     let newTerminal: () -> Void
+    let newTerminalWithShell: (OpenCodeTerminalShell?) -> Void
     let rename: (OpenCodeTerminalSession) -> Void
     let close: (OpenCodeTerminalSession) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -360,18 +372,12 @@ private struct OpenCodeTerminalTabStrip: View {
                     withAnimation(reduceMotion ? nil : .snappy(duration: BYOTBrand.Motion.quick)) { proxy.scrollTo(id) }
                 }
             }
-            Button(action: newTerminal) {
-                Image(systemName: "plus")
-                    .font(.cleanControlIcon)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(BYOTBrand.chromeTint)
-            .disabled(store.isCreating)
-            .accessibilityLabel("New terminal")
-            .accessibilityIdentifier("terminal-new")
-            .padding(.trailing, 6)
+            newButton
+                .foregroundStyle(BYOTBrand.chromeTint)
+                .disabled(store.isCreating)
+                .accessibilityLabel("New terminal")
+                .accessibilityIdentifier("terminal-new")
+                .padding(.trailing, 6)
         }
         .padding(.vertical, 4)
         .background(BYOTBrand.canvas)
@@ -379,6 +385,46 @@ private struct OpenCodeTerminalTabStrip: View {
         // Like a tab bar, the strip stops growing at the first accessibility size so the
         // terminal keeps its rows; long-press shows each tab in the large content viewer.
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+    }
+
+    /// A tap opens the default shell; where the server lists shells, a long press picks
+    /// another one (the Terminal actions menu offers the same list).
+    @ViewBuilder private var newButton: some View {
+        let label = Image(systemName: "plus")
+            .font(.cleanControlIcon)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        if store.shells.isEmpty {
+            Button(action: newTerminal) { label }
+                .buttonStyle(.plain)
+        } else {
+            Menu {
+                OpenCodeTerminalShellPicker(shells: store.shells, open: newTerminalWithShell)
+            } label: {
+                label
+            } primaryAction: {
+                newTerminal()
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens the default shell. Touch and hold to choose another.")
+        }
+    }
+}
+
+/// "Default shell" followed by each shell the server lists.
+struct OpenCodeTerminalShellPicker: View {
+    let shells: [OpenCodeTerminalShell]
+    let open: (OpenCodeTerminalShell?) -> Void
+
+    var body: some View {
+        Section("Shell") {
+            Button("Default shell", systemImage: "apple.terminal") { open(nil) }
+            ForEach(OpenCodeTerminalShell.choices(shells)) { choice in
+                Button(choice.label) { open(choice.shell) }
+                    .accessibilityHint(choice.shell.path)
+            }
+        }
     }
 }
 
