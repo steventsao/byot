@@ -261,6 +261,17 @@ struct OpenCodeSessionFeatureTests {
         #expect(store.didDeleteSession && !store.canSubmitPrompt)
     }
 
+    @Test("Branch switches reported by the server reach the session header, including a detached HEAD")
+    @MainActor
+    func branchEvents() {
+        let store = makeStore(FeatureStoreService())
+        #expect(store.reportedBranch == nil)
+        store.handle(OpenCodeEvent(id: "b1", type: "vcs.branch.updated", properties: ["branch": .string("feature/status")]))
+        #expect(store.reportedBranch == OpenCodeReportedBranch(name: "feature/status"))
+        store.handle(OpenCodeEvent(id: "b2", type: "vcs.branch.updated", properties: [:], isV2: true))
+        #expect(store.reportedBranch == OpenCodeReportedBranch(name: nil))
+    }
+
     private static let model = OpenCodeModelOption(providerID: "provider", providerName: "Provider", modelID: "model", modelName: "Model", status: nil)
     fileprivate static let pending = OpenCodeTodo(content: "Check implementation", status: "in_progress", priority: "high")
     fileprivate static let completed = OpenCodeTodo(content: "Check implementation", status: "completed", priority: "high")

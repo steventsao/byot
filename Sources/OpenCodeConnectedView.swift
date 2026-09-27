@@ -44,6 +44,8 @@ struct OpenCodeConnectedView: View {
     @State private var archiveError: String?
     @State private var canOpenTerminal = false
     @State private var terminalRoute: OpenCodeTerminalRoute?
+    @State private var canOpenStatus = false
+    @State private var statusRoute: OpenCodeProjectStatusRoute?
 
     var body: some View {
         List {
@@ -182,6 +184,9 @@ struct OpenCodeConnectedView: View {
             .background(BYOTBrand.canvas)
         }
         .toolbar {
+            if canOpenStatus && !projects.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) { statusMenu }
+            }
             if canOpenTerminal && !projects.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) { terminalMenu }
             }
@@ -231,6 +236,35 @@ struct OpenCodeConnectedView: View {
         .navigationDestination(item: $terminalRoute) { route in
             OpenCodeTerminalScreen(client: client, route: route)
         }
+        .navigationDestination(item: $statusRoute) { route in
+            OpenCodeProjectStatusScreen(client: client, route: route)
+        }
+    }
+
+    /// Like the terminal: one project opens straight away; several ask which one.
+    @ViewBuilder
+    private var statusMenu: some View {
+        let projects = projects.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        if projects.count == 1, let project = projects.first {
+            Button("Status", systemImage: "gauge.with.dots.needle.33percent") { openStatus(of: project) }
+                .tint(BYOTBrand.chromeTint)
+                .accessibilityHint("Shows MCP servers, language servers and settings for \(project.displayName)")
+                .accessibilityIdentifier("open-status")
+        } else {
+            Menu("Status", systemImage: "gauge.with.dots.needle.33percent") {
+                Section("Show the status of") {
+                    ForEach(projects) { project in
+                        Button(project.displayName) { openStatus(of: project) }
+                    }
+                }
+            }
+            .tint(BYOTBrand.chromeTint)
+            .accessibilityIdentifier("open-status")
+        }
+    }
+
+    private func openStatus(of project: OpenCodeProject) {
+        statusRoute = OpenCodeProjectStatusRoute(directory: project.worktree, projectName: project.displayName)
     }
 
     /// One project opens straight away; several ask which project's shell to open.
@@ -289,6 +323,11 @@ struct OpenCodeConnectedView: View {
                 if canOpenTerminal {
                     Button("Terminal in \(group.project.displayName)", systemImage: "apple.terminal") {
                         openTerminal(in: group.project)
+                    }
+                }
+                if canOpenStatus {
+                    Button("Status of \(group.project.displayName)", systemImage: "gauge.with.dots.needle.33percent") {
+                        openStatus(of: group.project)
                     }
                 }
             } label: {
@@ -525,9 +564,15 @@ struct OpenCodeConnectedView: View {
             OpenCodeTerminalService(client: client, route: OpenCodeTerminalRoute(directory: $0.worktree))
         }
         async let terminals = terminalProbe?.isAvailable() ?? false
+        // Status reads the negotiated schema only; it sends no request of its own.
+        let statusProbe = projects.first.map {
+            OpenCodeServerContextService(client: client, route: OpenCodeProjectStatusRoute(directory: $0.worktree))
+        }
+        async let status = statusProbe?.isAvailable() ?? false
         await browser.load(projects: projects)
         canArchiveSessions = await support?.archive ?? false
         canOpenTerminal = await terminals
+        canOpenStatus = await status
         await attention.refresh(sessions: browser.sessions, service: client)
     }
 

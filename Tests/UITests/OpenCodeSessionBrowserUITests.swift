@@ -130,7 +130,10 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
             .firstMatch
         XCTAssertTrue(focusedComposer.waitForExistence(timeout: 5),
                       "The new session composer should receive keyboard focus")
-        XCTAssertTrue(app.staticTexts["Server Windows, project C:/work/new-project"].exists, app.debugDescription)
+        // The header opens the project's status where the server has one, and adds the branch it reports.
+        let context = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Server Windows, project C:/work/new-project")).firstMatch
+        XCTAssertTrue(context.exists, app.debugDescription)
         attach("new-session-custom-directory")
     }
 

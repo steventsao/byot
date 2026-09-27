@@ -22,8 +22,13 @@ struct OpenCodeSessionView: View {
     @State private var nextSession: OpenCodeSessionRoute?
     @State private var terminalRoute: OpenCodeTerminalRoute?
     @State private var canOpenTerminal = false
+    @State private var statusRoute: OpenCodeProjectStatusRoute?
+    @State private var canOpenStatus = false
+    /// The project's checked-out branch, shown beside the project name.
+    @State private var branch: String?
     private let client: OpenCodeClient
     private let terminalService: OpenCodeTerminalService
+    private let contextService: OpenCodeServerContextService
     private let serverName: String
     private let attention: OpenCodeSessionAttentionStore?
     private let startsWithComposerFocused: Bool
@@ -43,6 +48,8 @@ struct OpenCodeSessionView: View {
         self.startsWithComposerFocused = startsWithComposerFocused
         terminalService = OpenCodeTerminalService(
             client: client, route: OpenCodeTerminalRoute(directory: directory, workspace: session.workspaceID))
+        contextService = OpenCodeServerContextService(
+            client: client, route: OpenCodeProjectStatusRoute(directory: directory, workspace: session.workspaceID))
         _store = StateObject(
             wrappedValue: OpenCodeSessionStore(
                 client: client,
@@ -349,6 +356,10 @@ struct OpenCodeSessionView: View {
                         }
                         .accessibilityIdentifier("session-menu-terminal")
                     }
+                    if canOpenStatus {
+                        Button("Project status", systemImage: "gauge.with.dots.needle.33percent", action: openStatus)
+                            .accessibilityIdentifier("session-menu-status")
+                    }
                     if push.credentials[client.profile.id] != nil {
                         Button(push.isMuted(serverID: client.profile.id, sessionID: store.session.id) ? "Unmute notifications" : "Mute notifications", systemImage: "bell.slash") {
                             Task {
@@ -397,6 +408,9 @@ struct OpenCodeSessionView: View {
         .navigationDestination(item: $terminalRoute) { route in
             OpenCodeTerminalScreen(client: client, route: route)
         }
+        .navigationDestination(item: $statusRoute) { route in
+            OpenCodeProjectStatusScreen(client: client, route: route)
+        }
         .navigationDestination(isPresented: $isShowingNewSession) {
             OpenCodeNewSessionView(profiles: [client.profile], initialProfile: client.profile, makeClient: { _ in client })
         }
@@ -429,8 +443,18 @@ struct OpenCodeSessionView: View {
         .task { await store.start() }
         .task { canOpenTerminal = await terminalService.isAvailable() }
         .task { canReviewChanges = await diffReview.isReviewAvailable() }
+        .task {
+            canOpenStatus = await contextService.isAvailable()
+            await refreshBranch()
+        }
+        .onChange(of: store.reportedBranch) { _, reported in
+            if let reported { branch = reported.name }
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { store.refreshAfterForeground() }
+            if phase == .active {
+                store.refreshAfterForeground()
+                Task { await refreshBranch() }
+            }
         }
         .onChange(of: store.errorMessage) { _, _ in rememberAttention() }
         .onDisappear {
@@ -476,13 +500,45 @@ struct OpenCodeSessionView: View {
             message: OpenCodeSessionAttentionStore.message(in: store.messages) ?? store.errorMessage)
     }
 
+    /// Server, project and branch; opens the project's status where the server has one.
+    @ViewBuilder
     private var sessionContext: some View {
-        Text("\(serverName) · \(URL(fileURLWithPath: store.directory).lastPathComponent)")
-            .font(.cleanCaption)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityLabel("Server \(serverName), project \(store.directory)")
+        let project = URL(fileURLWithPath: store.directory).lastPathComponent
+        let label = Group {
+            if let branch {
+                Text("\(serverName) · \(project) · \(Image(systemName: "arrow.triangle.branch")) \(branch)")
+            } else {
+                Text("\(serverName) · \(project)")
+            }
+        }
+        .font(.cleanCaption)
+        .foregroundStyle(.secondary)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+        let accessibilityLabel = "Server \(serverName), project \(store.directory)" + (branch.map { ", branch \($0)" } ?? "")
+        if canOpenStatus {
+            // The padding grows the tap target to 44pt without making the header taller.
+            Button(action: openStatus) {
+                label.padding(.vertical, 14).contentShape(Rectangle())
+            }
+            .padding(.vertical, -14)
+            .buttonStyle(.plain)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint("Shows the project’s status")
+            .accessibilityIdentifier("session-context")
+        } else {
+            label.accessibilityLabel(accessibilityLabel)
+        }
+    }
+
+    private func openStatus() {
+        statusRoute = OpenCodeProjectStatusRoute(
+            directory: contextService.directory, workspace: contextService.workspace)
+    }
+
+    private func refreshBranch() async {
+        let current = await contextService.currentBranch()
+        if !Task.isCancelled { branch = current }
     }
 
     private var sessionStatus: some View {

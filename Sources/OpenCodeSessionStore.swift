@@ -55,6 +55,8 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var isPerformingSessionAction = false
     @Published private(set) var isLoadingRelatedSessions = false
     @Published private(set) var didDeleteSession = false
+    /// The latest `vcs.branch.updated` event; `nil` until the server reports a switch.
+    @Published private(set) var reportedBranch: OpenCodeReportedBranch?
     private let featureService: (any OpenCodeSessionFeatureServicing)?
     private var featureRefreshGeneration = 0
     private var featureMutationGeneration = 0
@@ -1252,6 +1254,8 @@ final class OpenCodeSessionStore: ObservableObject {
             } else {
                 scheduleMessageRefresh()
             }
+        case "vcs.branch.updated":
+            reportedBranch = OpenCodeReportedBranch(name: event.properties["branch"]?.stringValue?.trimmedNonEmpty)
         case "session.diff":
             if let value: [OpenCodeDiff] = decode(event.properties["diff"]) {
                 diffMutationGeneration &+= 1
