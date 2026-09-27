@@ -215,6 +215,7 @@ struct OpenCodeConnectedView: View {
                       workspace.compatibility?.state != .unsupported else { continue }
                 await browser.load(projects: projects)
                 await attention.refresh(sessions: browser.sessions, service: client)
+                publishActivity()
             }
         }
         .navigationDestination(for: OpenCodeSessionRoute.self) { route in
@@ -484,6 +485,22 @@ struct OpenCodeConnectedView: View {
         await browser.load(projects: projects)
         canArchiveSessions = await support?.archive ?? false
         await attention.refresh(sessions: browser.sessions, service: client)
+        publishActivity()
+    }
+
+    /// Shares this server's running and attention-needing sessions with the
+    /// home-screen widget and settles Live Activities for conversations that
+    /// are no longer open. A refresh that reached no project changes nothing.
+    private func publishActivity() {
+        guard !Task.isCancelled, browser.groups.contains(where: { $0.statuses != nil }) else { return }
+        let statuses = browser.statuses
+        let pending = browser.pendingSessionIDs
+        BYOTWidgetSync.shared.publish(BYOTWidgetSync.server(
+            profile: client.profile, sessions: browser.sessions, statuses: statuses,
+            pendingSessionIDs: pending, failures: attention.failures))
+        BYOTLiveActivityController.shared.reconcile(
+            serverID: client.profile.id, sessions: browser.sessions, statuses: statuses,
+            pendingSessionIDs: pending, failures: attention.failures)
     }
 
     private func createSession(in project: OpenCodeProject) {

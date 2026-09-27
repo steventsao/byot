@@ -4,6 +4,13 @@ protocol OpenCodeSessionBrowsing: Sendable {
     func listSessions(directory: String) async throws -> [OpenCodeSession]
     func sessionStatuses(directory: String, workspace: String?) async throws -> [String:
         OpenCodeSessionStatus]
+    /// Which of the given running sessions wait on a permission or question.
+    func pendingResponseSessionIDs(directory: String, activeSessionIDs: [String]) async throws -> Set<String>
+}
+
+extension OpenCodeSessionBrowsing {
+    /// Services without pending-request routes report no waiting sessions.
+    func pendingResponseSessionIDs(directory: String, activeSessionIDs: [String]) async throws -> Set<String> { [] }
 }
 
 protocol OpenCodeProjectServicing: OpenCodeSessionBrowsing {

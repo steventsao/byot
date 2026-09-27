@@ -171,6 +171,41 @@ struct OpenCodeClient: Sendable {
         try await actions.v2Permissions(sessionID: sessionID)
     }
 
+    /// Legacy servers list waiting requests per directory; OpenCode 2 lists
+    /// them per session, so only running sessions are asked (a waiting
+    /// session is always running), a few at a time.
+    func pendingResponseSessionIDs(directory: String, activeSessionIDs: [String]) async throws -> Set<String> {
+        guard !activeSessionIDs.isEmpty else { return [] }
+        let active = Set(activeSessionIDs)
+        if try await connection.adapter().serverProtocol != .v2 {
+            async let permissions = actions.permissions(directory: directory)
+            async let questions = actions.questions(directory: directory)
+            let waiting = try await permissions.map(\.sessionID) + questions.map(\.sessionID)
+            return Set(waiting).intersection(active)
+        }
+        return await withTaskGroup(of: String?.self) { tasks in
+            var next = activeSessionIDs.startIndex
+            func enqueue() {
+                guard next < activeSessionIDs.endIndex else { return }
+                let sessionID = activeSessionIDs[next]
+                next += 1
+                tasks.addTask {
+                    async let permissions = try? self.v2Permissions(sessionID: sessionID)
+                    async let questions = try? self.v2Questions(sessionID: sessionID)
+                    let (waitingPermissions, waitingQuestions) = await (permissions, questions)
+                    return (waitingPermissions?.isEmpty == false || waitingQuestions?.isEmpty == false) ? sessionID : nil
+                }
+            }
+            for _ in 0..<min(3, activeSessionIDs.count) { enqueue() }
+            var result = Set<String>()
+            for await sessionID in tasks {
+                if let sessionID { result.insert(sessionID) }
+                enqueue()
+            }
+            return result
+        }
+    }
+
     func v2Questions(sessionID: String) async throws -> [OpenCodeQuestionRequest] {
         let usesForms = try await connection.adapter().usesForms
         return try await actions.v2Questions(sessionID: sessionID, usesForms: usesForms)

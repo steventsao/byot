@@ -15,6 +15,12 @@ targets:
     platform: iOS
     sources:
       - Sources
+      - Shared
+    dependencies:
+      # Home-screen widget and Live Activity UI. Remove this entry (and the
+      # App Group key in Sources/BYOT.entitlements) to ship without it; see
+      # docs/releases/1.0.31-signing.md.
+      - target: BYOTWidgets
     info:
       path: Sources/Info.plist
       properties:
@@ -22,6 +28,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
+        NSSupportsLiveActivities: true
         UIAppFonts:
           - OpenRunde-Bold.otf
           - OpenRunde-Regular.otf
@@ -47,6 +54,35 @@ targets:
       testTargets:
         - BYOTTests
         - BYOTUITests
+  BYOTWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widgets
+      - Shared
+      - path: Sources/BYOTBrand.swift
+      - path: Sources/Resources/Fonts/OpenRunde-Bold.otf
+        buildPhase: resources
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: byot
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        UIAppFonts:
+          - OpenRunde-Bold.otf
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Widgets/BYOTWidgets.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot.widgets
+        PRODUCT_NAME: BYOTWidgets
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Widgets/Info.plist
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
   BYOTTests:
     type: bundle.unit-test
     platform: iOS

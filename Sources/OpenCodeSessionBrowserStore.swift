@@ -5,6 +5,8 @@ struct OpenCodeSessionGroup: Identifiable, Sendable {
     let project: OpenCodeProject
     var sessions: [OpenCodeSession] = []
     var statuses: [String: OpenCodeSessionStatus]?
+    /// Running sessions waiting on a permission or question.
+    var pendingSessionIDs: Set<String> = []
     var error: String?
     var isLoaded = false
     var id: String { project.worktree }
@@ -97,6 +99,10 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
         return result
     }
 
+    var pendingSessionIDs: Set<String> {
+        groups.reduce(into: Set<String>()) { $0.formUnion($1.pendingSessionIDs) }
+    }
+
     func orderedGroups(by sort: OpenCodeSessionSort, attention: Set<String> = []) -> [OpenCodeSessionGroup] {
         uniqueGroups.sorted { lhs, rhs in
             let a = lhs.sessions.contains { attention.contains($0.id) } ? 0 : lhs.priority
@@ -155,6 +161,7 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
             if let previous = groups.first(where: { $0.id == project.worktree }) {
                 group.sessions = previous.sessions
                 group.statuses = previous.statuses
+                group.pendingSessionIDs = previous.pendingSessionIDs
                 group.isLoaded = previous.isLoaded
                 group.error = previous.error
             }
@@ -206,7 +213,14 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
         case .failure(let error): errors.append(error.localizedDescription)
         }
         switch statuses {
-        case .success(let statuses): group.statuses = statuses
+        case .success(let statuses):
+            group.statuses = statuses
+            // Only a running session can be waiting, so idle projects cost no extra request.
+            let active = group.sessions.map(\.id).filter { statuses[$0]?.isActive == true }
+            if !active.isEmpty {
+                group.pendingSessionIDs = (try? await service.pendingResponseSessionIDs(
+                    directory: project.worktree, activeSessionIDs: active)) ?? []
+            }
         case .failure(let error): errors.append("Status unavailable: \(error.localizedDescription)")
         }
         group.error = errors.isEmpty ? nil : errors.joined(separator: "\n")

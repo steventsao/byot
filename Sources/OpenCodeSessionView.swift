@@ -392,9 +392,14 @@ struct OpenCodeSessionView: View {
             if phase == .active { store.refreshAfterForeground() }
         }
         .onChange(of: store.errorMessage) { _, _ in rememberAttention() }
+        .onChange(of: liveTurn, initial: true) { _, turn in publishLiveTurn(turn) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { publishLiveTurn(liveTurn) }
+        }
         .onDisappear {
             if push.activeRoute?.serverID == client.profile.id && push.activeRoute?.sessionID == store.session.id { push.activeRoute = nil }
             rememberAttention()
+            BYOTLiveActivityController.shared.release(serverID: client.profile.id, sessionID: store.session.id)
             store.stop()
         }
     }
@@ -420,6 +425,32 @@ struct OpenCodeSessionView: View {
         guard !store.messages.isEmpty || store.errorMessage != nil else { return }
         attention?.record(sessionID: store.session.id,
             message: OpenCodeSessionAttentionStore.message(in: store.messages) ?? store.errorMessage)
+    }
+
+    /// The latest turn as the Live Activity shows it. Until the first status
+    /// arrives the store reports idle, which must not end a running activity.
+    private var liveTurn: BYOTTurnSnapshot? {
+        guard store.isStatusReady else { return nil }
+        return BYOTTurnSnapshot.make(status: store.status, permissions: store.permissions,
+                                     questions: store.questions, messages: store.messages)
+    }
+
+    private func publishLiveTurn(_ turn: BYOTTurnSnapshot?) {
+        guard store.isStatusReady else { return }
+        let profile = client.profile
+        let session = store.session
+        BYOTLiveActivityController.shared.drive(
+            BYOTTurnActivityAttributes(
+                serverID: profile.id, serverName: serverName, sessionID: session.id,
+                sessionTitle: session.title.trimmedWidgetText ?? "Untitled session",
+                projectName: URL(fileURLWithPath: session.directory).lastPathComponent,
+                directory: session.directory, workspace: session.workspaceID),
+            snapshot: turn, canStart: scenePhase == .active)
+        let state = BYOTWidgetSync.state(
+            status: store.status, isPending: store.pendingActionCount > 0,
+            hasFailure: OpenCodeSessionAttentionStore.message(in: store.messages) != nil)
+        BYOTWidgetSync.shared.update(state.map { BYOTWidgetSync.row(profile: profile, session: session, state: $0) },
+                                     serverID: profile.id, sessionID: session.id, serverName: profile.name)
     }
 
     private var sessionContext: some View {

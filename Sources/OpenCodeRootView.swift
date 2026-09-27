@@ -103,7 +103,7 @@ struct OpenCodeRootView: View {
         }
         .task(id: push.pendingDestination?.id) { await openNotification() }
         .sheet(item: $notificationProfile) { profile in BYOTPushSettingsView(profile: profile) }
-        .alert("Couldn’t open notification", isPresented: Binding(get: { push.routingError != nil }, set: { if !$0 { push.routingError = nil } })) {
+        .alert("Couldn’t open session", isPresented: Binding(get: { push.routingError != nil }, set: { if !$0 { push.routingError = nil } })) {
             Button("OK") { push.routingError = nil }
         } message: { Text(push.routingError ?? "") }
         .onChange(of: profileStore.activeProfileID) { _, id in
@@ -132,6 +132,8 @@ struct OpenCodeRootView: View {
                         do {
                             try await push.remove(profilePendingRemoval.id)
                             try profileStore.remove(profilePendingRemoval)
+                            BYOTWidgetSync.shared.removeServer(profilePendingRemoval.id)
+                            BYOTLiveActivityController.shared.endAll(serverID: profilePendingRemoval.id)
                         } catch { profileRemovalError = error.localizedDescription }
                         self.profilePendingRemoval = nil
                     }
@@ -195,11 +197,18 @@ struct OpenCodeRootView: View {
         guard let destination = push.pendingDestination else { return }
         let route = destination.route
         defer { if push.pendingDestination?.id == destination.id { push.pendingDestination = nil } }
-        guard let profile = profileStore.profiles.first(where: { $0.id == route.serverID }),
-              let credential = push.credentials[profile.id],
-              credential.fingerprint == BYOTPushCredential.fingerprint(profile) else {
-            push.routingError = "The saved server has changed or was removed. Open Notifications on the correct server to pair it again."
+        guard let profile = profileStore.profiles.first(where: { $0.id == route.serverID }) else {
+            push.routingError = destination.origin == .widget
+                ? "This server was removed from byot. Add it again to open its sessions."
+                : "The saved server has changed or was removed. Open Notifications on the correct server to pair it again."
             return
+        }
+        if destination.origin == .notification {
+            guard let credential = push.credentials[profile.id],
+                  credential.fingerprint == BYOTPushCredential.fingerprint(profile) else {
+                push.routingError = "The saved server has changed or was removed. Open Notifications on the correct server to pair it again."
+                return
+            }
         }
         profileEditor = nil
         notificationProfile = nil

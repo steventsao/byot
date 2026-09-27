@@ -59,6 +59,11 @@ private struct BYOTRootView: View {
             .onChange(of: push.pendingDestination) { _, destination in
                 if destination != nil { isShowingAbout = false }
             }
+            .onOpenURL { url in
+                // Widget and Live Activity taps. The plain "open" link only
+                // brings byot forward.
+                if let destination = BYOTPushDestination(widgetURL: url) { push.pendingDestination = destination }
+            }
             .sheet(isPresented: $isShowingAbout) {
                 AboutView(appearance: $appearance)
             }
@@ -68,6 +73,7 @@ private struct BYOTRootView: View {
 private struct AboutView: View {
     @Binding var appearance: BYOTAppearance
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(BYOTLiveActivityController.enabledKey) private var showsLiveActivities = true
 
     private var version: String {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
@@ -88,6 +94,17 @@ private struct AboutView: View {
                     .accessibilityIdentifier("appearance-picker")
                 } footer: {
                     Text("System follows your iPhone’s Light or Dark Mode setting.")
+                }
+                if BYOTLiveActivityController.isWidgetExtensionEmbedded {
+                    Section {
+                        Toggle("Live Activities", isOn: $showsLiveActivities)
+                            .accessibilityIdentifier("live-activities-toggle")
+                            .onChange(of: showsLiveActivities) { _, isOn in
+                                BYOTLiveActivityController.shared.isEnabled = isOn
+                            }
+                    } footer: {
+                        Text("Follow a running turn on the Lock Screen and in the Dynamic Island, including when it needs your approval. Add the byot widget to your Home Screen to see active sessions at a glance.")
+                    }
                 }
                 Section {
                     LabeledContent("Version", value: version)

@@ -80,8 +80,30 @@ struct BYOTPushPreferences: Codable, Equatable, Sendable {
 }
 
 struct BYOTPushDestination: Identifiable, Equatable, Sendable {
+    enum Origin: Sendable {
+        /// An authenticated notification envelope from a paired relay.
+        case notification
+        /// A home-screen widget or Live Activity tap on this iPhone.
+        case widget
+    }
+
     let id = UUID()
     let route: BYOTPushRoute
+    var origin: Origin = .notification
+
+    /// A widget link opens a session on a saved server; it needs no pairing.
+    init?(widgetURL url: URL) {
+        guard let link = BYOTWidgetLink(url: url) else { return nil }
+        let route = BYOTPushRoute(serverID: link.serverID, sessionID: link.sessionID,
+                                  directory: link.directory, workspace: link.workspace)
+        guard route.isValid else { return nil }
+        self.init(route: route, origin: .widget)
+    }
+
+    init(route: BYOTPushRoute, origin: Origin = .notification) {
+        self.route = route
+        self.origin = origin
+    }
 }
 
 enum BYOTPushError: LocalizedError {
