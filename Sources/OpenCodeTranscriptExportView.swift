@@ -38,14 +38,21 @@ enum OpenCodeTranscriptClipboard {
 /// Export as Markdown: choose what to include, preview it, then share the
 /// file or copy the text. The TUI's `/export` dialog, for a phone.
 struct OpenCodeTranscriptExportView: View {
-    let export: OpenCodeTranscriptExport
+    /// The conversation as it stood when the sheet opened. Replies that keep
+    /// streaming in would otherwise change the summary and title while the
+    /// preview and the shared file still held the earlier text.
+    @State private var export: OpenCodeTranscriptExport
     private let defaults: UserDefaults
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var options: OpenCodeTranscriptExportOptions
     @State private var markdown = ""
+    @State private var preview = ""
+    @State private var isPreviewTruncated = false
+    @State private var messageCount = 0
     @State private var file: OpenCodeTranscriptFile?
     @State private var fileError: String?
+    @State private var copies = 0
     @State private var showsCopied = false
     @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 40
 
@@ -53,7 +60,7 @@ struct OpenCodeTranscriptExportView: View {
     private static let previewLimit = 6_000
 
     init(export: OpenCodeTranscriptExport, defaults: UserDefaults = .standard) {
-        self.export = export
+        _export = State(initialValue: export)
         self.defaults = defaults
         _options = State(initialValue: OpenCodeTranscriptExportOptions(defaults: defaults))
     }
@@ -83,7 +90,7 @@ struct OpenCodeTranscriptExportView: View {
                 } header: {
                     Text("Preview")
                 } footer: {
-                    if markdown.count > Self.previewLimit {
+                    if isPreviewTruncated {
                         Text("Showing the beginning. The file and the copy include the whole conversation.")
                     }
                 }
@@ -94,6 +101,12 @@ struct OpenCodeTranscriptExportView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .task(id: options) { prepare() }
+        .task(id: copies) {
+            guard copies > 0 else { return }
+            try? await Task.sleep(for: .seconds(1.4))
+            guard !Task.isCancelled else { return }
+            showsCopied = false
+        }
         .onDisappear { file?.remove() }
     }
 
@@ -126,8 +139,7 @@ struct OpenCodeTranscriptExportView: View {
     }
 
     private var detail: String {
-        let count = export.messageCount(options)
-        let messages = count == 1 ? "1 message" : "\(count.formatted()) messages"
+        let messages = messageCount == 1 ? "1 message" : "\(messageCount.formatted()) messages"
         let size = ByteCountFormatter.string(fromByteCount: Int64(markdown.utf8.count), countStyle: .file)
         return "Markdown · \(messages) · \(size)"
     }
@@ -196,14 +208,13 @@ struct OpenCodeTranscriptExportView: View {
             .frame(maxWidth: .infinity, minHeight: 36)
     }
 
-    private var preview: String {
-        guard markdown.count > Self.previewLimit else { return markdown }
-        return String(markdown.prefix(Self.previewLimit)) + "\n…"
-    }
-
     private func prepare() {
         options.save(to: defaults)
         markdown = export.markdown(options)
+        // Counted once here rather than on every render of a long transcript.
+        messageCount = export.messageCount(options)
+        isPreviewTruncated = markdown.count > Self.previewLimit
+        preview = isPreviewTruncated ? String(markdown.prefix(Self.previewLimit)) + "\n…" : markdown
         file?.remove()
         do {
             file = try OpenCodeTranscriptFile(markdown: markdown, filename: export.filename)
@@ -219,9 +230,6 @@ struct OpenCodeTranscriptExportView: View {
         AgentHaptics.send()
         AccessibilityNotification.Announcement("Transcript copied").post()
         showsCopied = true
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.4))
-            showsCopied = false
-        }
+        copies += 1
     }
 }
