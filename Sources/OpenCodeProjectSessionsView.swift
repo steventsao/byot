@@ -220,15 +220,18 @@ struct OpenCodeSessionRow: View {
         return message.trimmedNonEmpty
     }
 
-    @ViewBuilder
     private var updatedText: some View {
-        let updated = Date(timeIntervalSince1970: session.time.updated / 1_000)
-        // A session that just arrived live can carry a server clock slightly
-        // ahead of the device; never show it as updated "in 0 sec.".
-        if updated.timeIntervalSinceNow > -60 {
-            Text("Just now")
-        } else {
-            Text(updated, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+        // A live list no longer reloads on a timer, so the row keeps its own
+        // relative time current instead of saying "Just now" indefinitely.
+        TimelineView(.everyMinute) { context in
+            let updated = Date(timeIntervalSince1970: session.time.updated / 1_000)
+            // A session that just arrived live can carry a server clock slightly
+            // ahead of the device; never show it as updated "in 0 sec.".
+            if updated.timeIntervalSince(context.date) > -60 {
+                Text("Just now")
+            } else {
+                Text(updated, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+            }
         }
     }
 }

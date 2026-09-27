@@ -183,6 +183,19 @@ struct OpenCodeSessionListLiveTests {
         #expect(store.needsInputIDs.isEmpty)
     }
 
+    @Test("A subagent announced after its request flags the conversation on screen")
+    func subagentAnnouncedLate() async {
+        let service = LiveListService(sessions: ["/repo": [session("a")]])
+        let store = OpenCodeSessionBrowserStore(service: service)
+        await store.load(projects: [project("/repo")])
+        store.apply(.inputRequested(sessionID: "child", requestID: "per_1"))
+        #expect(store.needsInputIDs == ["child"], "Unknown until its parent is known")
+        let revision = store.liveRevision
+        store.apply(.upserted(session("child", parent: "a")))
+        #expect(store.needsInputIDs == ["a"])
+        #expect(store.liveRevision != revision, "The list must redraw to show the parent flagged")
+    }
+
     @Test("A request from a subagent the list never saw is traced to its conversation")
     func unknownSubagentInput() async throws {
         let service = LiveListService(sessions: ["/repo": [session("a")]], parents: ["grandchild": "child", "child": "a"])
@@ -418,6 +431,28 @@ struct OpenCodeSessionListLiveTests {
         #expect(try await client.parentSessionID(of: "child", directory: nil) == "a")
     }
 
+    @Test("v2 servers that list requests per location answer per directory")
+    func v2LocationPendingInput() async throws {
+        let transport = RoutingTransport(responses: [
+            "/openapi.json": Self.v2RequestListSchema,
+            "/api/permission/request": #"{"location":{"directory":"/repo"},"data":[{"id":"per_1","sessionID":"a","action":"bash","resources":["git push"]}]}"#,
+            "/api/question/request": #"{"location":{"directory":"/repo"},"data":[{"id":"que_1","sessionID":"b","questions":[]}]}"#,
+        ])
+        let client = OpenCodeClient(profile: Self.profile, transport: transport, serverProtocol: .v2)
+        #expect(try await client.pendingInputRequests(directory: "/repo") == ["a": ["per_1"], "b": ["que_1"]])
+        #expect(transport.queries["/api/permission/request"] == [URLQueryItem(name: "location[directory]", value: "/repo")])
+        #expect(transport.queries["/api/question/request"] == [URLQueryItem(name: "location[directory]", value: "/repo")])
+    }
+
+    @Test("Location request lists are negotiated from the v2 schema")
+    func v2RequestListContract() throws {
+        func contract(_ schema: String) throws -> OpenCodeV2Contract {
+            try OpenCodeV2Contract(schema: JSONDecoder().decode(OpenCodeJSONValue.self, from: Data(schema.utf8)))
+        }
+        #expect(try contract(Self.v2RequestListSchema).pendingRequestLists)
+        #expect(try !contract(Self.v2Schema).pendingRequestLists)
+    }
+
     // MARK: Fixtures
 
     private static let profile = OpenCodeServerProfile(name: "Fixture", baseURL: "https://fixture.invalid")
@@ -425,6 +460,12 @@ struct OpenCodeSessionListLiveTests {
     private static let v2Schema = """
     {"paths":{"/api/session/{sessionID}/prompt":{"post":{"requestBody":{"content":{"application/json":
      {"schema":{"properties":{"text":{}}}}}}}}}}
+    """
+
+    private static let v2RequestListSchema = """
+    {"paths":{"/api/session/{sessionID}/prompt":{"post":{"requestBody":{"content":{"application/json":
+     {"schema":{"properties":{"text":{}}}}}}}},
+     "/api/permission/request":{"get":{}},"/api/question/request":{"get":{}}}}
     """
 
     private var fastTiming: OpenCodeSessionListLiveTiming {
@@ -590,7 +631,9 @@ private final class RoutingTransport: OpenCodeHTTPTransport, @unchecked Sendable
     private let lock = NSLock()
     private let responses: [String: String]
     private var recorded: [[String]] = []
+    private var recordedQueries: [String: [URLQueryItem]] = [:]
     var eventPaths: [[String]] { lock.withLock { recorded } }
+    var queries: [String: [URLQueryItem]] { lock.withLock { recordedQueries } }
 
     init(responses: [String: String] = [:]) { self.responses = responses }
 
@@ -604,6 +647,8 @@ private final class RoutingTransport: OpenCodeHTTPTransport, @unchecked Sendable
 
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
         let url = request.url!
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        lock.withLock { recordedQueries[url.path] = items }
         let body = responses[url.path]
         let response = HTTPURLResponse(url: url, statusCode: body == nil ? 404 : 200, httpVersion: "HTTP/1.1",
                                        headerFields: ["Content-Type": "application/json"])!

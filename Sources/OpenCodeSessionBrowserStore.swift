@@ -333,8 +333,9 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
         return covered
     }
 
-    /// v2 lists pending requests per session. Recheck only sessions already
-    /// flagged, so a request answered while the stream was down is cleared.
+    /// Sessions no directory snapshot answered for (older v2 servers list
+    /// requests per session only). Recheck only sessions already flagged, so a
+    /// request answered while the stream was down is cleared.
     private func verifyPendingInput(excluding covered: Set<String>, generation requestGeneration: Int) async {
         let targets = pendingInput.keys.filter { !covered.contains($0) }.sorted()
         guard !targets.isEmpty else { return }
@@ -484,7 +485,10 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
             followUp.reconcile = .projects
         case .upserted(let session):
             if let parent = session.parentID {
-                parents[session.id] = parent
+                // A subagent that already asked for input now flags its conversation.
+                if parents.updateValue(parent, forKey: session.id) != parent, pendingInput[session.id] != nil {
+                    liveRevision &+= 1
+                }
                 break
             }
             if session.time.archived != nil || archivedIDs.contains(session.id) {

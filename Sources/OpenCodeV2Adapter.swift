@@ -7,6 +7,7 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
     let profile: OpenCodeServerProfile
     let serverProtocol = OpenCodeServerProtocol.v2
     var usesForms: Bool { contract.forms }
+    var listsPendingRequestsByLocation: Bool { contract.pendingRequestLists && !contract.forms }
     let capabilities = OpenCodeProtocolCapabilities.v2
 
     func listProjects() async throws -> [OpenCodeProject] {

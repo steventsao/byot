@@ -207,9 +207,14 @@ struct OpenCodeClient: Sendable {
     }
 
     /// Sessions waiting on a permission or question in `directory`, keyed by
-    /// session with the pending request IDs. v2 lists requests per session only.
+    /// session with the pending request IDs. Nil on v2 servers that list
+    /// requests per session only.
     func pendingInputRequests(directory: String) async throws -> [String: Set<String>]? {
-        guard try await connection.adapter().serverProtocol == .v1 else { return nil }
+        let adapter = try await connection.adapter()
+        if adapter.serverProtocol == .v2 {
+            guard adapter.listsPendingRequestsByLocation else { return nil }
+            return try await actions.v2PendingRequests(directory: directory)
+        }
         async let permissions = actions.permissions(directory: directory)
         // Questions arrived after permissions; an older server without them still flags permissions.
         async let questions = Self.unlessUnsupported { try await actions.questions(directory: directory) }
@@ -219,7 +224,8 @@ struct OpenCodeClient: Sendable {
         return result
     }
 
-    /// One session's pending request IDs on v2; v1 answers per directory instead.
+    /// One session's pending request IDs on v2, for sessions no directory
+    /// listing covered; v1 answers per directory instead.
     func pendingInputRequests(sessionID: String) async throws -> Set<String>? {
         guard try await connection.adapter().serverProtocol == .v2 else { return nil }
         async let permissions = v2Permissions(sessionID: sessionID)

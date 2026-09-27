@@ -510,7 +510,8 @@ struct OpenCodeConnectedView: View {
     private func followSessionList() async {
         let timing = OpenCodeSessionListLiveTiming.standard
         while !Task.isCancelled {
-            var outcome = OpenCodeSessionListLiveState.polling
+            // Nil until the stream was tried against a usable server.
+            var outcome: OpenCodeSessionListLiveState?
             if isServerUsable {
                 outcome = await browser.followLiveUpdates(.init(
                     reconcile: { scope in
@@ -526,6 +527,8 @@ struct OpenCodeConnectedView: View {
             repeat {
                 do { try await Task.sleep(for: timing.pollInterval) } catch { return }
                 guard isServerUsable else { continue }
+                // The server just became usable (a pull to refresh); go live now.
+                if outcome == nil { break }
                 await refreshSessions()
             } while !Task.isCancelled && (outcome == .unsupported || !isServerUsable || ContinuousClock.now < retryAt)
         }

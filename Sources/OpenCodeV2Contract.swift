@@ -8,6 +8,8 @@ struct OpenCodeV2Contract: Equatable, Sendable {
     let forms: Bool
     let projectList: Bool
     let sessionTitle: Bool
+    /// Pending permissions and questions listed per location, not only per session.
+    let pendingRequestLists: Bool
 
     init(schema: OpenCodeJSONValue) throws {
         self.schema = schema
@@ -20,6 +22,7 @@ struct OpenCodeV2Contract: Equatable, Sendable {
         flatPrompts = properties["text"] != nil
         forms = paths["/api/session/{sessionID}/form"] != nil
         projectList = paths["/api/project"] != nil
+        pendingRequestLists = paths["/api/permission/request"] != nil && paths["/api/question/request"] != nil
         sessionTitle = paths["/api/session"]?.objectValue?["post"]?.objectValue?["requestBody"]?.objectValue?["content"]?.objectValue?["application/json"]?.objectValue?["schema"]?.objectValue?["properties"]?.objectValue?["title"] != nil
     }
 }

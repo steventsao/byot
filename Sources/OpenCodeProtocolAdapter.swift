@@ -9,6 +9,7 @@ protocol OpenCodeProtocolAdapting: Sendable {
     var apiSchema: OpenCodeJSONValue? { get }
     var serverProtocol: OpenCodeServerProtocol { get }
     var usesForms: Bool { get }
+    var listsPendingRequestsByLocation: Bool { get }
     var capabilities: OpenCodeProtocolCapabilities { get }
 
     func listProjects() async throws -> [OpenCodeProject]
@@ -74,4 +75,6 @@ protocol OpenCodeProtocolAdapting: Sendable {
 
 extension OpenCodeProtocolAdapting {
     var apiSchema: OpenCodeJSONValue? { nil }
+    /// v2 servers that list pending permissions and questions per location.
+    var listsPendingRequestsByLocation: Bool { false }
 }

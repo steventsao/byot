@@ -91,6 +91,19 @@ struct OpenCodeActions: Sendable {
         }
     }
 
+    /// Pending v2 permission and question request IDs in one location, by session.
+    func v2PendingRequests(directory: String) async throws -> [String: Set<String>] {
+        let query = [URLQueryItem(name: "location[directory]", value: directory)]
+        async let permissions: OpenCodeDataResponse<[OpenCodePermissionV2Request]> = transport.get(
+            ["api", "permission", "request"], query: query)
+        async let questions: OpenCodeDataResponse<[OpenCodeQuestionRequest]> = transport.get(
+            ["api", "question", "request"], query: query)
+        var result: [String: Set<String>] = [:]
+        for request in try await permissions.data { result[request.sessionID, default: []].insert(request.id) }
+        for request in try await questions.data { result[request.sessionID, default: []].insert(request.id) }
+        return result
+    }
+
     func answer(
         _ question: OpenCodeQuestionRequest,
         directory: String,
