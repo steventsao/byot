@@ -26,7 +26,9 @@ struct BYOTApp: App {
     @ViewBuilder
     private var appRoot: some View {
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--durable-queue-fixture") {
+        if ProcessInfo.processInfo.arguments.contains("--polish-ui-tests") {
+            OpenCodePolishUITestHarness()
+        } else if ProcessInfo.processInfo.arguments.contains("--durable-queue-fixture") {
             BYOTDurableQueueHarness()
         } else if ProcessInfo.processInfo.arguments.contains("--text-selection-fixture") {
             AgentTextSelectionHarness()

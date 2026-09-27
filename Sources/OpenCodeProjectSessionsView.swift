@@ -3,8 +3,6 @@ import SwiftUI
 struct OpenCodeProjectSessionsView: View {
     @State private var client: OpenCodeClient
     @StateObject private var store: OpenCodeProjectStore
-    @State private var isCreatingSession = false
-    @State private var newSessionTitle = ""
     @State private var createdSession: OpenCodeSession?
     let name: String
 
@@ -76,10 +74,11 @@ struct OpenCodeProjectSessionsView: View {
                     Label("No sessions", systemImage: "bubble.left.and.bubble.right")
                 } actions: {
                     Button("New session", systemImage: "plus") {
-                        isCreatingSession = true
+                        createSession()
                     }
                     .buttonStyle(.borderedProminent)
                     .foregroundStyle(BYOTBrand.accentInk)
+                    .disabled(store.isCreating)
                 }
             }
         }
@@ -87,9 +86,11 @@ struct OpenCodeProjectSessionsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("New session", systemImage: "plus") {
-                    isCreatingSession = true
+                Button(action: createSession) {
+                    if store.isCreating { ProgressView() }
+                    else { Image(systemName: "plus") }
                 }
+                .accessibilityLabel(store.isCreating ? "Creating session" : "New session")
                 .tint(BYOTBrand.chromeTint)
                 .disabled(store.isCreating)
             }
@@ -109,22 +110,13 @@ struct OpenCodeProjectSessionsView: View {
                 )
             }
         }
-        .alert("New session", isPresented: $isCreatingSession) {
-            TextField("Optional title", text: $newSessionTitle)
-            Button("Cancel", role: .cancel) {
-                newSessionTitle = ""
-            }
-            Button("Create") {
-                let title = newSessionTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                newSessionTitle = ""
-                Task {
-                    createdSession = await store.createSession(title: title.isEmpty ? nil : title)
-                }
-            }
-        } message: {
-            Text("\(client.profile.name) · \(store.directory)")
-        }
     }
+
+    private func createSession() {
+        guard !store.isCreating else { return }
+        Task { createdSession = await store.createSession(title: nil) }
+    }
+
 }
 
 struct OpenCodeSessionRow: View {

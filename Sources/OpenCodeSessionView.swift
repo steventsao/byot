@@ -11,6 +11,7 @@ struct OpenCodeSessionView: View {
     @State private var notificationError: String?
     @State private var isShowingRecoveryModelPicker = false
     @State private var isAtBottom = true
+    @State private var hasPositionedTranscript = false
     @State private var isShowingDetails = false
     @State private var isShowingTasks = false
     @State private var isShowingNewSession = false
@@ -194,8 +195,14 @@ struct OpenCodeSessionView: View {
                     Color.clear
                         .frame(height: 1)
                         .id(bottomAnchorID)
-                        .onAppear { isAtBottom = true }
-                        .onDisappear { isAtBottom = false }
+                        .background {
+                            GeometryReader { geometry in
+                                Color.clear.preference(
+                                    key: OpenCodeScrollMetricsKey.self,
+                                    value: .init(bottomY: geometry.frame(in: .named("transcript")).maxY)
+                                )
+                            }
+                        }
                 }
                 .frame(maxWidth: BYOTBrand.conversationMaxWidth)
                 .padding(.horizontal, 20)
@@ -204,8 +211,50 @@ struct OpenCodeSessionView: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollDismissesKeyboard(.interactively)
+            .coordinateSpace(name: "transcript")
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: OpenCodeScrollMetricsKey.self,
+                        value: .init(viewportHeight: geometry.size.height)
+                    )
+                }
+            }
+            .onPreferenceChange(OpenCodeScrollMetricsKey.self) { metrics in
+                guard let bottomY = metrics.bottomY,
+                      let height = metrics.viewportHeight else { return }
+                isAtBottom = bottomY <= height + 32 && bottomY >= 0
+            }
+            .overlay(alignment: .bottom) {
+                if !isAtBottom && hasConversationContent {
+                    Button {
+                        scrollToBottom(proxy)
+                    } label: {
+                        Label(
+                            store.pendingActionCount > 0 ? "Response needed" : "Jump to latest",
+                            systemImage: store.pendingActionCount > 0
+                                ? "bubble.left.and.exclamationmark.bubble.right" : "arrow.down"
+                        )
+                        .font(.cleanCaptionBold)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 44)
+                        .background(.regularMaterial, in: Capsule())
+                        .overlay {
+                            Capsule().stroke(BYOTBrand.hairline, lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("jump-to-latest")
+                    .padding(.bottom, 8)
+                }
+            }
             .onChange(of: store.transcriptRevision) { _, _ in
                 rememberAttention()
+                if !hasPositionedTranscript && !store.messages.isEmpty {
+                    hasPositionedTranscript = true
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                    return
+                }
                 scrollToConversationBottomIfNeeded(proxy)
             }
             .onChange(of: sessionActivityAnnouncementKey) { _, newValue in
@@ -222,13 +271,7 @@ struct OpenCodeSessionView: View {
                 AccessibilityNotification.Announcement(
                     "Response required"
                 ).post()
-                if reduceMotion {
-                    proxy.scrollTo("opencode-pending-actions", anchor: .bottom)
-                } else {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo("opencode-pending-actions", anchor: .bottom)
-                    }
-                }
+                scrollToConversationBottomIfNeeded(proxy)
             }
             .onChange(of: store.queueAnnouncementRevision) { _, _ in
                 AccessibilityNotification.Announcement("Message queued").post()
@@ -461,6 +504,12 @@ struct OpenCodeSessionView: View {
 
     private func scrollToConversationBottomIfNeeded(_ proxy: ScrollViewProxy) {
         guard isAtBottom else { return }
+        // Streaming can update faster than an animation completes. Follow immediately;
+        // reserve animation for the user's explicit jump.
+        proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
         if reduceMotion {
             proxy.scrollTo(bottomAnchorID, anchor: .bottom)
         } else {
@@ -497,6 +546,21 @@ struct OpenCodeSessionView: View {
         store.retryQueuedPrompt(id)
     }
 
+}
+
+private struct OpenCodeScrollMetrics: Equatable {
+    var bottomY: CGFloat?
+    var viewportHeight: CGFloat?
+}
+
+private struct OpenCodeScrollMetricsKey: PreferenceKey {
+    static let defaultValue = OpenCodeScrollMetrics()
+
+    static func reduce(value: inout OpenCodeScrollMetrics, nextValue: () -> OpenCodeScrollMetrics) {
+        let next = nextValue()
+        value.bottomY = next.bottomY ?? value.bottomY
+        value.viewportHeight = next.viewportHeight ?? value.viewportHeight
+    }
 }
 
 /// OpenCode's turn layout: the prompt is a trailing pill and the reply runs

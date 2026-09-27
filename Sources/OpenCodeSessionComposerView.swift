@@ -54,6 +54,12 @@ struct OpenCodeSessionComposerView: View {
                     .foregroundStyle(.red)
                     .accessibilityIdentifier("composer-draft-error")
             }
+            if isImportingAttachment {
+                Text("Adding attachments…")
+                    .font(.cleanCaption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("attachment-import-progress")
+            }
             slashSuggestions
             if let files = store.remoteFiles {
                 OpenCodeRemoteContextView(text: $text, references: $remoteReferences, files: files,
@@ -87,6 +93,7 @@ struct OpenCodeSessionComposerView: View {
                     .padding(.top, isExpanded ? 6 : 0)
                     .frame(minHeight: isExpanded ? 0 : 44)
                     .accessibilityIdentifier("opencode-composer-message")
+                    .accessibilityLabel("Message")
                     .submitLabel(.send)
                     .onSubmit(send)
                 if !isExpanded {
