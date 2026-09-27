@@ -62,6 +62,37 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
     }
 
     @MainActor
+    func testLiveEventsUpdateTheSessionList() throws {
+        try checkLiveSessionList(largeText: false)
+    }
+
+    @MainActor
+    func testLiveEventsAtLargestTextSize() throws {
+        try checkLiveSessionList(largeText: true)
+    }
+
+    @MainActor
+    private func checkLiveSessionList(largeText: Bool) throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--session-browser-fixture", "--reset-browser", "--live-session-list"]
+        if largeText {
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        }
+        app.launch()
+        // Neither appears in the first snapshot; both arrive over the server-wide stream.
+        let live = app.buttons["session-live"]
+        XCTAssertTrue(live.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Started from the terminal"].exists)
+        let active = app.buttons["session-active"]
+        XCTAssertTrue(app.staticTexts["Needs input"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(active.label.contains("Needs input"), active.label)
+        XCTAssertGreaterThanOrEqual(active.frame.height, 44 - 0.01)
+        attach(largeText ? "session-list-live-largest-text" : "session-list-live")
+        app.terminate()
+    }
+
+    @MainActor
     func testSwipeLeftArchivesASession() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

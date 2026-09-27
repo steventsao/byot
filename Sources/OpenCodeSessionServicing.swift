@@ -4,6 +4,26 @@ protocol OpenCodeSessionBrowsing: Sendable {
     func listSessions(directory: String) async throws -> [OpenCodeSession]
     func sessionStatuses(directory: String, workspace: String?) async throws -> [String:
         OpenCodeSessionStatus]
+    /// Pending permission/question request IDs by the session that asked, for
+    /// every session in `directory`; nil where requests are listed per session.
+    func pendingInputRequests(directory: String) async throws -> [String: Set<String>]?
+    /// One session's pending request IDs; nil where requests are listed per directory.
+    func pendingInputRequests(sessionID: String) async throws -> Set<String>?
+    /// The conversation a subagent session belongs to, or nil for a top-level session.
+    func parentSessionID(of sessionID: String, directory: String?) async throws -> String?
+    /// The session list's single server-wide event stream.
+    func sessionListEvents() -> AsyncThrowingStream<OpenCodeEvent, Error>
+}
+
+// Services without live list support (fixtures, older harnesses) poll: no
+// pending-input snapshot and a stream that reports the route as unsupported.
+extension OpenCodeSessionBrowsing {
+    func pendingInputRequests(directory: String) async throws -> [String: Set<String>]? { nil }
+    func pendingInputRequests(sessionID: String) async throws -> Set<String>? { nil }
+    func parentSessionID(of sessionID: String, directory: String?) async throws -> String? { nil }
+    func sessionListEvents() -> AsyncThrowingStream<OpenCodeEvent, Error> {
+        AsyncThrowingStream { $0.finish(throwing: OpenCodeConnectionError.httpStatus(404, nil)) }
+    }
 }
 
 protocol OpenCodeProjectServicing: OpenCodeSessionBrowsing {

@@ -435,29 +435,58 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
 
     var created: Double? = nil
     var isV2: Bool = false
+    /// The instance directory a server-wide stream attributes this event to:
+    /// v1 `/global/event` wraps each payload with it, v2 events carry a location.
+    var directory: String? = nil
 
     var sessionID: String? {
         properties["sessionID"]?.stringValue ?? properties["form"]?.objectValue?["sessionID"]?.stringValue
     }
 
-    private enum CodingKeys: String, CodingKey { case id, type, properties, data, created }
-    init(id: String, type: String, properties: [String: OpenCodeJSONValue], created: Double? = nil, isV2: Bool = false) {
+    private enum CodingKeys: String, CodingKey {
+        case id, type, properties, data, created, payload, directory, location
+    }
+    private struct Location: Codable { let directory: String? }
+
+    init(id: String, type: String, properties: [String: OpenCodeJSONValue], created: Double? = nil, isV2: Bool = false,
+         directory: String? = nil) {
         self.id = id; self.type = type; self.properties = properties; self.created = created; self.isV2 = isV2
+        self.directory = directory
     }
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.contains(.payload) {
+            // v1 `/global/event`: {directory, project, workspace, payload: {id, type, properties}}.
+            // Server-originated payloads (an upgrade notice) may omit the id.
+            let payload = try container.nestedContainer(keyedBy: CodingKeys.self, forKey: .payload)
+            id = try payload.decodeIfPresent(String.self, forKey: .id) ?? ""
+            type = try payload.decode(String.self, forKey: .type)
+            properties = try payload.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: .properties) ?? [:]
+            directory = try container.decodeIfPresent(String.self, forKey: .directory)
+            return
+        }
         id = try container.decode(String.self, forKey: .id)
         type = try container.decode(String.self, forKey: .type)
         created = try container.decodeIfPresent(Double.self, forKey: .created)
         isV2 = container.contains(.data)
         properties = try container.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: isV2 ? .data : .properties) ?? [:]
+        if isV2 { directory = (try? container.decodeIfPresent(Location.self, forKey: .location))??.directory }
     }
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        if let directory, !isV2 {
+            try container.encode(directory, forKey: .directory)
+            var payload = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .payload)
+            try payload.encode(id, forKey: .id)
+            try payload.encode(type, forKey: .type)
+            try payload.encode(properties, forKey: .properties)
+            return
+        }
         try container.encode(id, forKey: .id)
         try container.encode(type, forKey: .type)
         try container.encodeIfPresent(created, forKey: .created)
         try container.encode(properties, forKey: isV2 ? .data : .properties)
+        if isV2, let directory { try container.encode(Location(directory: directory), forKey: .location) }
     }
 }
 

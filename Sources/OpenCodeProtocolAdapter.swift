@@ -22,6 +22,12 @@ protocol OpenCodeProtocolAdapting: Sendable {
         title: String?
     ) async throws -> OpenCodeSession
 
+    /// One session by ID, including subagent sessions the list omits.
+    func session(
+        id: String,
+        directory: String?
+    ) async throws -> OpenCodeSession
+
     func connectedProviderModels(
         directory: String,
         workspace: String?
@@ -61,6 +67,9 @@ protocol OpenCodeProtocolAdapting: Sendable {
     ) async throws -> Bool
 
     func eventRoute(directory: String, workspace: String?) -> OpenCodeEventRoute
+
+    /// One server-wide stream that carries every project's session lifecycle.
+    var sessionListEventRoute: OpenCodeEventRoute { get }
 }
 
 extension OpenCodeProtocolAdapting {

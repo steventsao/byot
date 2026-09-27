@@ -24,6 +24,7 @@ struct OpenCodeConnectedView: View {
     @AppStorage("byot.projects.sort") private var projectSort: OpenCodeSessionSort = .recent
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isVisible = false
     @State private var search = ""
     @State private var collapsedProjects = Set<String>()
@@ -52,7 +53,7 @@ struct OpenCodeConnectedView: View {
                 if !browser.groups.isEmpty && (groupByProject || !visibleSessions(browser.sessions).isEmpty) {
                     Section {
                         if groupByProject {
-                            ForEach(browser.orderedGroups(by: projectSort, attention: attentionIDs)) { group in
+                            ForEach(browser.orderedGroups(by: projectSort, attention: flaggedIDs)) { group in
                                 projectSection(group)
                             }
                         } else {
@@ -131,6 +132,9 @@ struct OpenCodeConnectedView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(BYOTBrand.canvas)
+        // Live changes (a new session, a status or title change) settle into
+        // place instead of jumping; loads and searches stay immediate.
+        .animation(reduceMotion ? nil : .snappy(duration: BYOTBrand.Motion.quick), value: browser.liveRevision)
         .overlay {
             if workspace.isLoading && browser.groups.isEmpty {
                 BYOTActivityView(.connecting, layout: .blocking)
@@ -205,17 +209,11 @@ struct OpenCodeConnectedView: View {
         .onAppear { isVisible = true }
         .onDisappear { isVisible = false }
         .task(id: isVisible && scenePhase == .active) {
+            // Leaving the list (opening a session, which streams on its own)
+            // or backgrounding the app cancels this, closing the list's stream.
             guard isVisible && scenePhase == .active else { return }
             await reload()
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(15)) }
-                catch { break }
-                guard !Task.isCancelled else { break }
-                guard workspace.compatibility != nil,
-                      workspace.compatibility?.state != .unsupported else { continue }
-                await browser.load(projects: projects)
-                await attention.refresh(sessions: browser.sessions, service: client)
-            }
+            await followSessionList()
         }
         .navigationDestination(for: OpenCodeSessionRoute.self) { route in
             sessionView(route)
@@ -299,9 +297,18 @@ struct OpenCodeConnectedView: View {
                 if case .retry = group.status(for: $0) { return true }
                 return false
             }.count
+            let attentionIDs = attentionIDs
+            let needsInputIDs = needsInputIDs
             let failures = group.sessions.filter { attentionIDs.contains($0.id) }.count
+            let waiting = group.sessions.filter { needsInputIDs.contains($0.id) }.count
             let active = group.sessions.filter { group.status(for: $0)?.isActive == true }.count
-            if failures > 0 {
+            if waiting > 0 {
+                Label {
+                    Text("\(waiting) need\(waiting == 1 ? "s" : "") input · \(countLabel)")
+                } icon: {
+                    Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
+                }
+            } else if failures > 0 {
                 Label("\(failures) need attention · \(countLabel)", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.red)
             } else if retries > 0 {
@@ -332,7 +339,8 @@ struct OpenCodeConnectedView: View {
                     session: session,
                     status: browser.statuses[session.id],
                     projectName: showProject ? projectName(for: session) : nil,
-                    attentionMessage: attentionIDs.contains(session.id) ? attention.failures[session.id] : nil
+                    attentionMessage: attentionIDs.contains(session.id) ? attention.failures[session.id] : nil,
+                    needsInput: needsInputIDs.contains(session.id)
                 )
             }
             .accessibilityIdentifier("session-\(session.id)")
@@ -449,12 +457,17 @@ struct OpenCodeConnectedView: View {
             search.isEmpty || $0.title.localizedStandardContains(search)
                 || $0.directory.localizedStandardContains(search)
                 || projectName(for: $0).localizedStandardContains(search)
-        }, statuses: browser.statuses, attention: attentionIDs)
+        }, statuses: browser.statuses, attention: flaggedIDs)
     }
 
     private var attentionIDs: Set<String> {
         Set(attention.failures.keys.filter { browser.statuses[$0]?.isActive != true })
     }
+
+    private var needsInputIDs: Set<String> { browser.needsInputIDs }
+
+    /// Sessions that need the user: waiting on a permission or question, or failed.
+    private var flaggedIDs: Set<String> { attentionIDs.union(needsInputIDs) }
 
     private var projects: [OpenCodeProject] {
         var result = workspace.projects
@@ -470,7 +483,7 @@ struct OpenCodeConnectedView: View {
                         time: OpenCodeProjectTime(created: 0, updated: 0), sandboxes: [])
     }
 
-    private func reload() async {
+    private func reload(showsProgress: Bool = true) async {
         attention.reload()
         await workspace.load()
         guard !Task.isCancelled else { return }
@@ -481,9 +494,53 @@ struct OpenCodeConnectedView: View {
         guard workspace.compatibility != nil else { return }
         // Swipe to archive only where the server can archive (v1 today).
         async let support = try? client.sessionFeatureSupport()
-        await browser.load(projects: projects)
+        await browser.load(projects: projects, showsProgress: showsProgress)
         canArchiveSessions = await support?.archive ?? false
         await attention.refresh(sessions: browser.sessions, service: client)
+    }
+
+    private var isServerUsable: Bool {
+        workspace.compatibility != nil && workspace.compatibility?.state != .unsupported
+    }
+
+    /// Follows the server's event stream while the list is visible, so status,
+    /// input requests, failures, titles and created or deleted sessions appear
+    /// as they happen. When the stream is unavailable the list polls, and it
+    /// retries the stream after a pause unless the server has none.
+    private func followSessionList() async {
+        let timing = OpenCodeSessionListLiveTiming.standard
+        while !Task.isCancelled {
+            var outcome = OpenCodeSessionListLiveState.polling
+            if isServerUsable {
+                outcome = await browser.followLiveUpdates(.init(
+                    reconcile: { scope in
+                        if scope == .projects { await reload(showsProgress: false) } else { await refreshSessions() }
+                    },
+                    failure: { id, message in attention.record(sessionID: id, message: message) },
+                    settled: { id in settle(id) }
+                ))
+                // Cancelled, or another follower owns the stream now.
+                if outcome == .off { return }
+            }
+            let retryAt = ContinuousClock.now + timing.retryLiveAfter
+            repeat {
+                do { try await Task.sleep(for: timing.pollInterval) } catch { return }
+                guard isServerUsable else { continue }
+                await refreshSessions()
+            } while !Task.isCancelled && (outcome == .unsupported || !isServerUsable || ContinuousClock.now < retryAt)
+        }
+    }
+
+    private func refreshSessions() async {
+        await browser.load(projects: projects, showsProgress: false)
+        await attention.refresh(sessions: browser.sessions, service: client)
+    }
+
+    /// A failed session went idle again; recheck whether its last turn still failed.
+    private func settle(_ id: String) {
+        guard attention.failures[id] != nil,
+              let session = browser.sessions.first(where: { $0.id == id }) else { return }
+        Task { await attention.refresh(sessions: [session], service: client) }
     }
 
     private func createSession(in project: OpenCodeProject) {

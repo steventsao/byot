@@ -69,6 +69,10 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
     // archived sessions with time.archived set.
     private static let archiveLock = NSLock()
     nonisolated(unsafe) private static var archived: Set<String> = []
+    // With --live-session-list, the server-wide stream reports a session
+    // started elsewhere and a permission request; later snapshots agree.
+    nonisolated(unsafe) private static var liveStreamOpened = false
+    private static var isLive: Bool { ProcessInfo.processInfo.arguments.contains("--live-session-list") }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -86,11 +90,15 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
             return ["id": id, "slug": id, "projectID": directory, "directory": directory,
                     "title": title, "version": "1.18.10", "time": time]
         }
-        let sessions = [
+        var sessions = [
             session("active", windows ? "Windows build" : "Fix checkout", base + "/byot", 2),
             session("retry", "Review billing", base + "/byot", 8),
             session("idle", "Update documentation", base + "/docs", 25)
         ]
+        let live = session("live", "Started from the terminal", base + "/byot", 0)
+        let permission: [String: Any] = ["id": "per_live", "sessionID": "active", "permission": "bash",
+                                         "patterns": ["git push"], "metadata": [:], "always": []]
+        if Self.isLive, Self.archiveLock.withLock({ Self.liveStreamOpened }) { sessions.insert(live, at: 0) }
         if request.httpMethod == "PATCH", url.path.hasPrefix("/session/") {
             let id = url.lastPathComponent
             Self.archiveLock.withLock { _ = Self.archived.insert(id) }
@@ -99,6 +107,27 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
         }
         let body: Any
         switch url.path {
+        case "/global/event" where Self.isLive:
+            Self.archiveLock.withLock { Self.liveStreamOpened = true }
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "text/event-stream"])!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            let events: [[String: Any]] = [
+                ["payload": ["id": "evt_connected", "type": "server.connected", "properties": [:]]],
+                ["directory": base + "/byot", "payload": ["id": "evt_created", "type": "session.created",
+                    "properties": ["sessionID": "live", "info": live]]],
+                ["directory": base + "/byot", "payload": ["id": "evt_permission", "type": "permission.asked",
+                    "properties": permission]],
+            ]
+            for event in events {
+                let data = try! JSONSerialization.data(withJSONObject: event)
+                client?.urlProtocol(self, didLoad: Data("data: ".utf8) + data + Data("\n\n".utf8))
+            }
+            // Keep the stream open until the list cancels it.
+            return
+        case "/permission" where Self.isLive:
+            let opened = Self.archiveLock.withLock { Self.liveStreamOpened }
+            body = opened && directory == base + "/byot" ? [permission] : []
         case "/event":
             let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
                 headerFields: ["Content-Type": "text/event-stream"])!

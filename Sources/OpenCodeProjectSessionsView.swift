@@ -124,6 +124,8 @@ struct OpenCodeSessionRow: View {
     let status: OpenCodeSessionStatus?
     var projectName: String? = nil
     var attentionMessage: String? = nil
+    /// Waiting on a permission or question; outranks every other status.
+    var needsInput = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -186,7 +188,20 @@ struct OpenCodeSessionRow: View {
 
     @ViewBuilder
     private var statusView: some View {
-        if attentionMessage != nil {
+        if needsInput {
+            // Sized like the other status glyphs, but in primary text: this
+            // is the one status that asks the user to act.
+            HStack(spacing: 5) {
+                Image(systemName: "hand.raised.fill")
+                    .imageScale(.small)
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text("Needs input")
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .font(.cleanCaptionBold)
+            .accessibilityElement(children: .combine)
+        } else if attentionMessage != nil {
             Label("Needs attention", systemImage: "exclamationmark.circle.fill")
                 .font(.cleanCaption)
                 .foregroundStyle(.red)
@@ -205,8 +220,16 @@ struct OpenCodeSessionRow: View {
         return message.trimmedNonEmpty
     }
 
+    @ViewBuilder
     private var updatedText: some View {
-        Text(Date(timeIntervalSince1970: session.time.updated / 1_000), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+        let updated = Date(timeIntervalSince1970: session.time.updated / 1_000)
+        // A session that just arrived live can carry a server clock slightly
+        // ahead of the device; never show it as updated "in 0 sec.".
+        if updated.timeIntervalSinceNow > -60 {
+            Text("Just now")
+        } else {
+            Text(updated, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+        }
     }
 }
 

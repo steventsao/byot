@@ -70,6 +70,15 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
             .map(\.normalized)
     }
 
+    func session(
+        id: String,
+        directory: String?
+    ) async throws -> OpenCodeSession {
+        let response: OpenCodeV2DataResponse<OpenCodeV2Session> = try await transport.get(
+            ["api", "session", id], query: [])
+        return response.data.normalized
+    }
+
     func createSession(
         directory: String,
         title: String?
@@ -253,6 +262,10 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
     }
 
     func eventRoute(directory: String, workspace: String?) -> OpenCodeEventRoute {
+        OpenCodeEventRoute(path: ["api", "event"], query: [])
+    }
+
+    var sessionListEventRoute: OpenCodeEventRoute {
         OpenCodeEventRoute(path: ["api", "event"], query: [])
     }
 
