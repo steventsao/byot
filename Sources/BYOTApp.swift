@@ -40,6 +40,8 @@ struct BYOTApp: App {
             OpenCodeTerminalHarness()
         } else if ProcessInfo.processInfo.arguments.contains("--project-status-fixture") {
             OpenCodeProjectStatusHarness()
+        } else if ProcessInfo.processInfo.arguments.contains("--worktrees-fixture") {
+            OpenCodeWorktreesHarness()
         } else if ProcessInfo.processInfo.arguments.contains("--attachment-screenshot") {
             OpenCodeAttachmentScreenshotHarness()
         } else if ProcessInfo.processInfo.arguments.contains("--app-store-screenshots") {

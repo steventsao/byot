@@ -46,6 +46,8 @@ struct OpenCodeConnectedView: View {
     @State private var terminalRoute: OpenCodeTerminalRoute?
     @State private var canOpenStatus = false
     @State private var statusRoute: OpenCodeProjectStatusRoute?
+    @State private var canManageWorktrees = false
+    @State private var worktreeRoute: OpenCodeWorktreeRoute?
 
     var body: some View {
         List {
@@ -239,6 +241,9 @@ struct OpenCodeConnectedView: View {
         .navigationDestination(item: $statusRoute) { route in
             OpenCodeProjectStatusScreen(client: client, route: route)
         }
+        .navigationDestination(item: $worktreeRoute) { route in
+            OpenCodeWorktreesScreen(client: client, route: route, attention: attention)
+        }
     }
 
     /// Like the terminal: one project opens straight away; several ask which one.
@@ -330,6 +335,14 @@ struct OpenCodeConnectedView: View {
                         openStatus(of: group.project)
                     }
                 }
+                // Worktrees need a Git project and a server with the worktree routes.
+                if canManageWorktrees && group.project.vcs == "git" {
+                    Button(worktreesTitle(group.project), systemImage: "arrow.triangle.branch") {
+                        worktreeRoute = OpenCodeWorktreeRoute(directory: group.project.worktree,
+                                                              projectName: group.project.displayName)
+                    }
+                    .accessibilityIdentifier("worktrees-\(group.project.displayName)")
+                }
             } label: {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(group.project.displayName).font(.cleanBodySemibold)
@@ -410,6 +423,7 @@ struct OpenCodeConnectedView: View {
                     session: session,
                     status: browser.statuses[session.id],
                     projectName: showProject ? projectName(for: session) : nil,
+                    worktreeName: worktreeName(for: session),
                     attentionMessage: attentionIDs.contains(session.id) ? attention.failures[session.id] : nil
                 )
             }
@@ -522,6 +536,19 @@ struct OpenCodeConnectedView: View {
             ?? URL(fileURLWithPath: session.directory).lastPathComponent
     }
 
+    private func worktreesTitle(_ project: OpenCodeProject) -> String {
+        let count = project.sandboxes.count
+        return count == 0 ? "Worktrees of \(project.displayName)" : "Worktrees of \(project.displayName) (\(count))"
+    }
+
+    /// Sessions started in a worktree run in one of their project's `sandboxes`.
+    private func worktreeName(for session: OpenCodeSession) -> String? {
+        let directory = OpenCodeWorktree.key(session.directory)
+        guard projects.contains(where: { $0.sandboxes.contains { OpenCodeWorktree.key($0) == directory } })
+        else { return nil }
+        return OpenCodeWorktree.name(of: directory)
+    }
+
     private func visibleSessions(_ sessions: [OpenCodeSession]) -> [OpenCodeSession] {
         sort.ordered(sessions.filter {
             search.isEmpty || $0.title.localizedStandardContains(search)
@@ -569,10 +596,16 @@ struct OpenCodeConnectedView: View {
             OpenCodeServerContextService(client: client, route: OpenCodeProjectStatusRoute(directory: $0.worktree))
         }
         async let status = statusProbe?.isAvailable() ?? false
+        // Worktree rows appear only where the server lists worktrees (v1, or a v2 schema with the routes).
+        let worktreeProbe = projects.first { $0.vcs == "git" }.map {
+            OpenCodeWorktreeService(client: client, route: OpenCodeWorktreeRoute(directory: $0.worktree))
+        }
+        async let worktrees = worktreeProbe?.isAvailable() ?? false
         await browser.load(projects: projects)
         canArchiveSessions = await support?.archive ?? false
         canOpenTerminal = await terminals
         canOpenStatus = await status
+        canManageWorktrees = await worktrees
         await attention.refresh(sessions: browser.sessions, service: client)
     }
 

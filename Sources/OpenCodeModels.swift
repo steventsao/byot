@@ -424,7 +424,7 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
         properties["sessionID"]?.stringValue ?? properties["form"]?.objectValue?["sessionID"]?.stringValue
     }
 
-    private enum CodingKeys: String, CodingKey { case id, type, properties, data, created, location }
+    private enum CodingKeys: String, CodingKey { case id, type, properties, data, created, location, payload, directory }
     init(id: String, type: String, properties: [String: OpenCodeJSONValue], created: Double? = nil, isV2: Bool = false,
          location: Location? = nil) {
         self.id = id; self.type = type; self.properties = properties; self.created = created; self.isV2 = isV2
@@ -432,6 +432,17 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
     }
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        // v1 `/global/event` wraps every project's events as `{directory, project, payload}`.
+        // Some payloads (`sync`) carry neither an ID nor properties; "global" is no location.
+        if container.contains(.payload) {
+            let payload = try container.nestedContainer(keyedBy: CodingKeys.self, forKey: .payload)
+            id = try payload.decodeIfPresent(String.self, forKey: .id) ?? ""
+            type = try payload.decode(String.self, forKey: .type)
+            properties = (try? payload.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: .properties)) ?? [:]
+            let directory = try? container.decodeIfPresent(String.self, forKey: .directory)
+            location = directory.flatMap { $0 == "global" ? nil : Location(directory: $0) }
+            return
+        }
         id = try container.decode(String.self, forKey: .id)
         type = try container.decode(String.self, forKey: .type)
         created = try container.decodeIfPresent(Double.self, forKey: .created)
