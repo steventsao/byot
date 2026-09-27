@@ -79,7 +79,18 @@ final class OpenCodeSessionStore: ObservableObject {
     /// Set while `messages` shows the transcript saved on this device, before the
     /// server's transcript arrives.
     @Published private(set) var offlineTranscript: OpenCodeOfflineTranscriptInfo?
+    /// The shell command sent from this device, until the transcript shows it.
+    @Published private(set) var localShell: OpenCodeLocalShell?
+    /// A command OpenCode did not run, for the composer to take back.
+    @Published private(set) var restoredShellCommand: String?
+    @Published private(set) var didLoadSessionFeatures = false
+    /// The server's `share` config; nil until read, and after a failed read.
+    @Published private(set) var sharePolicy: OpenCodeSessionSharePolicy?
+    @Published private(set) var isUpdatingShare = false
+    @Published private(set) var shareErrorMessage: String?
     private let featureService: (any OpenCodeSessionFeatureServicing)?
+    private let shellService: (any OpenCodeShellServicing)?
+    private var shellTask: Task<Void, Never>?
     private var featureRefreshGeneration = 0
     private var featureMutationGeneration = 0
     private var todoMutationGeneration = 0
@@ -107,6 +118,12 @@ final class OpenCodeSessionStore: ObservableObject {
     private let serverDefaultModelKey: String
     private let agentSelectionKey: String
     private let serverDefaultAgentKey: String
+    /// False while `selectedAgentID` only carries the server-wide preference
+    /// seeded for a session without its own pick; the session's own agent
+    /// history then outranks it.
+    private var isAgentSelectionExplicit: Bool
+    /// The completed `plan_exit` call this store already followed.
+    private var followedPlanExitPartID: String?
     private var submittedPrompts: [String: OpenCodeQueuedPrompt] = [:]
     private var persistedModelID: String?
     private var transcript = OpenCodeTranscriptReducer()
@@ -154,6 +171,7 @@ final class OpenCodeSessionStore: ObservableObject {
         self.service = service
         self.serverID = serverID
         featureService = service as? any OpenCodeSessionFeatureServicing
+        shellService = service as? any OpenCodeShellServicing
         self.session = session
         self.directory = directory
         self.defaults = defaults
@@ -164,7 +182,9 @@ final class OpenCodeSessionStore: ObservableObject {
         workspace = session.workspaceID
         agentSelectionKey = "byot.opencode.agent.\(serverID.uuidString).\(session.id)"
         serverDefaultAgentKey = "byot.opencode.agent.default.\(serverID.uuidString)"
-        selectedAgentID = defaults.string(forKey: agentSelectionKey)?.trimmedNonEmpty
+        let savedAgentID = defaults.string(forKey: agentSelectionKey)?.trimmedNonEmpty
+        selectedAgentID = savedAgentID
+        isAgentSelectionExplicit = savedAgentID != nil
         queueObservation = durableQueue?.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
@@ -179,6 +199,7 @@ final class OpenCodeSessionStore: ObservableObject {
         queueRecoveryTask?.cancel()
         offlineRestoreTask?.cancel()
         offlineSaveTask?.cancel()
+        shellTask?.cancel()
     }
 
     var pendingActionCount: Int {
@@ -187,8 +208,29 @@ final class OpenCodeSessionStore: ObservableObject {
 
     var willQueueNextPrompt: Bool {
         if durableQueue?.enabled == true { return true }
-        if revertMessageID != nil, !status.isActive, !isSending { return false }
-        return status.isActive || isSending || promptQueue.shouldQueueNextPrompt
+        if revertMessageID != nil, !status.isActive, !isSending, !isShellSending { return false }
+        return status.isActive || isSending || isShellSending || promptQueue.shouldQueueNextPrompt
+    }
+
+    var isShellSending: Bool { localShell?.isSending == true }
+
+    /// Hidden, not an error, when the server lacks a shell operation.
+    var supportsShell: Bool { shellService != nil && sessionFeatures.shell }
+
+    /// False until the server's session features load, so a draft saved in
+    /// shell mode can wait for them instead of being read as a message.
+    var isShellSupportKnown: Bool { shellService == nil || featureService == nil || didLoadSessionFeatures }
+
+    /// Why shell mode can't run a command right now. The command stays in the
+    /// composer; shell runs are never queued behind a turn, as in OpenCode.
+    var shellUnavailableReason: String? {
+        guard supportsShell else { return OpenCodeShellError.unsupported.localizedDescription }
+        if !canSubmitPrompt { return "Wait for the session to connect." }
+        if isShellSending { return "Wait for the current command to finish." }
+        if status.isActive || isSending || promptQueue.isTurnActive {
+            return "Shell commands run while OpenCode is idle. Stop the turn or wait for it to finish."
+        }
+        return nil
     }
 
     var canSubmitPrompt: Bool {
@@ -332,6 +374,10 @@ final class OpenCodeSessionStore: ObservableObject {
         queueRecoveryTask?.cancel()
         queueRecoveryTask = nil
         queueRecoveryID = nil
+        // Leaving does not stop a server-side command; reopening shows its record.
+        shellTask?.cancel()
+        shellTask = nil
+        localShell = nil
         publishPromptQueue()
         messageRefreshPending = false
         actionRefreshPending = false
@@ -485,6 +531,7 @@ final class OpenCodeSessionStore: ObservableObject {
             try Task.checkCancellation()
             guard generation == featureRefreshGeneration else { return }
             sessionFeatures = support
+            didLoadSessionFeatures = true
             let sessionID = session.id, directory = directory, workspace = workspace
             async let detailsResult = Self.capture { () -> OpenCodeSessionDetails? in
                 guard support.details else { return nil }
@@ -493,9 +540,17 @@ final class OpenCodeSessionStore: ObservableObject {
             async let todosResult = Self.capture {
                 try await featureService.sessionTodos(sessionID: sessionID, directory: directory, workspace: workspace)
             }
-            let (details, todos) = await (detailsResult, todosResult)
+            // Config rarely changes, so read it once; a failed read leaves
+            // publishing offered and is retried on the next refresh.
+            let needsSharePolicy = support.share && sharePolicy == nil
+            async let sharePolicyResult = Self.capture { () -> OpenCodeSessionSharePolicy? in
+                guard needsSharePolicy else { return nil }
+                return try await featureService.sessionSharePolicy(directory: directory, workspace: workspace)
+            }
+            let (details, todos, policy) = await (detailsResult, todosResult, sharePolicyResult)
             try Task.checkCancellation()
             guard generation == featureRefreshGeneration else { return }
+            if case .success(let policy?) = policy { sharePolicy = policy }
             if mutation == featureMutationGeneration {
                 switch details {
                 case .success(let details):
@@ -568,6 +623,12 @@ final class OpenCodeSessionStore: ObservableObject {
             revertMessageID = info.objectValue?["revert"]?.objectValue?["messageID"]?.stringValue
             if revertMessageID != nil { promptQueue.pausePendingPrompts(); publishPromptQueue() }
             publishTranscript()
+            return true
+        }
+        // Another client (TUI, web, `plan_exit`) switched this v2 session's agent.
+        if event.type == "session.agent.switched" || event.type == "session.next.agent.switched",
+           event.sessionID == session.id, let agent = event.properties["agent"]?.stringValue {
+            composerCatalog.inheritedAgent = agent
             return true
         }
         if event.type == "session.renamed", event.sessionID == session.id {
@@ -799,6 +860,81 @@ final class OpenCodeSessionStore: ObservableObject {
         } catch { sessionDetailsError = error.localizedDescription; return false }
     }
 
+    var sharePresentation: OpenCodeSessionSharePresentation {
+        OpenCodeSessionSharePresentation(
+            link: session.share?.link,
+            isSupported: featureService != nil && sessionFeatures.share,
+            policy: sharePolicy,
+            isUpdating: isUpdatingShare
+        )
+    }
+
+    /// Publishes a read-only web copy of this conversation. Only an explicit
+    /// user action calls this; the link shown is always the server's own.
+    func publishShareLink() async -> Bool {
+        guard let featureService, sharePresentation.canPublish else { return false }
+        let published = await updateShare {
+            try await featureService.shareSession(sessionID: $0, directory: $1, workspace: $2)
+        }
+        guard published else {
+            await recheckSharePolicy(after: featureService)
+            return false
+        }
+        guard session.share?.link != nil else {
+            shareErrorMessage = "OpenCode didn’t return a link for this session. Sharing may be turned off on the server."
+            return false
+        }
+        return true
+    }
+
+    func unpublishShareLink() async -> Bool {
+        guard let featureService, sharePresentation.canUnpublish else { return false }
+        return await updateShare {
+            try await featureService.unshareSession(sessionID: $0, directory: $1, workspace: $2)
+        }
+    }
+
+    func clearShareError() { shareErrorMessage = nil }
+
+    /// OpenCode rejects a publish on a server whose config says `share:
+    /// "disabled"` with an opaque server error. The config may have changed
+    /// since it was read, so read it again and explain rather than repeat it.
+    private func recheckSharePolicy(after featureService: any OpenCodeSessionFeatureServicing) async {
+        guard shareErrorMessage != nil,
+              let policy = try? await featureService.sessionSharePolicy(directory: directory, workspace: workspace)
+        else { return }
+        sharePolicy = policy
+        if policy == .disabled {
+            shareErrorMessage = "Sharing is turned off in this server’s OpenCode config."
+        }
+    }
+
+    /// Sharing never touches history, so it leaves the composer and session
+    /// actions available and only guards itself against a second request.
+    private func updateShare(
+        _ request: (String, String, String?) async throws -> OpenCodeSession
+    ) async -> Bool {
+        guard !isUpdatingShare else { return false }
+        isUpdatingShare = true
+        shareErrorMessage = nil
+        featureMutationGeneration &+= 1
+        defer { isUpdatingShare = false }
+        let sessionID = session.id
+        do {
+            let updated = try await request(sessionID, directory, workspace)
+            guard updated.id == session.id else { return false }
+            session = updated
+            // Reject a details snapshot requested before the server confirmed.
+            featureMutationGeneration &+= 1
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            shareErrorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func deleteSession() async -> Bool {
         guard let featureService, sessionFeatures.delete, !isPerformingSessionAction, !status.isActive, !isSending else { return false }
         isPerformingSessionAction = true
@@ -846,7 +982,8 @@ final class OpenCodeSessionStore: ObservableObject {
         didStatusProbeFailWithFreshTranscript = false
         recoveryIdleUserMessageID = nil
         dismissUnansweredPromptRecovery()
-        if revertMessageID != nil, !status.isActive, !isSending,
+        if localShell?.isSending == false { localShell = nil }
+        if revertMessageID != nil, !status.isActive, !isSending, !isShellSending,
            let prompt = promptQueue.beginExplicitDispatch(text: trimmed, model: selectedModel, attachments: attachments,
                agent: effectiveAgentID, variant: selectedVariant,
                command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands),
@@ -862,7 +999,7 @@ final class OpenCodeSessionStore: ObservableObject {
             agent: effectiveAgentID, variant: selectedVariant,
             command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands),
             remoteReferences: remoteReferences,
-            serverIsActive: status.isActive || isSending
+            serverIsActive: status.isActive || isSending || isShellSending
         )
         publishPromptQueue()
         switch submission {
@@ -874,6 +1011,71 @@ final class OpenCodeSessionStore: ObservableObject {
             schedulePromptDispatch(prompt)
             return true
         }
+    }
+
+    /// Runs `text` as a shell command in this session's directory. Returns
+    /// false, leaving the command with the caller, when it can't be sent now.
+    @discardableResult
+    func runShell(_ text: String) -> Bool {
+        let command = OpenCodeShellInput.normalized(text)
+        guard !command.isEmpty, shellUnavailableReason == nil, let shellService else { return false }
+        let shell = OpenCodeShellCommand(command: command, agent: currentAgentID, model: selectedModel)
+        let local = OpenCodeLocalShell(id: UUID(), command: command, baselineMessageIDs: Set(transcript.messages.map(\.id)))
+        localShell = local
+        restoredShellCommand = nil
+        errorMessage = nil
+        dismissUnansweredPromptRecovery()
+        let generation = lifecycleGeneration
+        shellTask = Task { [weak self] in
+            await self?.performShell(shell, local: local, service: shellService, generation: generation)
+        }
+        return true
+    }
+
+    func dismissShellFailure() {
+        guard localShell?.isSending == false else { return }
+        localShell = nil
+    }
+
+    func consumeRestoredShellCommand() { restoredShellCommand = nil }
+
+    /// The command behind a v1 shell turn, so undoing that turn restores it in
+    /// shell mode instead of the server's bookkeeping text.
+    /// Redo past the last turn restores a partless message to clear the
+    /// composer, so only a message that still carries its parts is a run.
+    func shellCommand(restoring message: OpenCodeMessageEnvelope) -> String? {
+        guard !message.parts.isEmpty else { return nil }
+        return OpenCodeShellTranscript.command(forMarker: message.id, in: transcript.messages)
+    }
+
+    private func performShell(_ shell: OpenCodeShellCommand, local: OpenCodeLocalShell,
+                              service: any OpenCodeShellServicing, generation: Int) async {
+        var failure: Error?
+        do {
+            try await prepareHistoryForPromptDispatch()
+            try Task.checkCancellation()
+            try await service.runShell(sessionID: session.id, directory: directory, workspace: workspace, shell: shell)
+        } catch is CancellationError {
+            return
+        } catch { failure = error }
+        guard generation == lifecycleGeneration, isRunning, localShell?.id == local.id else { return }
+        shellTask = nil
+        if let failure {
+            let message = OpenCodeShellError.failureMessage(for: failure)
+            localShell?.phase = OpenCodeShellError.certainlyDidNotRun(failure) ? .failed(message) : .unconfirmed(message)
+            restoredShellCommand = local.command
+        } else {
+            localShell = nil
+        }
+        // Prompts sent during the run waited behind it. A v1 run reports its
+        // own busy/idle status; release them here when no turn is running.
+        if !status.isActive, promptDispatchTask == nil, let next = promptQueue.reconciledServerIdle() {
+            publishPromptQueue()
+            schedulePromptDispatch(next)
+        }
+        scheduleMessageRefresh()
+        // v1 clears an undone boundary when it accepts the run.
+        if revertMessageID != nil { await refreshSessionFeatures() }
     }
 
     func removeQueuedPrompt(_ id: UUID) {
@@ -1125,12 +1327,16 @@ final class OpenCodeSessionStore: ObservableObject {
             if catalog.unavailableReason == nil, let selectedAgentID,
                !catalog.agents.contains(where: { $0.id == selectedAgentID }) {
                 self.selectedAgentID = nil
+                isAgentSelectionExplicit = false
                 defaults.removeObject(forKey: agentSelectionKey)
             }
             if selectedAgentID == nil, defaults.object(forKey: agentSelectionKey) == nil,
                catalog.inheritedAgent == nil, session.agent == nil,
                let preferred = defaults.string(forKey: serverDefaultAgentKey),
-               catalog.agents.contains(where: { $0.id == preferred }) { selectedAgentID = preferred }
+               catalog.agents.contains(where: { $0.id == preferred }) {
+                selectedAgentID = preferred
+                isAgentSelectionExplicit = false
+            }
             // Commands and agent pickers can refresh this catalog directly.
             // An inherited model change must also reconcile its variant, using
             // the new model's saved preference or explicit Default.
@@ -1139,22 +1345,73 @@ final class OpenCodeSessionStore: ObservableObject {
         catch { composerErrorMessage = error.localizedDescription }
     }
 
-    var effectiveAgentID: String? { selectedAgentID ?? composerCatalog.inheritedAgent ?? session.agent }
+    /// The agent sent with the next prompt. Without an explicit pick the
+    /// session keeps the agent it last ran, as the TUI does on entering a
+    /// session and after `plan_exit`; `nil` lets the server choose its default.
+    var effectiveAgentID: String? {
+        if isAgentSelectionExplicit, let selectedAgentID { return selectedAgentID }
+        return composerCatalog.inheritedAgent ?? session.agent ?? transcriptAgentID ?? selectedAgentID
+    }
 
-    var selectedAgentName: String {
-        if let selectedAgentID {
-            return composerCatalog.agents.first { $0.id == selectedAgentID }?.name ?? selectedAgentID
-        }
-        let inherited = composerCatalog.inheritedAgent ?? session.agent
-        return inherited.map { "Default (\($0))" } ?? "Default agent"
+    /// The agent this session's composer shows and cycles from.
+    var currentAgentID: String? { effectiveAgentID ?? composerCatalog.defaultAgentID }
+
+    /// This session's pick, excluding the server-wide preference seeded into it.
+    var explicitAgentID: String? { isAgentSelectionExplicit ? selectedAgentID : nil }
+
+    var currentAgent: OpenCodeAgentOption? {
+        composerCatalog.agents.first { $0.id == currentAgentID }
+    }
+
+    var currentAgentName: String {
+        if let currentAgent { return currentAgent.displayName }
+        return currentAgentID.map { OpenCodeAgentOption(id: $0, name: $0, description: nil).displayName } ?? "Default agent"
+    }
+
+    /// Where the next cycle lands, for the toggle's VoiceOver hint.
+    var nextAgentInCycle: OpenCodeAgentOption? {
+        guard composerCatalog.agents.count > 1 else { return nil }
+        return OpenCodeAgentCycle.next(after: currentAgentID, in: composerCatalog.agents)
+    }
+
+    // The latest user turn names the primary agent that last ran. Subagent
+    // names are ignored, matching the TUI's session sync.
+    private var transcriptAgentID: String? {
+        messages.last { message in
+            message.info.role == "user" && composerCatalog.agents.contains { $0.id == message.info.agent }
+        }?.info.agent
     }
 
     func selectAgent(_ id: String?) {
         guard id == nil || composerCatalog.agents.contains(where: { $0.id == id }) else { return }
         selectedAgentID = id
+        isAgentSelectionExplicit = id != nil
         defaults.set(id ?? "", forKey: agentSelectionKey)
         if let id { defaults.set(id, forKey: serverDefaultAgentKey) }
         else { defaults.removeObject(forKey: serverDefaultAgentKey) }
+    }
+
+    /// The TUI switches to build when `plan_exit` completes. An earlier pick on
+    /// this device yields, so the chip and the next prompt follow the approved
+    /// plan's build turn instead of sending the plan agent back.
+    private func followCompletedPlanExit(_ event: OpenCodeEvent) {
+        guard event.type == "message.part.updated", let part = event.properties["part"]?.objectValue,
+              part["sessionID"]?.stringValue == session.id, part["tool"]?.stringValue == "plan_exit",
+              part["state"]?.objectValue?["status"]?.stringValue == "completed",
+              let id = part["id"]?.stringValue, id != followedPlanExitPartID else { return }
+        followedPlanExitPartID = id
+        guard isAgentSelectionExplicit, selectedAgentID != "build" else { return }
+        selectedAgentID = nil
+        isAgentSelectionExplicit = false
+        defaults.set("", forKey: agentSelectionKey)
+    }
+
+    /// One-tap build/plan toggle: Tab-style cycling through primary agents.
+    func cycleAgent(_ direction: OpenCodeAgentCycle.Direction = .forward) {
+        guard composerCatalog.agents.count > 1,
+              let next = OpenCodeAgentCycle.next(after: currentAgentID, in: composerCatalog.agents,
+                                                 direction: direction) else { return }
+        selectAgent(next.id)
     }
 
     var availableVariants: [String] { selectedModel?.variants ?? [] }
@@ -1398,6 +1655,7 @@ final class OpenCodeSessionStore: ObservableObject {
             scheduleReconciliation()
         case "message.updated", "message.removed", "message.part.updated",
              "message.part.removed", "message.part.delta":
+            followCompletedPlanExit(event)
             if transcript.apply(event) {
                 transcriptMutationGeneration &+= 1
                 publishTranscript()

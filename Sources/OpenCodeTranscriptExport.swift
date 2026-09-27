@@ -133,6 +133,14 @@ struct OpenCodeTranscriptExport: Sendable {
             guard let name = part.filename?.trimmedNonEmpty ?? part.url.flatMap({ URL(string: $0)?.lastPathComponent.trimmedNonEmpty })
             else { return "" }
             return "_Attached: \(name)_\n\n"
+        case "shell":
+            // A command the user ran; its output is conversation, not tool detail.
+            guard let command = part.state?.input?["command"]?.stringValue?.trimmedNonEmpty else { return "" }
+            var result = "**Shell:** `\(command)`\n"
+            if let output = part.state?.output?.trimmingTrailingWhitespace, !output.isEmpty {
+                result += "\n" + Self.fenced(output)
+            }
+            return result + "\n"
         case "compaction":
             return "_Conversation compacted._\n\n"
         default:

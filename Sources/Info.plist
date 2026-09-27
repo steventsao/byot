@@ -18,10 +18,38 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.byot.pair</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>byot</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>byot uses the camera only to scan the pairing code for your OpenCode server.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>byot finds OpenCode servers on your network and connects to the ones you add by local address.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>byot listens only while you dictate a message, and only after you tap the microphone.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>byot turns what you dictate into message text. Speech is transcribed on this device when your language supports it; otherwise Apple transcribes it.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>OpenRunde-Bold.otf</string>

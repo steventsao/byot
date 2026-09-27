@@ -3,10 +3,12 @@ import Foundation
 final class OpenCodeRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let allowedHost: String?
     private let allowedPort: Int
+    private let allowedScheme: String?
 
     init(baseURL: URL?) {
         allowedHost = baseURL?.host?.lowercased()
         allowedPort = Self.effectivePort(for: baseURL)
+        allowedScheme = baseURL?.scheme?.lowercased()
     }
 
     func urlSession(
@@ -22,8 +24,11 @@ final class OpenCodeRedirectDelegate: NSObject, URLSessionTaskDelegate, @uncheck
     }
 
     func allowsRedirect(to url: URL?) -> Bool {
-        guard let url else { return false }
-        return url.scheme?.lowercased() == "https"
+        // Credentials follow a redirect only to the exact original origin, so
+        // an HTTPS server can never downgrade to HTTP and a local HTTP server
+        // can never hand the password to another host or port.
+        guard let url, allowedScheme == "https" || allowedScheme == "http" else { return false }
+        return url.scheme?.lowercased() == allowedScheme
             && url.host?.lowercased() == allowedHost
             && Self.effectivePort(for: url) == allowedPort
     }

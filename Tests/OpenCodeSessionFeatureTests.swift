@@ -405,6 +405,9 @@ private actor FeatureStoreService: OpenCodeSessionServicing, OpenCodeSessionFeat
     func commitSessionRevert(sessionID: String, directory: String, workspace: String?) async throws -> Bool { revert = nil; committed = true; return true }
     func compactSession(sessionID: String, directory: String, workspace: String?, model: OpenCodeModelOption?) async throws {}
     func forkSession(sessionID: String, directory: String, workspace: String?, beforeMessageID: String?) async throws -> OpenCodeSession { lastForkMessage = beforeMessageID; return featureSession(id: "ses_child", parentID: sessionID) }
+    func sessionSharePolicy(directory: String, workspace: String?) async throws -> OpenCodeSessionSharePolicy { .manual }
+    func shareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession { currentSession }
+    func unshareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession { currentSession }
     func capabilities() async throws -> OpenCodeProtocolCapabilities { .v1 }
     func connectedProviderModels(directory: String, workspace: String?) async throws -> [OpenCodeProviderModels] { [] }
     func messages(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeMessageEnvelope] {

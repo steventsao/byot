@@ -37,13 +37,19 @@ struct OpenCodeSessionFeatureSupport: Equatable, Sendable {
     /// The server lists the messages still in the model's context. v1 has no
     /// such route; the transcript's last compaction marks the same boundary.
     var contextWindow = false
+    /// Direct shell commands (`!` in OpenCode's composers), never an LLM prompt.
+    var shell = false
+    /// Publishing a read-only web link (`/share`, `/unshare`).
+    var share = false
 
     static func negotiated(_ context: OpenCodeFeatureContext) -> Self {
         if context.serverProtocol == .v1 {
             return Self(details: true, rename: true, delete: true, archive: true, children: true,
                         todoSnapshot: true, undo: true, redo: true, compact: true,
-                        fork: true, compactRequiresModel: true, undoIncludesFileChanges: true)
+                        fork: true, compactRequiresModel: true, undoIncludesFileChanges: true, shell: true,
+                        share: true)
         }
+        // The v2 session API has no publish operation; sharing stays hidden.
         let details = context.supports("/api/session/{sessionID}")
         let inbox = context.supports("/api/session/{sessionID}/inbox")
             && context.supports("/api/session/{sessionID}/inbox/{inboxID}", method: "delete")
@@ -58,7 +64,8 @@ struct OpenCodeSessionFeatureSupport: Equatable, Sendable {
                     redo: details && inbox && stage && commit && context.supports("/api/session/{sessionID}/revert/clear", method: "post"),
                     compact: context.supports("/api/session/{sessionID}/compact", method: "post"),
                     fork: context.supports("/api/session/{sessionID}/fork", method: "post"),
-                    contextWindow: context.supports("/api/session/{sessionID}/context"))
+                    contextWindow: context.supports("/api/session/{sessionID}/context"),
+                    shell: OpenCodeShellDispatch.isSupported(context))
     }
 }
 
@@ -117,6 +124,9 @@ protocol OpenCodeSessionFeatureServicing: Sendable {
     func forkSession(sessionID: String, directory: String, workspace: String?, beforeMessageID: String?) async throws -> OpenCodeSession
     /// Messages after the last compaction, or nil when the server cannot say.
     func sessionContextMessages(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeMessageEnvelope]?
+    func sessionSharePolicy(directory: String, workspace: String?) async throws -> OpenCodeSessionSharePolicy
+    func shareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession
+    func unshareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession
 }
 
 extension OpenCodeSessionFeatureServicing {

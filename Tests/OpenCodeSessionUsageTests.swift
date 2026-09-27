@@ -480,6 +480,9 @@ private actor UsageStoreService: OpenCodeSessionServicing, OpenCodeSessionFeatur
     func forkSession(sessionID: String, directory: String, workspace: String?, beforeMessageID: String?) async throws -> OpenCodeSession {
         throw OpenCodeSessionFeatureError(message: "unused")
     }
+    func sessionSharePolicy(directory: String, workspace: String?) async throws -> OpenCodeSessionSharePolicy { .disabled }
+    func shareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession { throw CancellationError() }
+    func unshareSession(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeSession { throw CancellationError() }
 
     func capabilities() async throws -> OpenCodeProtocolCapabilities { .v2 }
     func connectedProviderModels(directory: String, workspace: String?) async throws -> [OpenCodeProviderModels] {

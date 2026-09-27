@@ -126,6 +126,8 @@ struct OpenCodeSessionRow: View {
     /// The worktree the session runs in, when it isn't the project's main checkout.
     var worktreeName: String? = nil
     var attentionMessage: String? = nil
+    /// Waiting on a permission or question; outranks every other status.
+    var needsInput = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -147,6 +149,7 @@ struct OpenCodeSessionRow: View {
                     if let summary = session.summary, summary.files > 0 {
                         Text("\(summary.files) files · +\(summary.additions) −\(summary.deletions)")
                     }
+                    if session.share?.link != nil { OpenCodeSharedSessionBadge() }
                     updatedText
                 }
                 .font(.cleanCaption)
@@ -169,6 +172,7 @@ struct OpenCodeSessionRow: View {
                         Text("\(summary.files) files")
                         Text("+\(summary.additions) −\(summary.deletions)")
                     }
+                    if session.share?.link != nil { OpenCodeSharedSessionBadge() }
                     Spacer()
                     updatedText
                 }
@@ -196,7 +200,20 @@ struct OpenCodeSessionRow: View {
 
     @ViewBuilder
     private var statusView: some View {
-        if attentionMessage != nil {
+        if needsInput {
+            // Sized like the other status glyphs, but in primary text: this
+            // is the one status that asks the user to act.
+            HStack(spacing: 5) {
+                Image(systemName: "hand.raised.fill")
+                    .imageScale(.small)
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text("Needs input")
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .font(.cleanCaptionBold)
+            .accessibilityElement(children: .combine)
+        } else if attentionMessage != nil {
             Label("Needs attention", systemImage: "exclamationmark.circle.fill")
                 .font(.cleanCaption)
                 .foregroundStyle(.red)
@@ -216,7 +233,18 @@ struct OpenCodeSessionRow: View {
     }
 
     private var updatedText: some View {
-        Text(Date(timeIntervalSince1970: session.time.updated / 1_000), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+        // A live list no longer reloads on a timer, so the row keeps its own
+        // relative time current instead of saying "Just now" indefinitely.
+        TimelineView(.everyMinute) { context in
+            let updated = Date(timeIntervalSince1970: session.time.updated / 1_000)
+            // A session that just arrived live can carry a server clock slightly
+            // ahead of the device; never show it as updated "in 0 sec.".
+            if updated.timeIntervalSince(context.date) > -60 {
+                Text("Just now")
+            } else {
+                Text(updated, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+            }
+        }
     }
 }
 

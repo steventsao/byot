@@ -104,6 +104,8 @@ struct OpenCodeSession: Codable, Identifiable, Equatable, Sendable {
     // has stored, including history older than the transcript page loaded.
     var cost: Double? = nil
     var tokens: OpenCodeTokenUsage? = nil
+    /// Present while the session is published on the web; absent when private.
+    var share: OpenCodeSessionShare? = nil
 }
 
 extension OpenCodeSession {
@@ -124,6 +126,23 @@ extension OpenCodeSession {
         // Older servers omit usage; an unexpected shape must not drop the session.
         cost = try? c.decodeIfPresent(Double.self, forKey: .cost)
         tokens = try? c.decodeIfPresent(OpenCodeTokenUsage.self, forKey: .tokens)
+        share = try? c.decodeIfPresent(OpenCodeSessionShare.self, forKey: .share)
+    }
+}
+
+/// A published session's public page. Only the server-returned URL is used;
+/// BYOT never builds share links itself.
+struct OpenCodeSessionShare: Codable, Equatable, Sendable {
+    let url: String
+
+    /// Nil unless the server returned an absolute web link. A server with
+    /// sharing turned off by environment answers with an empty URL.
+    var link: URL? {
+        guard let components = URLComponents(string: url.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = components.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              components.host?.isEmpty == false
+        else { return nil }
+        return components.url
     }
 }
 
@@ -354,11 +373,14 @@ struct OpenCodeToolState: Codable, Equatable, Sendable {
     let time: OpenCodeToolTime?
     /// What the tool recorded about itself (v1 `metadata`, v2 `structured`),
     /// cut down to the fields BYOT reads: a `task` call's subagent session
-    /// and whether it runs in the background. Other tools record whole files
-    /// here (an edit's before and after), which a transcript need not hold.
+    /// and whether it runs in the background, and a shell run's streamed
+    /// output, exit code and truncation. Other tools record whole files here
+    /// (an edit's before and after), which a transcript need not hold.
     var metadata: [String: OpenCodeJSONValue]? = nil
 
-    static let retainedMetadataKeys: Set<String> = ["sessionId", "sessionID", "session_id", "background"]
+    static let retainedMetadataKeys: Set<String> = [
+        "sessionId", "sessionID", "session_id", "background", "output", "exit", "truncated",
+    ]
 
     static func retainedMetadata(_ metadata: [String: OpenCodeJSONValue]?) -> [String: OpenCodeJSONValue]? {
         guard let kept = metadata?.filter({ retainedMetadataKeys.contains($0.key) }), !kept.isEmpty else { return nil }
@@ -379,6 +401,40 @@ extension OpenCodeToolState {
         // Metadata is a tool's own record; an odd shape never drops the part.
         metadata = Self.retainedMetadata(try? c.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: .metadata))
     }
+}
+
+/// A shell run's metadata as the shell cards read it. v1 streams a running
+/// shell's output here before `output` is final. A field of an unexpected
+/// type reads as absent.
+struct OpenCodeToolMetadata: Equatable, Sendable {
+    var output: String?
+    var exit: Double?
+    var truncated: Bool?
+
+    init(output: String? = nil, exit: Double? = nil, truncated: Bool? = nil) {
+        self.output = output
+        self.exit = exit
+        self.truncated = truncated
+    }
+
+    init(_ metadata: [String: OpenCodeJSONValue]?) {
+        output = metadata?["output"]?.stringValue
+        exit = metadata?["exit"]?.numberValue
+        truncated = if case .bool(let value)? = metadata?["truncated"] { value } else { nil }
+    }
+
+    /// The retained metadata fields for a shell run.
+    var fields: [String: OpenCodeJSONValue]? {
+        var fields: [String: OpenCodeJSONValue] = [:]
+        if let output { fields["output"] = .string(output) }
+        if let exit { fields["exit"] = .number(exit) }
+        if let truncated { fields["truncated"] = .bool(truncated) }
+        return fields.isEmpty ? nil : fields
+    }
+}
+
+extension OpenCodeToolState {
+    var shellMetadata: OpenCodeToolMetadata { OpenCodeToolMetadata(metadata) }
 }
 
 struct OpenCodeToolTime: Codable, Equatable, Sendable {
@@ -624,6 +680,10 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
         var workspaceID: String?
     }
 
+    /// The instance directory a server-wide stream attributes this event to:
+    /// v1 `/global/event` wraps each payload with it, v2 events carry a location.
+    var directory: String? { location?.directory }
+
     var sessionID: String? {
         properties["sessionID"]?.stringValue ?? properties["form"]?.objectValue?["sessionID"]?.stringValue
     }
@@ -660,6 +720,14 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
     }
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        if let directory, !isV2 {
+            try container.encode(directory, forKey: .directory)
+            var payload = container.nestedContainer(keyedBy: CodingKeys.self, forKey: .payload)
+            try payload.encode(id, forKey: .id)
+            try payload.encode(type, forKey: .type)
+            try payload.encode(properties, forKey: .properties)
+            return
+        }
         try container.encode(id, forKey: .id)
         try container.encode(type, forKey: .type)
         try container.encodeIfPresent(created, forKey: .created)

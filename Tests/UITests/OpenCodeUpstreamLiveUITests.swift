@@ -26,12 +26,11 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
             let model = app.buttons["Local acceptance fixture, BYOT Fixture"]
             XCTAssertTrue(model.waitForExistence(timeout: 10))
             model.tap()
-            let agentPicker = app.buttons["opencode-agent-picker"]
-            XCTAssertTrue(agentPicker.waitForExistence(timeout: 10))
-            agentPicker.tap()
-            let plan = app.buttons["opencode-agent-plan"]
-            XCTAssertTrue(plan.waitForExistence(timeout: 10))
-            plan.tap()
+            // One tap moves to the next primary agent, like the TUI's Tab.
+            let agentToggle = app.buttons["opencode-agent-picker"]
+            XCTAssertTrue(agentToggle.waitForExistence(timeout: 10))
+            for _ in 0..<4 where agentToggle.value as? String != "Plan" { agentToggle.tap() }
+            XCTAssertEqual(agentToggle.value as? String, "Plan")
             let variants = app.buttons["opencode-variant-picker"]
             XCTAssertTrue(variants.waitForExistence(timeout: 10))
             variants.tap()

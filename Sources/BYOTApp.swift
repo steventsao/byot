@@ -58,12 +58,18 @@ struct BYOTApp: App {
 private struct BYOTRootView: View {
     @Binding var appearance: BYOTAppearance
     @State private var isShowingAbout = false
+    @State private var pairingLink: URL?
     @ObservedObject private var push = BYOTPushNotifications.shared
 
     var body: some View {
-        OpenCodeRootView(openAppNavigation: { isShowingAbout = true })
+        OpenCodeRootView(openAppNavigation: { isShowingAbout = true }, pairingLink: $pairingLink)
             .onChange(of: push.pendingDestination) { _, destination in
                 if destination != nil { isShowingAbout = false }
+            }
+            .onOpenURL { url in
+                guard url.scheme?.lowercased() == OpenCodePairingPayload.scheme else { return }
+                isShowingAbout = false
+                pairingLink = url
             }
             .sheet(isPresented: $isShowingAbout) {
                 AboutView(appearance: $appearance)

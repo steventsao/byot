@@ -54,7 +54,8 @@ enum OpenCodeV2Normalization {
             ),
             forkSourceID: object["fork"]?.objectValue?["sessionID"]?.stringValue,
             cost: object["cost"]?.numberValue,
-            tokens: OpenCodeTokenUsage(object["tokens"])
+            tokens: OpenCodeTokenUsage(object["tokens"]),
+            share: object["share"]?.objectValue?["url"]?.stringValue.map(OpenCodeSessionShare.init(url:))
         )
     }
 
@@ -211,6 +212,18 @@ enum OpenCodeV2Normalization {
             return OpenCodeMessageEnvelope(info: OpenCodeMessageInfo(id: id, sessionID: sessionID, role: "system",
                 time: OpenCodeMessageTime(created: created, completed: nil), agent: nil, modelID: nil, providerID: nil,
                 finish: nil, error: nil), parts: [part])
+        case "shell" where (object["shellID"] ?? object["callID"])?.stringValue != nil:
+            // The beta record names its shell `shellID` and nests the output;
+            // current opencode names it `callID`, keeps the output as text and
+            // marks the end only with `time.completed`.
+            let completed = time?["completed"]?.numberValue
+            return shellMessage(
+                messageID: id, sessionID: sessionID,
+                shellID: (object["shellID"] ?? object["callID"])?.stringValue ?? "",
+                command: object["command"]?.stringValue ?? "",
+                status: object["status"]?.stringValue ?? (completed == nil ? "running" : "exited"), exit: object["exit"],
+                output: object["output"]?.objectValue ?? object["output"].map { ["output": $0] },
+                created: created, completed: completed)
         default:
             let errorObject = object["error"]?.objectValue
             let text = [object["description"]?.stringValue, object["command"]?.stringValue,
@@ -254,6 +267,31 @@ enum OpenCodeV2Normalization {
 
     static func isStepPart(_ part: OpenCodePart) -> Bool {
         part.id == "\(part.messageID):step-finish" || part.id == "\(part.messageID):patch"
+    }
+
+    /// A user-run shell command (`Session.Message.Shell`). It is neither a
+    /// prompt nor an assistant turn, so it never counts as an unanswered user
+    /// message; one `shell` part carries the command, status, exit and output.
+    static func shellMessage(
+        messageID: String, sessionID: String, shellID: String, command: String, status: String,
+        exit: OpenCodeJSONValue?, output: [String: OpenCodeJSONValue]?, created: Double, completed: Double?
+    ) -> OpenCodeMessageEnvelope {
+        let truncated: Bool? = if case .bool(let value)? = output?["truncated"] { value } else { nil }
+        let metadata = OpenCodeToolMetadata(exit: exit?.numberValue, truncated: truncated).fields
+        let state = OpenCodeToolState(
+            status: status, input: ["command": .string(command)], raw: nil, title: nil,
+            output: output?["output"]?.stringValue, error: nil,
+            time: OpenCodeToolTime(start: created, end: completed), metadata: metadata)
+        let part = OpenCodePart(
+            id: "\(messageID):shell", sessionID: sessionID, messageID: messageID, type: "shell",
+            text: nil, mime: nil, filename: nil, url: nil, callID: shellID, tool: "shell",
+            state: state, files: nil, description: nil, agent: nil)
+        return OpenCodeMessageEnvelope(
+            info: OpenCodeMessageInfo(
+                id: messageID, sessionID: sessionID, role: "system",
+                time: OpenCodeMessageTime(created: created, completed: completed),
+                agent: nil, modelID: nil, providerID: nil, finish: nil, error: nil),
+            parts: [part])
     }
 
     static func toolState(

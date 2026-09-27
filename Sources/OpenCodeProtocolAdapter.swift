@@ -9,6 +9,7 @@ protocol OpenCodeProtocolAdapting: Sendable {
     var apiSchema: OpenCodeJSONValue? { get }
     var serverProtocol: OpenCodeServerProtocol { get }
     var usesForms: Bool { get }
+    var listsPendingRequestsByLocation: Bool { get }
     var capabilities: OpenCodeProtocolCapabilities { get }
 
     func listProjects() async throws -> [OpenCodeProject]
@@ -20,6 +21,12 @@ protocol OpenCodeProtocolAdapting: Sendable {
     func createSession(
         directory: String,
         title: String?
+    ) async throws -> OpenCodeSession
+
+    /// One session by ID, including subagent sessions the list omits.
+    func session(
+        id: String,
+        directory: String?
     ) async throws -> OpenCodeSession
 
     func connectedProviderModels(
@@ -61,8 +68,13 @@ protocol OpenCodeProtocolAdapting: Sendable {
     ) async throws -> Bool
 
     func eventRoute(directory: String, workspace: String?) -> OpenCodeEventRoute
+
+    /// One server-wide stream that carries every project's session lifecycle.
+    var sessionListEventRoute: OpenCodeEventRoute { get }
 }
 
 extension OpenCodeProtocolAdapting {
     var apiSchema: OpenCodeJSONValue? { nil }
+    /// v2 servers that list pending permissions and questions per location.
+    var listsPendingRequestsByLocation: Bool { false }
 }

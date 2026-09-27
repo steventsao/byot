@@ -1,4 +1,5 @@
 #if DEBUG
+import os
 import SwiftUI
 
 /// Exercises the real navigation and session views against a local, deterministic server fixture.
@@ -78,7 +79,17 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
 
         let body: Any
         var status = 200
+        let sharing = ProcessInfo.processInfo.arguments.contains("--share")
         switch path {
+        case "/session/ses_history/share" where sharing:
+            // OpenCode answers both publish and unpublish with the whole session.
+            let published = request.httpMethod == "POST"
+            Self.isHistoryShared.withLock { $0 = published }
+            body = Self.session("ses_history", title: "Long conversation", shared: published)
+        case "/session/ses_history" where sharing:
+            body = Self.session("ses_history", title: "Long conversation", shared: Self.isHistoryShared.withLock { $0 })
+        case "/config" where sharing:
+            body = ["share": "manual"]
         case "/session" where request.httpMethod == "POST":
             if ProcessInfo.processInfo.arguments.contains("--creation-error") {
                 status = 503
@@ -88,7 +99,7 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             }
         case "/session":
             var sessions = [Self.session("ses_draft", title: "Draft session"),
-                            Self.session("ses_history", title: "Long conversation")]
+                            Self.session("ses_history", title: "Long conversation", shared: Self.isHistoryShared.withLock { $0 })]
             if ProcessInfo.processInfo.arguments.contains("--transcript-parts") {
                 sessions.append(Self.session("ses_parts", title: "Rich transcript"))
             }
@@ -119,7 +130,13 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
                           "time": ["created": index * 1000, "completed": index * 1000 + 500]],
                  "parts": [["id": "part_\(index)", "sessionID": "ses_history", "messageID": "msg_\(index)",
                             "type": "text", "text": "Update \(index). Reviewed the project and checked the implementation. This message provides enough detail to exercise scrolling through a longer conversation."]]]
-            }
+            } + (ProcessInfo.processInfo.arguments.contains("--shell") ? Self.shellTurn() : [])
+        case "/agent" where ProcessInfo.processInfo.arguments.contains("--shell"):
+            body = [["name": "build", "mode": "primary"], ["name": "plan", "mode": "primary"]]
+        case "/session/ses_history/shell" where request.httpMethod == "POST":
+            // Shaped like OpenCode 1.18.21: 409 while another turn runs.
+            status = 409
+            body = ["_tag": "SessionBusyError", "message": "Session is busy: ses_history"]
         case "/permission" where ProcessInfo.processInfo.arguments.contains("--pending-action"):
             body = [["id": "per_1", "sessionID": "ses_history", "permission": "edit",
                      "patterns": ["Sources/App.swift"], "metadata": [:], "always": ["Sources/*"]]] as [[String: Any]]
@@ -155,6 +172,27 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             eventTask = nil
         }
     }
+
+    /// A finished v1 shell run as OpenCode 1.18.21 records it.
+    private static func shellTurn() -> [[String: Any]] {
+        let output = (1...16).map { "Sources/File\($0).swift | \($0 * 3) +++--" }.joined(separator: "\n")
+            + "\n 16 files changed, 128 insertions(+), 40 deletions(-)\n"
+        return [
+            ["info": ["id": "msg_shell_user", "sessionID": "ses_history", "role": "user", "agent": "build",
+                      "time": ["created": 25_000]],
+             "parts": [["id": "prt_shell_marker", "sessionID": "ses_history", "messageID": "msg_shell_user",
+                        "type": "text", "text": "The following tool was executed by the user", "synthetic": true]]],
+            ["info": ["id": "msg_shell_reply", "sessionID": "ses_history", "role": "assistant", "agent": "build",
+                      "time": ["created": 25_100, "completed": 25_900]],
+             "parts": [["id": "prt_shell_tool", "sessionID": "ses_history", "messageID": "msg_shell_reply",
+                        "type": "tool", "callID": "01SHELL", "tool": "bash",
+                        "state": ["status": "completed", "input": ["command": "git diff --stat"], "title": "",
+                                  "output": output, "metadata": ["output": output],
+                                  "time": ["start": 25_100, "end": 25_900]]]]],
+        ]
+    }
+
+    private static let isHistoryShared = OSAllocatedUnfairLock(initialState: false)
 
     /// One of every transcript part type, as a v1 server stores them.
     private static func richTranscript() -> [[String: Any]] {
@@ -235,10 +273,13 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
         ]
     }
 
-    private static func session(_ id: String, title: String, parentID: String? = nil, created: Int = 1000) -> [String: Any] {
+    private static func session(
+        _ id: String, title: String, parentID: String? = nil, created: Int = 1000, shared: Bool = false
+    ) -> [String: Any] {
         var session: [String: Any] = ["id": id, "slug": id, "projectID": "pro_fixture", "directory": "/fixture",
                                       "title": title, "version": "1.18.10", "time": ["created": created, "updated": created]]
         session["parentID"] = parentID
+        if shared { session["share"] = ["url": "https://opncd.ai/share/fixture-history"] }
         return session
     }
 

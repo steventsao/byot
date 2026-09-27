@@ -85,6 +85,10 @@ struct OpenCodeV2EventReducer: Sendable {
                 payload["type"] = .string("model-switched"); payload["model"] = data["model"]
             }
             return upsertProjection(payload, sessionID: sessionID, in: &messages)
+        case "session.shell.started" where data["shell"]?.objectValue != nil,
+             "session.shell.ended" where data["shell"]?.objectValue != nil:
+            // opencode2 beta 19242 carries the whole shell record instead.
+            return applyShell(event, sessionID: sessionID, to: &messages)
         case "session.shell.started":
             guard let id = data["messageID"]?.stringValue, let callID = data["callID"]?.stringValue else { return .unresolved }
             var payload: [String: OpenCodeJSONValue] = ["id": .string(id), "type": .string("shell"), "callID": .string(callID),
@@ -301,6 +305,38 @@ struct OpenCodeV2EventReducer: Sendable {
         guard let message = OpenCodeV2Normalization.message(object, sessionID: sessionID) else { return .unresolved }
         guard messages.first(where: { $0.id == message.id }) != message else { return .unchanged }
         upsert(message, in: &messages)
+        return .changed
+    }
+
+    // Upstream data.ts: a started shell becomes a `shell` message whose id is
+    // the event id with `msg_` in place of `evt_`; its end updates that
+    // message by shell id with the final status, exit code and output.
+    private func applyShell(_ event: OpenCodeEvent, sessionID: String,
+                            to messages: inout [OpenCodeMessageEnvelope]) -> Outcome {
+        let data = event.properties
+        guard let shell = data["shell"]?.objectValue, let shellID = shell["id"]?.stringValue else { return .unresolved }
+        let created = event.created ?? 0
+        if Self.canonicalType(event.type) == "session.shell.started" {
+            guard event.id.hasPrefix("evt_") else { return .unresolved }
+            let messageID = "msg_" + event.id.dropFirst(4)
+            let existing = messages.first { $0.id == messageID }
+            upsert(OpenCodeV2Normalization.shellMessage(
+                messageID: messageID, sessionID: sessionID, shellID: shellID,
+                command: shell["command"]?.stringValue ?? "", status: shell["status"]?.stringValue ?? "running",
+                exit: shell["exit"], output: nil,
+                created: existing?.info.time.created ?? created, completed: nil), in: &messages)
+            return .changed
+        }
+        guard let index = messages.lastIndex(where: { message in
+            message.parts.contains { $0.type == "shell" && $0.callID == shellID }
+        }) else { return .unresolved }
+        let old = messages[index]
+        let command = old.parts.first { $0.type == "shell" }?.state?.input?["command"]?.stringValue
+        messages[index] = OpenCodeV2Normalization.shellMessage(
+            messageID: old.id, sessionID: sessionID, shellID: shellID,
+            command: shell["command"]?.stringValue ?? command ?? "",
+            status: shell["status"]?.stringValue ?? "exited", exit: shell["exit"],
+            output: data["output"]?.objectValue, created: old.info.time.created, completed: created)
         return .changed
     }
 

@@ -6,13 +6,48 @@ struct OpenCodeAgentOption: Identifiable, Equatable, Sendable {
     let description: String?
 
     static func parse(_ value: OpenCodeJSONValue) -> Self? {
+        // Legacy agents carry only `name`; current v2 `AgentV2.Info` carries only `id`.
         guard let object = value.objectValue,
               object["hidden"] != .bool(true),
               let mode = object["mode"]?.stringValue,
               mode == "primary" || mode == "all",
-              let name = object["name"]?.stringValue else { return nil }
+              let name = object["name"]?.stringValue ?? object["id"]?.stringValue else { return nil }
         return Self(id: object["id"]?.stringValue ?? name, name: name,
                     description: object["description"]?.stringValue)
+    }
+
+    /// Title-cased like the TUI prompt footer, so `build` reads as "Build".
+    var displayName: String {
+        guard let first = name.first, first.isLowercase else { return name }
+        return first.uppercased() + name.dropFirst()
+    }
+
+    /// Glyphs for the stock primary agents; custom agents share a neutral one.
+    var systemImage: String { Self.systemImage(for: id) }
+
+    static func systemImage(for id: String?) -> String {
+        switch id?.lowercased() {
+        case "build": "hammer"
+        case "plan": "list.bullet.clipboard"
+        default: "person.crop.circle"
+        }
+    }
+}
+
+/// The TUI's Tab / Shift-Tab agent cycling (`local.agent.move`): step through
+/// primary agents in catalog order and wrap at either end. An agent outside the
+/// list, such as a subagent-owned session, starts from the first (or last).
+enum OpenCodeAgentCycle {
+    enum Direction: Sendable { case forward, backward }
+
+    static func next(after current: String?, in agents: [OpenCodeAgentOption],
+                     direction: Direction = .forward) -> OpenCodeAgentOption? {
+        guard !agents.isEmpty else { return nil }
+        guard let index = agents.firstIndex(where: { $0.id == current }) else {
+            return direction == .forward ? agents.first : agents.last
+        }
+        let step = direction == .forward ? 1 : -1
+        return agents[(index + step + agents.count) % agents.count]
     }
 }
 
@@ -47,10 +82,22 @@ struct OpenCodeComposerCatalog: Equatable, Sendable {
     var agents: [OpenCodeAgentOption] = []
     var commands: [OpenCodeSlashCommand] = []
     var inheritedAgent: String?
+    /// The agent the server runs when a prompt names none. Legacy servers list
+    /// their configured default first; v2 falls back to OpenCode's `build`.
+    var defaultAgentID: String?
     var inheritedModelID: String?
     var inheritedVariant: String?
     var supportsVariants = false
     var unavailableReason: String?
+
+    /// Upstream's agent order (`Agent.list`): the default agent leads, the rest
+    /// follow by name. Tab cycling and the agent menu both walk this order.
+    static func ordered(_ agents: [OpenCodeAgentOption], defaultAgentID: String?) -> [OpenCodeAgentOption] {
+        agents.sorted { lhs, rhs in
+            if (lhs.id == defaultAgentID) != (rhs.id == defaultAgentID) { return lhs.id == defaultAgentID }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+    }
 }
 
 extension OpenCodeFeatureContext {
@@ -129,7 +176,10 @@ extension OpenCodeClient {
                 catalog.inheritedVariant = model["variant"]?.stringValue.flatMap { $0 == "default" ? nil : $0 }
             }
         }
-        catalog.agents.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        catalog.defaultAgentID = isV2
+            ? (catalog.agents.first { $0.id == "build" } ?? catalog.agents.first)?.id
+            : catalog.agents.first?.id
+        catalog.agents = OpenCodeComposerCatalog.ordered(catalog.agents, defaultAgentID: catalog.defaultAgentID)
         catalog.commands.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         return catalog
     }

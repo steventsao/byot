@@ -215,6 +215,40 @@ final class OpenCodeAttachmentUITests: XCTestCase {
     }
 
     @MainActor
+    func testAgentToggleCyclesPrimaryAgentsInOneTap() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--attachment-screenshot", "--composer-catalog"]
+        app.launch()
+        let composer = app.textFields["opencode-composer-message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        composer.tap()
+        let agent = app.buttons["opencode-agent-picker"]
+        XCTAssertTrue(agent.waitForExistence(timeout: 5))
+        XCTAssertEqual(agent.value as? String, "Build", "The toggle names the session's agent")
+        XCTAssertGreaterThanOrEqual(agent.frame.height, 44)
+        agent.tap()
+        XCTAssertEqual(agent.value as? String, "Plan")
+        attach("composer-agent-toggle-plan")
+        agent.tap()
+        XCTAssertEqual(agent.value as? String, "Build", "Cycling wraps back to the first agent")
+
+        // Touch and hold lists every agent and opens the full picker.
+        agent.press(forDuration: 1)
+        let allAgents = app.buttons["All Agents…"]
+        XCTAssertTrue(allAgents.waitForExistence(timeout: 5))
+        attach("composer-agent-menu")
+        allAgents.tap()
+        let plan = app.buttons["opencode-agent-plan"]
+        XCTAssertTrue(plan.waitForExistence(timeout: 5))
+        plan.tap()
+        XCTAssertTrue(plan.waitForNonExistence(timeout: 5))
+        // The sheet took focus, so the composer folded; refocus to see the knobs.
+        composer.tap()
+        XCTAssertTrue(agent.waitForExistence(timeout: 5))
+        XCTAssertEqual(agent.value as? String, "Plan")
+    }
+
+    @MainActor
     func testComposerKnobsStayReachableAtLargestTextSize() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--attachment-screenshot", "--composer-catalog",

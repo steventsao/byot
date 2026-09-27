@@ -7,6 +7,7 @@ struct OpenCodeSessionDetailsView: View {
     @State private var isRenaming = false
     @State private var title = ""
     @State private var isConfirmingDelete = false
+    @State private var isShowingShare = false
 
     var body: some View {
         NavigationStack {
@@ -26,6 +27,19 @@ struct OpenCodeSessionDetailsView: View {
                     if !store.sessionFeatures.rename { Text("Renaming is unavailable on this server.").font(.cleanCaption).foregroundStyle(.secondary) }
                 }
                 OpenCodeSessionUsageSections(usage: store.usage)
+                if store.sharePresentation.isAvailable || store.sharePresentation.isPublished {
+                    Section("Sharing") {
+                        LabeledContent("Visibility") {
+                            if store.sharePresentation.isPublished { OpenCodeSharedSessionBadge() } else { Text("Private") }
+                        }
+                        if store.sharePresentation.isAvailable {
+                            Button(store.sharePresentation.isPublished ? "Manage public link" : "Publish on web", systemImage: "globe") {
+                                isShowingShare = true
+                            }
+                            .accessibilityIdentifier("session-details-share")
+                        }
+                    }
+                }
                 if let parent = store.parentSession {
                     Section(store.session.parentID == nil ? "Forked from" : "Main session") {
                         Button { openSession(parent) } label: {
@@ -108,6 +122,7 @@ struct OpenCodeSessionDetailsView: View {
             } message: {
                 Text("This removes the conversation from the server. It cannot be undone.")
             }
+            .sheet(isPresented: $isShowingShare) { OpenCodeSessionShareView(store: store) }
             .task { await store.loadRelatedSessions() }
             .task(id: store.usage.context?.messageID) { await store.refreshContextWindow() }
         }
