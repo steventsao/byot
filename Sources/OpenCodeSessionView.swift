@@ -9,6 +9,7 @@ struct OpenCodeSessionView: View {
     private let attention: OpenCodeSessionAttentionStore?
     private let startsWithComposerFocused: Bool
     private let presentingSessionID: String?
+    private let onDelete: (() -> Void)?
     @State private var session: OpenCodeSession
     @State private var didReplaceSession = false
 
@@ -20,13 +21,15 @@ struct OpenCodeSessionView: View {
         directory: String,
         attention: OpenCodeSessionAttentionStore? = nil,
         startsWithComposerFocused: Bool = false,
-        presentingSessionID: String? = nil
+        presentingSessionID: String? = nil,
+        onDelete: (() -> Void)? = nil
     ) {
         self.client = client
         self.directory = directory
         self.attention = attention
         self.startsWithComposerFocused = startsWithComposerFocused
         self.presentingSessionID = presentingSessionID
+        self.onDelete = onDelete
         _session = State(initialValue: session)
     }
 
@@ -37,7 +40,8 @@ struct OpenCodeSessionView: View {
             directory: directory,
             attention: attention,
             startsWithComposerFocused: startsWithComposerFocused && !didReplaceSession,
-            presentingSessionID: presentingSessionID
+            presentingSessionID: presentingSessionID,
+            onDelete: onDelete
         ) { next in
             guard next.id != session.id else { return }
             didReplaceSession = true
@@ -83,6 +87,8 @@ struct OpenCodeSessionScreen: View {
     @State private var branch: String?
     /// Bumped by each branch event, so a slower fetch never overwrites a newer report.
     @State private var branchGeneration = 0
+    @State private var visibility = UUID()
+    @Environment(\.openCodeVisibleSessions) private var visibleSessions
     private let client: OpenCodeClient
     private let terminalService: OpenCodeTerminalService
     private let contextService: OpenCodeServerContextService
@@ -91,6 +97,9 @@ struct OpenCodeSessionScreen: View {
     private let startsWithComposerFocused: Bool
     private let presentingSessionID: String?
     private let replaceSession: (OpenCodeSession) -> Void
+    /// Closes the conversation when it is the split view's detail, where
+    /// there is nothing to pop back to once the session is deleted.
+    private let onDelete: (() -> Void)?
 
     private let bottomAnchorID = "opencode-session-bottom"
 
@@ -101,9 +110,11 @@ struct OpenCodeSessionScreen: View {
         attention: OpenCodeSessionAttentionStore?,
         startsWithComposerFocused: Bool,
         presentingSessionID: String?,
+        onDelete: (() -> Void)?,
         replaceSession: @escaping (OpenCodeSession) -> Void
     ) {
         self.client = client
+        self.onDelete = onDelete
         serverName = client.profile.name
         self.attention = attention
         self.startsWithComposerFocused = startsWithComposerFocused
@@ -575,7 +586,9 @@ struct OpenCodeSessionScreen: View {
             }
         }
         .onChange(of: store.didDeleteSession) { _, deleted in
-            if deleted { isShowingDetails = false; dismiss() }
+            guard deleted else { return }
+            isShowingDetails = false
+            if let onDelete { onDelete() } else { dismiss() }
         }
         .sheet(item: $diffRequest) { request in
             OpenCodeDiffReviewView(
@@ -589,7 +602,10 @@ struct OpenCodeSessionScreen: View {
             OpenCodeModelPickerView(store: store)
                 .task { await store.reloadModels() }
         }
-        .onAppear { push.activeRoute = BYOTPushRoute(serverID: client.profile.id, sessionID: store.session.id, directory: store.session.directory, workspace: store.session.workspaceID) }
+        .onAppear {
+            push.activeRoute = BYOTPushRoute(serverID: client.profile.id, sessionID: store.session.id, directory: store.session.directory, workspace: store.session.workspaceID)
+            visibleSessions?.update(visibility, OpenCodeSessionSelection(client: client, session: store.session, attention: attention))
+        }
         .alert("Couldn’t update notifications", isPresented: Binding(get: { notificationError != nil }, set: { if !$0 { notificationError = nil } })) {
             Button("OK") { notificationError = nil }
         } message: { Text(notificationError ?? "") }
@@ -614,9 +630,15 @@ struct OpenCodeSessionScreen: View {
             }
         }
         .onChange(of: store.errorMessage) { _, _ in rememberAttention() }
+        .onChange(of: liveTurn, initial: true) { _, turn in publishLiveTurn(turn) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { publishLiveTurn(liveTurn) }
+        }
         .onDisappear {
+            visibleSessions?.update(visibility, nil)
             if push.activeRoute?.serverID == client.profile.id && push.activeRoute?.sessionID == store.session.id { push.activeRoute = nil }
             rememberAttention()
+            BYOTLiveActivityController.shared.release(serverID: client.profile.id, sessionID: store.session.id)
             store.stop()
         }
     }
@@ -638,7 +660,8 @@ struct OpenCodeSessionScreen: View {
                     unavailableReason: store.transcriptUnavailableReason, run: copyTranscript),
             ],
             restoredMessage: store.restoredPrompt?.message,
-            onRestoreConsumed: { store.consumeRestoredPrompt() }
+            onRestoreConsumed: { store.consumeRestoredPrompt() },
+            keyboardCommandsEnabled: !isPresentingSheet
         )
     }
 
@@ -752,6 +775,32 @@ struct OpenCodeSessionScreen: View {
         }
     }
 
+    /// The latest turn as the Live Activity shows it. Until the first status
+    /// arrives the store reports idle, which must not end a running activity.
+    private var liveTurn: BYOTTurnSnapshot? {
+        guard store.isStatusReady else { return nil }
+        return BYOTTurnSnapshot.make(status: store.status, permissions: store.permissions,
+                                     questions: store.questions, messages: store.messages)
+    }
+
+    private func publishLiveTurn(_ turn: BYOTTurnSnapshot?) {
+        guard store.isStatusReady else { return }
+        let profile = client.profile
+        let session = store.session
+        BYOTLiveActivityController.shared.drive(
+            BYOTTurnActivityAttributes(
+                serverID: profile.id, serverName: serverName, sessionID: session.id,
+                sessionTitle: session.title.trimmedWidgetText ?? "Untitled session",
+                projectName: URL(fileURLWithPath: session.directory).lastPathComponent,
+                directory: session.directory, workspace: session.workspaceID),
+            snapshot: turn, canStart: scenePhase == .active)
+        let state = BYOTWidgetSync.state(
+            status: store.status, isPending: store.pendingActionCount > 0,
+            hasFailure: OpenCodeSessionAttentionStore.message(in: store.messages) != nil)
+        BYOTWidgetSync.shared.update(state.map { BYOTWidgetSync.row(profile: profile, session: session, state: $0) },
+                                     serverID: profile.id, sessionID: session.id, serverName: profile.name)
+    }
+
     /// Server, project and branch, with the public-link badge while shared.
     @ViewBuilder
     private var sessionContext: some View {
@@ -835,6 +884,12 @@ struct OpenCodeSessionScreen: View {
     private var sessionStatus: some View {
         OpenCodeStatusLabel(status: store.status, eventConnected: store.isEventConnected)
             .fixedSize()
+    }
+
+    private var isPresentingSheet: Bool {
+        diffRequest != nil || isShowingQueue || isShowingDetails || isShowingTasks || isShowingUsage
+            || isShowingExport || isShowingShare || isShowingRecoveryModelPicker || isShowingAgentsSetup
+            || notificationError != nil
     }
 
     private var hasConversationContent: Bool {

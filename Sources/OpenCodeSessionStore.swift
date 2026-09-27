@@ -177,11 +177,11 @@ final class OpenCodeSessionStore: ObservableObject {
         self.defaults = defaults
         self.remoteFiles = remoteFiles
         modelSelectionKey = "byot.opencode.model.\(serverID.uuidString).\(session.id)"
-        serverDefaultModelKey = "byot.opencode.model.default.\(serverID.uuidString)"
+        serverDefaultModelKey = Self.serverDefaultModelKey(serverID)
         persistedModelID = defaults.string(forKey: modelSelectionKey)
         workspace = session.workspaceID
         agentSelectionKey = "byot.opencode.agent.\(serverID.uuidString).\(session.id)"
-        serverDefaultAgentKey = "byot.opencode.agent.default.\(serverID.uuidString)"
+        serverDefaultAgentKey = Self.serverDefaultAgentKey(serverID)
         let savedAgentID = defaults.string(forKey: agentSelectionKey)?.trimmedNonEmpty
         selectedAgentID = savedAgentID
         isAgentSelectionExplicit = savedAgentID != nil
@@ -1426,7 +1426,21 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private var defaultVariantKey: String? {
-        selectedModel.map { "byot.opencode.variant.default.\(serverID.uuidString).\($0.qualifiedID)" }
+        selectedModel.map { Self.serverDefaultVariantKey(serverID, model: $0) }
+    }
+
+    /// The last model, agent and variant picked anywhere on a server. New
+    /// sessions, including ones started from Siri and Shortcuts, inherit them.
+    nonisolated static func serverDefaultModelKey(_ serverID: UUID) -> String {
+        "byot.opencode.model.default.\(serverID.uuidString)"
+    }
+
+    nonisolated static func serverDefaultAgentKey(_ serverID: UUID) -> String {
+        "byot.opencode.agent.default.\(serverID.uuidString)"
+    }
+
+    nonisolated static func serverDefaultVariantKey(_ serverID: UUID, model: OpenCodeModelOption) -> String {
+        "byot.opencode.variant.default.\(serverID.uuidString).\(model.qualifiedID)"
     }
 
     func selectVariant(_ variant: String?) {

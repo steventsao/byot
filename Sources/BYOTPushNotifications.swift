@@ -13,6 +13,14 @@ final class BYOTPushNotifications: ObservableObject {
     var activeRoute: BYOTPushRoute?
     private let client = BYOTPushClient()
     private let credentialKey = "byot.push.credentials.v1"
+    /// Injected by tests; the app reads the saved profile and its Keychain password.
+    var resolveServer: @MainActor (UUID) -> (profile: OpenCodeServerProfile, password: String)? = OpenCodeProfileStore.savedServer
+    var makeActionService: @MainActor (OpenCodeServerProfile, String) -> any BYOTPushActionService = {
+        OpenCodeClient(profile: $0, password: $1)
+    }
+    var deliverFollowUp: @MainActor (UNNotificationRequest) async -> Void = { request in
+        try? await UNUserNotificationCenter.current().add(request)
+    }
 
     init(credentials initial: [BYOTPushCredential]? = nil) {
         if let initial {
@@ -128,14 +136,61 @@ final class BYOTPushNotifications: ObservableObject {
         try await update(serverID, value)
     }
 
-    func decode(_ data: Data) throws -> BYOTPushRoute {
+    func decode(_ data: Data) throws -> BYOTPushRoute { try decodeNotification(data).route }
+
+    /// Authenticates the envelope: only a known subscription's route key can produce
+    /// a route, and a request ID is only meaningful on the kinds that carry one.
+    func decodeNotification(_ data: Data) throws -> (route: BYOTPushRoute, kind: BYOTPushKind?) {
         struct Envelope: Decodable { struct Content: Decodable { let version: Int; let subscriptionID: UUID; let kind: String; let route: String }; let byot: Content }
         let content = try JSONDecoder().decode(Envelope.self, from: data).byot
-        guard content.version == 1, BYOTPushKind(rawValue: content.kind) != nil || content.kind == "test",
+        let kind = BYOTPushKind(rawValue: content.kind)
+        guard content.version == 1, kind != nil || content.kind == "test",
               let credential = credentials.values.first(where: { $0.subscriptionID == content.subscriptionID }) else { throw BYOTPushError.invalidNotification }
         let route = try BYOTPushRoute.decrypt(content.route, key: credential.routeKey)
-        guard route.serverID == credential.serverID, (content.kind == "test") == route.sessionID.isEmpty else { throw BYOTPushError.invalidNotification }
-        return route
+        guard route.serverID == credential.serverID, (content.kind == "test") == route.sessionID.isEmpty,
+              route.requestID == nil || kind == .permission || kind == .question else { throw BYOTPushError.invalidNotification }
+        return (route, kind)
+    }
+
+    /// Answers a permission or question from a notification action. The device was
+    /// unlocked by iOS before this runs; the reply goes straight to the saved server
+    /// with its saved password, after confirming the request is still pending there.
+    @discardableResult
+    func respond(to action: BYOTPushAction, notification data: Data, threadIdentifier: String = "") async -> BYOTPushActionOutcome {
+        let outcome: BYOTPushActionOutcome
+        var decoded: BYOTPushRoute?
+        if let notification = try? decodeNotification(data), notification.kind == action.kind {
+            decoded = notification.route
+            if let server = resolveServer(notification.route.serverID),
+               let credential = credentials[server.profile.id],
+               credential.fingerprint == BYOTPushCredential.fingerprint(server.profile) {
+                outcome = await BYOTPushActionResponder.perform(
+                    action, route: notification.route, service: makeActionService(server.profile, server.password))
+            } else {
+                outcome = .serverChanged
+            }
+        } else {
+            outcome = .needsReview
+        }
+        if let followUp = outcome.followUp {
+            await deliverFollowUp(Self.followUpRequest(followUp, notification: data, route: decoded, thread: threadIdentifier))
+        }
+        return outcome
+    }
+
+    static func followUpRequest(_ text: (title: String, body: String), notification data: Data, route: BYOTPushRoute?,
+                                thread: String) -> UNNotificationRequest {
+        let content = UNMutableNotificationContent()
+        content.title = text.title
+        content.body = text.body
+        content.threadIdentifier = thread
+        content.interruptionLevel = .active
+        // Keep only the authenticated envelope so tapping the follow-up opens the same session.
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let envelope = object["byot"] {
+            content.userInfo = ["byot": envelope]
+        }
+        let key = route.map { "\($0.serverID.uuidString):\($0.sessionID):\($0.requestID ?? "")" } ?? UUID().uuidString
+        return UNNotificationRequest(identifier: "byot.follow-up." + BYOTPushCredential.digest(key), content: content, trigger: nil)
     }
     func receive(_ data: Data) {
         do { pendingDestination = BYOTPushDestination(route: try decode(data)) }
@@ -154,6 +209,7 @@ final class BYOTPushNotifications: ObservableObject {
 final class BYOTPushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        UNUserNotificationCenter.current().setNotificationCategories(BYOTPushCategory.all)
         return true
     }
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
@@ -170,9 +226,35 @@ final class BYOTPushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let data = try? JSONSerialization.data(withJSONObject: response.notification.request.content.userInfo)
-        let isDismiss = response.actionIdentifier == UNNotificationDismissActionIdentifier
-        await MainActor.run {
-            if let data, !isDismiss { BYOTPushNotifications.shared.receive(data) }
+        let identifier = response.actionIdentifier
+        let thread = response.notification.request.content.threadIdentifier
+        guard let data, identifier != UNNotificationDismissActionIdentifier else { return }
+        guard let action = BYOTPushAction(identifier: identifier, text: (response as? UNTextInputNotificationResponse)?.userText) else {
+            // The default tap and "Review in byot" only open the session; they never answer it.
+            await MainActor.run { BYOTPushNotifications.shared.receive(data) }
+            return
         }
+        // iOS keeps a background launch alive until this method returns; the task
+        // assertion also covers a response that arrives while the app is suspending.
+        let assertion = await BYOTBackgroundAssertion(name: "byot.notification-action")
+        await BYOTPushNotifications.shared.respond(to: action, notification: data, threadIdentifier: thread)
+        await assertion.end()
+    }
+}
+
+@MainActor
+private final class BYOTBackgroundAssertion {
+    private var identifier = UIBackgroundTaskIdentifier.invalid
+
+    init(name: String) {
+        identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            MainActor.assumeIsolated { self?.end() }
+        }
+    }
+
+    func end() {
+        guard identifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(identifier)
+        identifier = .invalid
     }
 }

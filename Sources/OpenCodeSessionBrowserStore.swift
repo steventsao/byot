@@ -367,10 +367,15 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
     }
 
     /// Sessions no directory snapshot answered for (older v2 servers list
-    /// requests per session only). Recheck only sessions already flagged, so a
-    /// request answered while the stream was down is cleared.
+    /// requests per session only). Rechecks sessions already flagged, so a
+    /// request answered while the stream was down is cleared, and running
+    /// ones, since only a running session can be waiting; idle projects cost
+    /// no extra request.
     private func verifyPendingInput(excluding covered: Set<String>, generation requestGeneration: Int) async {
-        let targets = pendingInput.keys.filter { !covered.contains($0) }.sorted()
+        let running = groups.flatMap { group in
+            group.sessions.lazy.filter { group.statuses?[$0.id]?.isActive == true }.map(\.id)
+        }
+        let targets = Set(pendingInput.keys).union(running).subtracting(covered).sorted()
         guard !targets.isEmpty else { return }
         let service = service
         await withTaskGroup(of: (String, Set<String>?).self) { tasks in
@@ -387,8 +392,9 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
                     tasks.cancelAll()
                     return
                 }
-                if let requests, !inputEdits.contains(id), pendingInput[id] != requests {
-                    pendingInput[id] = requests.isEmpty ? nil : requests
+                let pending = requests.flatMap { $0.isEmpty ? nil : $0 }
+                if requests != nil, !inputEdits.contains(id), pendingInput[id] != pending {
+                    pendingInput[id] = pending
                     liveRevision &+= 1
                 }
                 enqueue()

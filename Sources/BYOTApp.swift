@@ -1,3 +1,4 @@
+import AppIntents
 import SwiftUI
 
 @main
@@ -60,19 +61,41 @@ private struct BYOTRootView: View {
     @State private var isShowingAbout = false
     @State private var pairingLink: URL?
     @ObservedObject private var push = BYOTPushNotifications.shared
+    @ObservedObject private var shares = BYOTShareCenter.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        OpenCodeRootView(openAppNavigation: { isShowingAbout = true }, pairingLink: $pairingLink)
+        OpenCodeRootView(openAppNavigation: { isShowingAbout = true }, pairingLink: $pairingLink,
+                         isCovered: isShowingAbout)
             .onChange(of: push.pendingDestination) { _, destination in
                 if destination != nil { isShowingAbout = false }
             }
+            .onChange(of: shares.incoming?.id) { _, id in
+                if id != nil { isShowingAbout = false }
+            }
             .onOpenURL { url in
-                guard url.scheme?.lowercased() == OpenCodePairingPayload.scheme else { return }
-                isShowingAbout = false
-                pairingLink = url
+                // A pairing code scanned with the Camera app.
+                if url.scheme?.lowercased() == OpenCodePairingPayload.scheme {
+                    isShowingAbout = false
+                    pairingLink = url
+                    return
+                }
+                // Widget and Live Activity taps. The plain "open" link only
+                // brings byot forward.
+                if let destination = BYOTPushDestination(widgetURL: url) { push.pendingDestination = destination }
+                // The share extension names the share it just saved.
+                if let link = BYOTShareLink(url: url), !BYOTLaunch.isAutomated { shares.refresh(preferring: link.shareID) }
+            }
+            .task(id: scenePhase) {
+                // A share saved while byot couldn't be opened waits in the inbox.
+                if scenePhase == .active, !BYOTLaunch.isAutomated { shares.refresh() }
             }
             .sheet(isPresented: $isShowingAbout) {
                 AboutView(appearance: $appearance)
+            }
+            .task {
+                // Server names in "Ask OpenCode on <server>" phrases.
+                if !BYOTLaunch.isAutomated { BYOTAppShortcuts.updateAppShortcutParameters() }
             }
     }
 }
@@ -80,6 +103,7 @@ private struct BYOTRootView: View {
 private struct AboutView: View {
     @Binding var appearance: BYOTAppearance
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(BYOTLiveActivityController.enabledKey) private var showsLiveActivities = true
 
     private var version: String {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
@@ -100,6 +124,28 @@ private struct AboutView: View {
                     .accessibilityIdentifier("appearance-picker")
                 } footer: {
                     Text("System follows your iPhone’s Light or Dark Mode setting.")
+                }
+                if BYOTLiveActivityController.isWidgetExtensionEmbedded {
+                    Section {
+                        Toggle("Live Activities", isOn: $showsLiveActivities)
+                            .accessibilityIdentifier("live-activities-toggle")
+                            .onChange(of: showsLiveActivities) { _, isOn in
+                                BYOTLiveActivityController.shared.isEnabled = isOn
+                            }
+                    } footer: {
+                        Text("Follow a running turn on the Lock Screen and in the Dynamic Island, including when it needs your approval. Add the byot widget to your Home Screen to see active sessions at a glance.")
+                    }
+                }
+                Section {
+                    ShortcutsLink()
+                        .shortcutsLinkStyle(.automaticOutline)
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
+                        .accessibilityIdentifier("shortcuts-link")
+                } header: {
+                    Text("Siri & Shortcuts")
+                } footer: {
+                    Text("Say “Ask OpenCode in byot” to start a session, or “What needs me in byot” to hear which sessions are waiting on you. byot’s actions are also in the Shortcuts app.")
                 }
                 Section {
                     LabeledContent("Version", value: version)

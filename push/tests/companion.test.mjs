@@ -7,6 +7,7 @@ import {
   parseSSE,
   serverURL,
   detect,
+  notification,
   PendingNotifications,
 } from '../public/byot-notify.mjs';
 const v1 = (type, properties) => ({
@@ -209,4 +210,68 @@ test('legacy completed turns get different event IDs across companion restarts',
     return tracker.accept(v1('session.idle', { sessionID: 'ses_1' })).eventID;
   };
   assert.notEqual(finish(), finish());
+});
+
+test('permission and question alerts name their request inside the encrypted route', async (t) => {
+  const tracker = new EventTracker();
+  const permission = tracker.accept(
+    v1('permission.asked', { sessionID: 'ses_1', id: 'per_1' }),
+  );
+  assert.equal(permission.requestID, 'per_1');
+  const form = tracker.accept({
+    type: 'form.created',
+    id: 'form-event',
+    data: { form: { id: 'frm_1', sessionID: 'ses_1' } },
+  });
+  assert.equal(form.requestID, 'frm_1');
+  assert.equal(
+    tracker.accept(
+      v1('question.asked', { sessionID: 'ses_1', id: '../per_1' }),
+    ).requestID,
+    undefined,
+  );
+  tracker.accept(
+    v1('session.status', { sessionID: 'ses_2', status: { type: 'busy' } }),
+  );
+  assert.equal(
+    tracker.accept(v1('session.idle', { sessionID: 'ses_2', id: 'x' }))
+      .requestID,
+    undefined,
+  );
+  const key = Buffer.alloc(32, 9);
+  const config = {
+    server: 'http://127.0.0.1:4096',
+    username: 'opencode',
+    password: 'secret',
+    serverID: 'server',
+    subscriptionID: 'SUBSCRIPTION',
+    routeKey: key.toString('base64'),
+    directory: '/project',
+  };
+  t.mock.method(
+    globalThis,
+    'fetch',
+    async () =>
+      new Response(JSON.stringify({ id: 'ses_1', directory: '/project' }), {
+        headers: { 'content-type': 'application/json' },
+      }),
+  );
+  const open = (sealed) => {
+    const data = Buffer.from(sealed, 'base64');
+    const d = createDecipheriv('aes-256-gcm', key, data.subarray(0, 12));
+    d.setAuthTag(data.subarray(-16));
+    return JSON.parse(
+      Buffer.concat([d.update(data.subarray(12, -16)), d.final()]).toString(),
+    );
+  };
+  const actionable = await notification(config, 1, permission);
+  assert.equal(actionable.actionable, true);
+  assert.equal(open(actionable.route).requestID, 'per_1');
+  assert.ok(!JSON.stringify(actionable).includes('per_1'));
+  const legacy = await notification(config, 1, {
+    ...permission,
+    requestID: undefined,
+  });
+  assert.equal(legacy.actionable, undefined);
+  assert.equal(open(legacy.route).requestID, undefined);
 });

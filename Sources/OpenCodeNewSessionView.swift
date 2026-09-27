@@ -13,6 +13,11 @@ enum OpenCodeNewSessionWorkspace: Hashable, Sendable {
 struct OpenCodeNewSessionView: View {
     let profiles: [OpenCodeServerProfile]
     let makeClient: (OpenCodeServerProfile) -> OpenCodeClient
+    private let share: BYOTShareContent?
+    /// On regular width the split view opens the new session in its detail
+    /// column and selects it in the sidebar, instead of showing it here.
+    private let onCreated: ((OpenCodeSessionSelection) -> Void)?
+    @ObservedObject private var shares: BYOTShareCenter
     @State private var selectedServerID: UUID
     @State private var client: OpenCodeClient?
     @State private var projects: [OpenCodeProject] = []
@@ -31,15 +36,20 @@ struct OpenCodeNewSessionView: View {
     @State private var worktreeRoute: OpenCodeWorktreeRoute?
 
     init(profiles: [OpenCodeServerProfile], initialProfile: OpenCodeServerProfile,
+         share: BYOTShareContent? = nil, shares: BYOTShareCenter = .shared,
+         onCreated: ((OpenCodeSessionSelection) -> Void)? = nil,
          makeClient: @escaping (OpenCodeServerProfile) -> OpenCodeClient) {
         self.profiles = profiles
         self.makeClient = makeClient
+        self.share = share
+        self.onCreated = onCreated
+        _shares = ObservedObject(wrappedValue: shares)
         _selectedServerID = State(initialValue: initialProfile.id)
     }
 
     var body: some View {
         Group {
-            if let createdSession, let client {
+            if let createdSession, let client, onCreated == nil {
                 OpenCodeSessionView(client: client, session: createdSession,
                                     directory: createdSession.directory, attention: attention,
                                     startsWithComposerFocused: true)
@@ -92,6 +102,7 @@ struct OpenCodeNewSessionView: View {
                                 Task { await loadProjects() }
                             }
                         }
+                        if let share { shareBanner(share) }
                         Button {
                             createSession()
                         } label: {
@@ -135,6 +146,23 @@ struct OpenCodeNewSessionView: View {
             }
         }
         .background(BYOTBrand.canvas)
+        .onDisappear {
+            // Backing out keeps the share in the inbox for the next time byot opens.
+            if let share, createdSession == nil { shares.release(share) }
+        }
+    }
+
+    private func shareBanner(_ share: BYOTShareContent) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Adding to your first message", systemImage: "square.and.arrow.down")
+                .font(.cleanCaptionBold)
+                .foregroundStyle(.secondary)
+            BYOTSharePreview(content: share, textLineLimit: 3)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(BYOTBrand.controlSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
+        .accessibilityIdentifier("new-session-share")
     }
 
     /// Offered only for Git projects on servers with worktree routes.
@@ -296,8 +324,25 @@ struct OpenCodeNewSessionView: View {
                 directory = worktree.directory
             }
             do {
-                createdSession = try await client.createSession(directory: directory, title: nil)
+                let session = try await client.createSession(directory: directory, title: nil)
+                if let share { deliver(share, to: session, serverID: client.profile.id) }
+                createdSession = session
+                onCreated?(OpenCodeSessionSelection(client: client, session: session, attention: attention,
+                                                    focusesComposer: true))
             } catch { self.error = error.localizedDescription }
+        }
+    }
+
+    /// Puts the share in the new session's draft before its composer loads.
+    private func deliver(_ share: BYOTShareContent, to session: OpenCodeSession, serverID: UUID) {
+        let store = OpenCodeComposerDraftStore(serverID: serverID, sessionID: session.id,
+                                               directory: session.directory, workspace: session.workspaceID)
+        do {
+            try shares.deliver(share, into: store)
+        } catch {
+            shares.release(share)
+            shares.notice = "byot couldn’t add what you shared to this session’s message. "
+                + "It’s kept for the next time you open byot."
         }
     }
 }
