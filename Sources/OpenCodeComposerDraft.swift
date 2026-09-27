@@ -5,6 +5,8 @@ import Foundation
 struct OpenCodeComposerDraft: Codable, Equatable {
     var text = ""
     var references: [OpenCodePromptFileReference] = []
+    /// Optional so drafts saved before shell mode still decode.
+    var isShellMode: Bool? = nil
 }
 
 struct OpenCodeComposerDraftStore {

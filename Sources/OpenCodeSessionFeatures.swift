@@ -34,12 +34,14 @@ struct OpenCodeSessionFeatureSupport: Equatable, Sendable {
     var fork = false
     var compactRequiresModel = false
     var undoIncludesFileChanges = false
+    /// Direct shell commands (`!` in OpenCode's composers), never an LLM prompt.
+    var shell = false
 
     static func negotiated(_ context: OpenCodeFeatureContext) -> Self {
         if context.serverProtocol == .v1 {
             return Self(details: true, rename: true, delete: true, archive: true, children: true,
                         todoSnapshot: true, undo: true, redo: true, compact: true,
-                        fork: true, compactRequiresModel: true, undoIncludesFileChanges: true)
+                        fork: true, compactRequiresModel: true, undoIncludesFileChanges: true, shell: true)
         }
         let details = context.supports("/api/session/{sessionID}")
         let inbox = context.supports("/api/session/{sessionID}/inbox")
@@ -54,7 +56,8 @@ struct OpenCodeSessionFeatureSupport: Equatable, Sendable {
                     undo: details && inbox && stage && commit,
                     redo: details && inbox && stage && commit && context.supports("/api/session/{sessionID}/revert/clear", method: "post"),
                     compact: context.supports("/api/session/{sessionID}/compact", method: "post"),
-                    fork: context.supports("/api/session/{sessionID}/fork", method: "post"))
+                    fork: context.supports("/api/session/{sessionID}/fork", method: "post"),
+                    shell: OpenCodeShellDispatch.isSupported(context))
     }
 }
 

@@ -87,8 +87,11 @@ struct OpenCodeSessionView: View {
                         .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
                     }
 
-                    ForEach(store.messages) { message in
-                        messageRow(message).id(message.id)
+                    ForEach(OpenCodeShellTranscript.rows(for: store.messages, local: store.localShell)) { row in
+                        switch row {
+                        case .message(let message): messageRow(message).id(message.id)
+                        case .shell(let run): shellRow(run).id(run.id)
+                        }
                     }
 
                     if store.todoProgress.totalCount > 0 {
@@ -273,6 +276,18 @@ struct OpenCodeSessionView: View {
                 ).post()
                 scrollToConversationBottomIfNeeded(proxy)
             }
+            .onChange(of: store.localShell) { _, newValue in
+                guard let newValue else { return }
+                // Follow a new command and its outcome, even from an older scroll position.
+                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                switch newValue.phase {
+                case .sending: break
+                case .failed(let message):
+                    AccessibilityNotification.Announcement("Command didn’t run. \(message)").post()
+                case .unconfirmed:
+                    AccessibilityNotification.Announcement("Command result unconfirmed").post()
+                }
+            }
             .onChange(of: store.queueAnnouncementRevision) { _, _ in
                 AccessibilityNotification.Announcement("Message queued").post()
                 proxy.scrollTo("opencode-queued-prompts", anchor: .bottom)
@@ -302,6 +317,7 @@ struct OpenCodeSessionView: View {
             OpenCodeSessionComposerView(
                 store: store,
                 startsFocused: startsWithComposerFocused,
+                serverName: serverName,
                 onNewSession: { isShowingNewSession = true },
                 sessionActions: OpenCodeSessionAction.allCases.map { action in
                     OpenCodeComposerAction(name: action.rawValue, title: action.title,
@@ -416,6 +432,28 @@ struct OpenCodeSessionView: View {
         }
     }
 
+    /// v1 shell turns keep the user message's id, so they can be undone or
+    /// forked like a prompt; v2 records the run outside the prompt history.
+    private func shellRow(_ run: OpenCodeShellRun) -> some View {
+        let isUserTurn = store.messages.contains { $0.id == run.id && $0.info.role == "user" }
+        return OpenCodeShellRunView(run: run, dismiss: run.id.hasPrefix("shell-local-") && !run.isRunning
+            ? { store.dismissShellFailure() } : nil)
+            .contextMenu {
+                Button("Copy Command", systemImage: "doc.on.doc") { UIPasteboard.general.string = run.command }
+                if !run.output.isEmpty {
+                    Button("Copy Output", systemImage: "doc.on.clipboard") { UIPasteboard.general.string = run.output }
+                }
+                if isUserTurn {
+                    Button("Undo to this command", systemImage: "arrow.uturn.backward") {
+                        Task { await store.performSessionAction(.undo, messageID: run.id) }
+                    }.disabled(store.actionUnavailableReason(.undo) != nil)
+                    Button("Fork before this command", systemImage: "arrow.triangle.branch") {
+                        Task { await store.performSessionAction(.fork, messageID: run.id) }
+                    }.disabled(store.actionUnavailableReason(.fork) != nil)
+                }
+            }
+    }
+
     private func rememberAttention() {
         guard !store.messages.isEmpty || store.errorMessage != nil else { return }
         attention?.record(sessionID: store.session.id,
@@ -438,6 +476,7 @@ struct OpenCodeSessionView: View {
 
     private var hasConversationContent: Bool {
         !store.messages.isEmpty
+            || store.localShell != nil
             || !store.queuedPrompts.isEmpty
             || store.pendingActionCount > 0
     }
@@ -446,8 +485,9 @@ struct OpenCodeSessionView: View {
         Task { await store.refresh(showLoading: true) }
     }
 
+    // A running shell card already shows its own progress.
     private var showsSessionActivity: Bool {
-        store.status.isActive || store.pendingActionCount > 0
+        (store.status.isActive && !store.isShellSending) || store.pendingActionCount > 0
     }
 
     private var sessionActivityPhase: BYOTActivityPhase {

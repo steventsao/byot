@@ -10,7 +10,9 @@ struct OpenCodeSessionComposerView: View {
     private let restoredMessage: OpenCodeMessageEnvelope?
     private let onRestoreConsumed: (() -> Void)?
     private let screenshotAttachment: OpenCodePromptAttachment?
+    private let serverName: String?
     @State private var text = ""
+    @State private var isShellMode = false
     @State private var didLoadDraft = false
     @State private var draftErrorMessage: String?
     @State private var remoteReferences: [OpenCodePromptFileReference] = []
@@ -34,6 +36,7 @@ struct OpenCodeSessionComposerView: View {
         store: OpenCodeSessionStore,
         startsFocused: Bool = false,
         screenshotAttachment: OpenCodePromptAttachment? = nil,
+        serverName: String? = nil,
         onNewSession: (() -> Void)? = nil,
         sessionActions: [OpenCodeComposerAction] = [],
         restoredMessage: OpenCodeMessageEnvelope? = nil,
@@ -42,6 +45,7 @@ struct OpenCodeSessionComposerView: View {
         self.store = store
         self.startsFocused = startsFocused
         self.screenshotAttachment = screenshotAttachment
+        self.serverName = serverName
         self.onNewSession = onNewSession
         self.sessionActions = sessionActions
         self.restoredMessage = restoredMessage
@@ -62,8 +66,9 @@ struct OpenCodeSessionComposerView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("attachment-import-progress")
             }
-            slashSuggestions
-            if let files = store.remoteFiles {
+            if inShellMode { shellModeHeader }
+            else { slashSuggestions }
+            if !inShellMode, let files = store.remoteFiles {
                 OpenCodeRemoteContextView(text: $text, references: $remoteReferences, files: files,
                                           showingPicker: $isShowingRemoteFiles)
             }
@@ -87,17 +92,28 @@ struct OpenCodeSessionComposerView: View {
 
             HStack(alignment: .bottom, spacing: 4) {
                 if !isExpanded { attachmentButton }
-                TextField("Message", text: $text, axis: .vertical)
+                TextField(inShellMode ? "Shell command" : "Message", text: $text, axis: .vertical)
                     .focused($isFocused)
+                    .font(inShellMode ? .cleanMono : nil)
                     .tint(BYOTBrand.interactionTint)
                     .lineLimit(1...(dynamicTypeSize.isAccessibilitySize ? 2 : 6))
                     .padding(.horizontal, 8)
                     .padding(.top, isExpanded ? 6 : 0)
                     .frame(minHeight: isExpanded ? 0 : 44)
+                    // Commands are typed exactly; UIKit reads these traits only
+                    // when a field gains focus, so each mode gets its own field.
+                    .textInputAutocapitalization(inShellMode ? .never : nil)
+                    .autocorrectionDisabled(inShellMode)
+                    .id(inShellMode)
                     .accessibilityIdentifier("opencode-composer-message")
-                    .accessibilityLabel("Message")
-                    .submitLabel(.send)
+                    .accessibilityLabel(inShellMode ? "Shell command" : "Message")
+                    .submitLabel(inShellMode ? .go : .send)
                     .onSubmit(send)
+                    .onKeyPress(.escape) {
+                        guard inShellMode else { return .ignored }
+                        setShellMode(false, refocus: true)
+                        return .handled
+                    }
                 if !isExpanded {
                     sessionProgress
                     submitButton
@@ -118,7 +134,25 @@ struct OpenCodeSessionComposerView: View {
         .padding(.vertical, 8)
         .background(BYOTBrand.canvas)
         .onAppear(perform: loadDraft)
-        .onChange(of: text) { _, _ in saveDraft() }
+        .onChange(of: text) { old, new in
+            if !inShellMode, store.supportsShell, attachments.isEmpty, remoteReferences.isEmpty,
+               OpenCodeShellInput.entersShellMode(from: old, to: new) {
+                text = ""
+                setShellMode(true, refocus: true)
+            }
+            saveDraft()
+        }
+        .onChange(of: isShellMode) { _, _ in saveDraft() }
+        .onChange(of: store.restoredShellCommand) { _, command in
+            guard let command else { return }
+            // Never overwrite a message typed while the command was running;
+            // the failed run's card still shows the command.
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, attachments.isEmpty, remoteReferences.isEmpty {
+                text = command
+                setShellMode(true, refocus: false)
+            }
+            store.consumeRestoredShellCommand()
+        }
         .onChange(of: remoteReferences) { _, _ in saveDraft() }
         .onChange(of: attachments) { _, _ in saveDraftAttachments() }
         .task {
@@ -192,6 +226,7 @@ struct OpenCodeSessionComposerView: View {
             text = draft.text
             remoteReferences = draft.references
             attachments = savedAttachments
+            isShellMode = draft.isShellMode == true
         } catch {
             draftErrorMessage = "Couldn’t restore this draft from this iPhone."
         }
@@ -201,7 +236,8 @@ struct OpenCodeSessionComposerView: View {
     private func saveDraft() {
         guard didLoadDraft else { return }
         do {
-            try draftStore.save(OpenCodeComposerDraft(text: text, references: remoteReferences))
+            try draftStore.save(OpenCodeComposerDraft(text: text, references: remoteReferences,
+                                                      isShellMode: isShellMode ? true : nil))
         } catch {
             draftErrorMessage = "Couldn’t save this draft. Keep this session open until you send it."
         }
@@ -217,11 +253,14 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private var isExpanded: Bool {
-        Self.showsExpandedControls(
+        inShellMode || Self.showsExpandedControls(
             isFocused: isFocused, text: text,
             hasAttachments: !attachments.isEmpty || !remoteReferences.isEmpty
         )
     }
+
+    /// Shell mode only shows once the server's shell operation is confirmed.
+    private var inShellMode: Bool { isShellMode && store.supportsShell }
 
     // The composer only carries its knobs while it is in use. Sending clears the
     // draft and releases focus, so the container animates back to the single
@@ -239,13 +278,22 @@ struct OpenCodeSessionComposerView: View {
     // because the labels cannot share a line at those widths.
     @ViewBuilder
     private var controlRow: some View {
-        if dynamicTypeSize.isAccessibilitySize {
+        if inShellMode {
+            // Model, agent and effort don't apply to a command the server runs directly.
+            HStack(spacing: 4) {
+                shellToggle
+                Spacer(minLength: 8)
+                sessionProgress
+                submitButton
+            }
+        } else if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 8) {
                 if !store.composerCatalog.agents.isEmpty { agentToggle }
                 if !store.availableVariants.isEmpty { variantMenu }
                 modelButton
                 HStack(spacing: 8) {
                     attachmentButton
+                    if store.supportsShell { shellToggle }
                     Spacer(minLength: 8)
                     sessionProgress
                     submitButton
@@ -256,6 +304,7 @@ struct OpenCodeSessionComposerView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
                         attachmentButton
+                        if store.supportsShell { shellToggle }
                         modelButton
                         if !store.composerCatalog.agents.isEmpty { agentToggle }
                         if !store.availableVariants.isEmpty { variantMenu }
@@ -270,8 +319,94 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private var hasSendableContent: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if inShellMode { return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !attachments.isEmpty || !remoteReferences.isEmpty
+    }
+
+    private var hasAttachedContext: Bool { !attachments.isEmpty || !remoteReferences.isEmpty }
+
+    /// The explicit entry point beside `!`: the button reads as on while the
+    /// composer runs commands instead of sending messages.
+    private var shellToggle: some View {
+        Button { setShellMode(!inShellMode, refocus: isFocused) } label: {
+            Image(systemName: "terminal")
+                .font(.cleanControlIcon)
+                .frame(width: 44, height: 44)
+                .background(inShellMode ? BYOTBrand.selectedSurface : .clear, in: Circle())
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .disabled(!inShellMode && hasAttachedContext)
+        .accessibilityLabel("Shell mode")
+        .accessibilityValue(inShellMode ? "On" : "Off")
+        .accessibilityHint(!inShellMode && hasAttachedContext
+            ? "Remove attachments to run a shell command."
+            : inShellMode ? "Returns to messages." : "Runs commands on the server instead of messaging the agent.")
+        .accessibilityIdentifier("opencode-shell-toggle")
+    }
+
+    /// Names where a command will run, since it acts on that machine directly.
+    private var shellModeHeader: some View {
+        VStack(alignment: .leading, spacing: BYOTBrand.Space.xs) {
+            HStack(alignment: .center, spacing: BYOTBrand.Space.sm) {
+                Label("Shell", systemImage: "terminal")
+                    .font(.cleanCaptionBold)
+                if !dynamicTypeSize.isAccessibilitySize { shellLocationText }
+                Spacer(minLength: 0)
+                Button { setShellMode(false, refocus: isFocused) } label: {
+                    Image(systemName: "xmark")
+                        .font(.cleanCaptionBold)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Exit shell mode")
+                .accessibilityIdentifier("opencode-shell-exit")
+            }
+            .accessibilityElement(children: .contain)
+            if dynamicTypeSize.isAccessibilitySize { shellLocationText }
+            if let reason = store.shellUnavailableReason {
+                Text(reason)
+                    .font(.cleanCaption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("opencode-shell-unavailable")
+            }
+        }
+        .padding(.leading, 8)
+        .accessibilityIdentifier("opencode-shell-header")
+    }
+
+    private var shellLocationText: some View {
+        Text(shellLocation)
+            .font(.cleanCaption)
+            .foregroundStyle(.secondary)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+            .truncationMode(.middle)
+    }
+
+    private var shellLocation: String {
+        let project = URL(fileURLWithPath: store.directory).lastPathComponent
+        guard let serverName = serverName?.trimmedNonEmpty else { return "Runs in \(project)" }
+        return "Runs in \(project) on \(serverName)"
+    }
+
+    /// `refocus` keeps the keyboard up while the field is rebuilt for its new
+    /// keyboard traits. Focus writes land asynchronously, so callers say it.
+    private func setShellMode(_ enabled: Bool, refocus: Bool) {
+        guard enabled != isShellMode else { return }
+        isShellMode = enabled
+        if enabled {
+            AccessibilityNotification.Announcement("Shell mode. Commands run on the server.").post()
+        }
+        guard refocus else { return }
+        Task { @MainActor in
+            await Task.yield()
+            isFocused = true
+        }
     }
 
     private var modelButton: some View {
@@ -361,7 +496,7 @@ struct OpenCodeSessionComposerView: View {
             if showsStopControl { stopTurn() }
             else { send() }
         } label: {
-            Image(systemName: showsStopControl ? "stop.fill" : "arrow.up")
+            Image(systemName: showsStopControl ? "stop.fill" : (inShellMode ? "return" : "arrow.up"))
                 .font(.cleanControlIcon)
                 .foregroundStyle(BYOTBrand.primaryActionInk)
                 .frame(width: 44, height: 44)
@@ -369,9 +504,10 @@ struct OpenCodeSessionComposerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(showsStopControl ? "Stop the current turn" :
-            (store.willQueueNextPrompt ? "Queue message" : "Send message"))
+            (inShellMode ? "Run command" : (store.willQueueNextPrompt ? "Queue message" : "Send message")))
         .accessibilityIdentifier(showsStopControl ? "opencode-composer-stop" : "opencode-composer-send")
-        .disabled(!showsStopControl && (!hasSendableContent || !store.canSubmitPrompt || isImportingAttachment))
+        .disabled(!showsStopControl && (!hasSendableContent || isImportingAttachment
+            || (inShellMode ? store.shellUnavailableReason != nil : !store.canSubmitPrompt)))
     }
 
     private func attachmentChip(_ attachment: OpenCodePromptAttachment) -> some View {
@@ -443,6 +579,14 @@ struct OpenCodeSessionComposerView: View {
 
     private func send() {
         guard !isImportingAttachment else { return }
+        // A command must never fall through to the model as a prompt.
+        if isShellMode {
+            guard inShellMode, store.runShell(text) else { return }
+            text = ""
+            setShellMode(false, refocus: false)
+            isFocused = false
+            return
+        }
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if attachments.isEmpty, remoteReferences.isEmpty,
            !store.composerCatalog.commands.contains(where: { "/" + $0.name == prompt }),
@@ -643,6 +787,15 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private func restore(_ message: OpenCodeMessageEnvelope) {
+        if let command = store.shellCommand(restoring: message) {
+            text = command
+            attachments = []
+            remoteReferences = []
+            isShellMode = true
+            isFocused = true
+            return
+        }
+        isShellMode = false
         text = message.parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n")
         attachments = message.parts.compactMap { part in
             guard part.type == "file", let url = part.url, url.hasPrefix("data:"),

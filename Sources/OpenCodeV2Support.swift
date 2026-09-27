@@ -179,6 +179,13 @@ enum OpenCodeV2Normalization {
                 ),
                 parts: parts
             )
+        case "shell" where object["shellID"]?.stringValue != nil:
+            return shellMessage(
+                messageID: id, sessionID: sessionID, shellID: object["shellID"]?.stringValue ?? "",
+                command: object["command"]?.stringValue ?? "",
+                status: object["status"]?.stringValue ?? "running", exit: object["exit"],
+                output: object["output"]?.objectValue,
+                created: created, completed: time?["completed"]?.numberValue)
         default:
             let errorObject = object["error"]?.objectValue
             let text = [object["description"]?.stringValue, object["command"]?.stringValue,
@@ -192,6 +199,32 @@ enum OpenCodeV2Normalization {
                 parts: [textPart(messageID: id, sessionID: sessionID, kind: "text", ordinal: 0,
                     text: label + status + (text.isEmpty ? "" : "\n\n" + text))])
         }
+    }
+
+    /// A user-run shell command (`Session.Message.Shell`). It is neither a
+    /// prompt nor an assistant turn, so it never counts as an unanswered user
+    /// message; one `shell` part carries the command, status, exit and output.
+    static func shellMessage(
+        messageID: String, sessionID: String, shellID: String, command: String, status: String,
+        exit: OpenCodeJSONValue?, output: [String: OpenCodeJSONValue]?, created: Double, completed: Double?
+    ) -> OpenCodeMessageEnvelope {
+        var metadata: [String: OpenCodeJSONValue] = [:]
+        if let exit, exit != .null { metadata["exit"] = exit }
+        if let truncated = output?["truncated"] { metadata["truncated"] = truncated }
+        let state = OpenCodeToolState(
+            status: status, input: ["command": .string(command)], raw: nil, title: nil,
+            output: output?["output"]?.stringValue, error: nil,
+            time: OpenCodeToolTime(start: created, end: completed), metadata: metadata)
+        let part = OpenCodePart(
+            id: "\(messageID):shell", sessionID: sessionID, messageID: messageID, type: "shell",
+            text: nil, mime: nil, filename: nil, url: nil, callID: shellID, tool: "shell",
+            state: state, files: nil, description: nil, agent: nil)
+        return OpenCodeMessageEnvelope(
+            info: OpenCodeMessageInfo(
+                id: messageID, sessionID: sessionID, role: "system",
+                time: OpenCodeMessageTime(created: created, completed: completed),
+                agent: nil, modelID: nil, providerID: nil, finish: nil, error: nil),
+            parts: [part])
     }
 
     static func toolState(

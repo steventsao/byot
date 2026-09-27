@@ -29,6 +29,9 @@ struct OpenCodeV2EventReducer: Sendable {
             messages.removeAll { $0.id == data["inboxID"]?.stringValue }
             return true
         }
+        if event.type == "session.shell.started" || event.type == "session.shell.ended" {
+            return applyShell(event, sessionID: sessionID, to: &messages)
+        }
         guard let messageID else { return false }
         if event.type == "session.step.started" {
             let existing = messages.first { $0.id == messageID }
@@ -106,6 +109,38 @@ struct OpenCodeV2EventReducer: Sendable {
             messages[index].parts = updated.parts
         default: return false
         }
+        return true
+    }
+
+    // Upstream data.ts: a started shell becomes a `shell` message whose id is
+    // the event id with `msg_` in place of `evt_`; its end updates that
+    // message by shell id with the final status, exit code and output.
+    private func applyShell(_ event: OpenCodeEvent, sessionID: String,
+                            to messages: inout [OpenCodeMessageEnvelope]) -> Bool {
+        let data = event.properties
+        guard let shell = data["shell"]?.objectValue, let shellID = shell["id"]?.stringValue else { return false }
+        let created = event.created ?? 0
+        if event.type == "session.shell.started" {
+            guard event.id.hasPrefix("evt_") else { return false }
+            let messageID = "msg_" + event.id.dropFirst(4)
+            let existing = messages.first { $0.id == messageID }
+            upsert(OpenCodeV2Normalization.shellMessage(
+                messageID: messageID, sessionID: sessionID, shellID: shellID,
+                command: shell["command"]?.stringValue ?? "", status: shell["status"]?.stringValue ?? "running",
+                exit: shell["exit"], output: nil,
+                created: existing?.info.time.created ?? created, completed: nil), in: &messages)
+            return true
+        }
+        guard let index = messages.lastIndex(where: { message in
+            message.parts.contains { $0.type == "shell" && $0.callID == shellID }
+        }) else { return false }
+        let old = messages[index]
+        let command = old.parts.first { $0.type == "shell" }?.state?.input?["command"]?.stringValue
+        messages[index] = OpenCodeV2Normalization.shellMessage(
+            messageID: old.id, sessionID: sessionID, shellID: shellID,
+            command: shell["command"]?.stringValue ?? command ?? "",
+            status: shell["status"]?.stringValue ?? "exited", exit: shell["exit"],
+            output: data["output"]?.objectValue, created: old.info.time.created, completed: created)
         return true
     }
 

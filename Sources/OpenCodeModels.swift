@@ -166,6 +166,8 @@ struct OpenCodePart: Codable, Identifiable, Equatable, Sendable {
     let files: [String]?
     let description: String?
     let agent: String?
+    /// v1 marks server-authored text, such as the note preceding a user shell run.
+    var synthetic: Bool? = nil
 }
 
 struct OpenCodeToolState: Codable, Equatable, Sendable {
@@ -176,6 +178,8 @@ struct OpenCodeToolState: Codable, Equatable, Sendable {
     let output: String?
     let error: String?
     let time: OpenCodeToolTime?
+    /// v1 streams a running shell's output here before `output` is final.
+    var metadata: [String: OpenCodeJSONValue]? = nil
 }
 
 struct OpenCodeToolTime: Codable, Equatable, Sendable {

@@ -58,7 +58,13 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var isPerformingSessionAction = false
     @Published private(set) var isLoadingRelatedSessions = false
     @Published private(set) var didDeleteSession = false
+    /// The shell command sent from this device, until the transcript shows it.
+    @Published private(set) var localShell: OpenCodeLocalShell?
+    /// A command OpenCode did not run, for the composer to take back.
+    @Published private(set) var restoredShellCommand: String?
     private let featureService: (any OpenCodeSessionFeatureServicing)?
+    private let shellService: (any OpenCodeShellServicing)?
+    private var shellTask: Task<Void, Never>?
     private var featureRefreshGeneration = 0
     private var featureMutationGeneration = 0
     private var todoMutationGeneration = 0
@@ -125,6 +131,7 @@ final class OpenCodeSessionStore: ObservableObject {
         self.service = service
         self.serverID = serverID
         featureService = service as? any OpenCodeSessionFeatureServicing
+        shellService = service as? any OpenCodeShellServicing
         self.session = session
         self.directory = directory
         self.defaults = defaults
@@ -149,6 +156,7 @@ final class OpenCodeSessionStore: ObservableObject {
         modelTask?.cancel()
         promptDispatchTask?.cancel()
         queueRecoveryTask?.cancel()
+        shellTask?.cancel()
     }
 
     var pendingActionCount: Int {
@@ -157,8 +165,25 @@ final class OpenCodeSessionStore: ObservableObject {
 
     var willQueueNextPrompt: Bool {
         if durableQueue?.enabled == true { return true }
-        if revertMessageID != nil, !status.isActive, !isSending { return false }
-        return status.isActive || isSending || promptQueue.shouldQueueNextPrompt
+        if revertMessageID != nil, !status.isActive, !isSending, !isShellSending { return false }
+        return status.isActive || isSending || isShellSending || promptQueue.shouldQueueNextPrompt
+    }
+
+    var isShellSending: Bool { localShell?.isSending == true }
+
+    /// Hidden, not an error, when the server lacks a shell operation.
+    var supportsShell: Bool { shellService != nil && sessionFeatures.shell }
+
+    /// Why shell mode can't run a command right now. The command stays in the
+    /// composer; shell runs are never queued behind a turn, as in OpenCode.
+    var shellUnavailableReason: String? {
+        guard supportsShell else { return OpenCodeShellError.unsupported.localizedDescription }
+        if !canSubmitPrompt { return "Wait for the session to connect." }
+        if isShellSending { return "Wait for the current command to finish." }
+        if status.isActive || isSending || promptQueue.isTurnActive {
+            return "Shell commands run while OpenCode is idle. Stop the turn or wait for it to finish."
+        }
+        return nil
     }
 
     var canSubmitPrompt: Bool {
@@ -293,6 +318,10 @@ final class OpenCodeSessionStore: ObservableObject {
         queueRecoveryTask?.cancel()
         queueRecoveryTask = nil
         queueRecoveryID = nil
+        // Leaving does not stop a server-side command; reopening shows its record.
+        shellTask?.cancel()
+        shellTask = nil
+        localShell = nil
         publishPromptQueue()
         messageRefreshPending = false
         actionRefreshPending = false
@@ -712,7 +741,8 @@ final class OpenCodeSessionStore: ObservableObject {
         didStatusProbeFailWithFreshTranscript = false
         recoveryIdleUserMessageID = nil
         dismissUnansweredPromptRecovery()
-        if revertMessageID != nil, !status.isActive, !isSending,
+        if localShell?.isSending == false { localShell = nil }
+        if revertMessageID != nil, !status.isActive, !isSending, !isShellSending,
            let prompt = promptQueue.beginExplicitDispatch(text: trimmed, model: selectedModel, attachments: attachments,
                agent: effectiveAgentID, variant: selectedVariant,
                command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands),
@@ -728,7 +758,7 @@ final class OpenCodeSessionStore: ObservableObject {
             agent: effectiveAgentID, variant: selectedVariant,
             command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands),
             remoteReferences: remoteReferences,
-            serverIsActive: status.isActive || isSending
+            serverIsActive: status.isActive || isSending || isShellSending
         )
         publishPromptQueue()
         switch submission {
@@ -740,6 +770,68 @@ final class OpenCodeSessionStore: ObservableObject {
             schedulePromptDispatch(prompt)
             return true
         }
+    }
+
+    /// Runs `text` as a shell command in this session's directory. Returns
+    /// false, leaving the command with the caller, when it can't be sent now.
+    @discardableResult
+    func runShell(_ text: String) -> Bool {
+        let command = OpenCodeShellInput.normalized(text)
+        guard !command.isEmpty, shellUnavailableReason == nil, let shellService else { return false }
+        let shell = OpenCodeShellCommand(command: command, agent: currentAgentID, model: selectedModel)
+        let local = OpenCodeLocalShell(id: UUID(), command: command, baselineMessageIDs: Set(transcript.messages.map(\.id)))
+        localShell = local
+        restoredShellCommand = nil
+        errorMessage = nil
+        dismissUnansweredPromptRecovery()
+        let generation = lifecycleGeneration
+        shellTask = Task { [weak self] in
+            await self?.performShell(shell, local: local, service: shellService, generation: generation)
+        }
+        return true
+    }
+
+    func dismissShellFailure() {
+        guard localShell?.isSending == false else { return }
+        localShell = nil
+    }
+
+    func consumeRestoredShellCommand() { restoredShellCommand = nil }
+
+    /// The command behind a v1 shell turn, so undoing that turn restores it in
+    /// shell mode instead of the server's bookkeeping text.
+    func shellCommand(restoring message: OpenCodeMessageEnvelope) -> String? {
+        OpenCodeShellTranscript.command(forMarker: message.id, in: transcript.messages)
+    }
+
+    private func performShell(_ shell: OpenCodeShellCommand, local: OpenCodeLocalShell,
+                              service: any OpenCodeShellServicing, generation: Int) async {
+        var failure: Error?
+        do {
+            try await prepareHistoryForPromptDispatch()
+            try Task.checkCancellation()
+            try await service.runShell(sessionID: session.id, directory: directory, workspace: workspace, shell: shell)
+        } catch is CancellationError {
+            return
+        } catch { failure = error }
+        guard generation == lifecycleGeneration, isRunning, localShell?.id == local.id else { return }
+        shellTask = nil
+        if let failure {
+            let message = OpenCodeShellError.failureMessage(for: failure)
+            localShell?.phase = OpenCodeShellError.certainlyDidNotRun(failure) ? .failed(message) : .unconfirmed(message)
+            restoredShellCommand = local.command
+        } else {
+            localShell = nil
+        }
+        // Prompts sent during the run waited behind it. A v1 run reports its
+        // own busy/idle status; release them here when no turn is running.
+        if !status.isActive, promptDispatchTask == nil, let next = promptQueue.reconciledServerIdle() {
+            publishPromptQueue()
+            schedulePromptDispatch(next)
+        }
+        scheduleMessageRefresh()
+        // v1 clears an undone boundary when it accepts the run.
+        if revertMessageID != nil { await refreshSessionFeatures() }
     }
 
     func removeQueuedPrompt(_ id: UUID) {
