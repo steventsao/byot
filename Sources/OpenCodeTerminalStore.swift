@@ -355,8 +355,10 @@ final class OpenCodeTerminalStore: ObservableObject {
             }
             // The shell list is optional; a server without it still opens its default shell.
             async let shells = try? service.shells()
+            // A tab opened while the list was in flight is not in it, and has not ended.
+            let known = Set(terminals.map(\.id))
             let listed = try await service.list()
-            merge(listed)
+            merge(listed, known: known)
             self.shells = await shells ?? self.shells
             phase = .ready
             if terminals.isEmpty && !didOfferFirstTerminal {
@@ -436,7 +438,7 @@ final class OpenCodeTerminalStore: ObservableObject {
         terminals.forEach { $0.suspend() }
     }
 
-    private func merge(_ listed: [OpenCodePty]) {
+    private func merge(_ listed: [OpenCodePty], known: Set<String>) {
         var merged: [OpenCodeTerminalSession] = []
         for pty in listed {
             if let existing = terminals.first(where: { $0.id == pty.id }) {
@@ -449,7 +451,7 @@ final class OpenCodeTerminalStore: ObservableObject {
         }
         // v1 hides exited sessions; keep an ended tab visible until the user closes it.
         for session in terminals where !listed.contains(where: { $0.id == session.id }) {
-            if !session.isExited { session.markExited(code: nil) }
+            if known.contains(session.id) && !session.isExited { session.markExited(code: nil) }
             merged.append(session)
         }
         terminals = merged

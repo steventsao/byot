@@ -233,9 +233,10 @@ final class OpenCodeTerminalViewCache {
         current?.paste(nil)
     }
 
+    /// Drops closed tabs. A closed tab's emulator may still be on screen with the keyboard
+    /// up; the container takes it down after the update that shows the next tab.
     func remove(keeping ids: Set<String>) {
         for id in entries.keys where !ids.contains(id) {
-            entries[id]?.view.removeFromSuperview()
             entries[id] = nil
         }
     }
@@ -268,20 +269,31 @@ final class OpenCodeTerminalViewCache {
 final class OpenCodeTerminalContainerView: UIView {
     private weak var hosted: UIView?
 
+    /// Called from `updateUIView`. Moving focus or removing a focused emulator resizes the
+    /// keyboard, which lays SwiftUI out again at once; inside an update that is a graph
+    /// cycle that hangs the app. So the new tab goes on top now, and focus moves and the
+    /// old tab leaves once the update is over.
     func show(_ view: UIView) {
         guard hosted !== view else { return }
         let wasFocused = hosted?.isFirstResponder == true
-        hosted?.removeFromSuperview()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(view)
-        NSLayoutConstraint.activate([
-            view.leadingAnchor.constraint(equalTo: leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: trailingAnchor),
-            view.topAnchor.constraint(equalTo: topAnchor),
-            view.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
+        if view.superview === self {
+            bringSubviewToFront(view)
+        } else {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+            NSLayoutConstraint.activate([
+                view.leadingAnchor.constraint(equalTo: leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: trailingAnchor),
+                view.topAnchor.constraint(equalTo: topAnchor),
+                view.bottomAnchor.constraint(equalTo: bottomAnchor),
+            ])
+        }
         hosted = view
-        if wasFocused { view.becomeFirstResponder() }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let hosted = self.hosted else { return }
+            if wasFocused && !hosted.isFirstResponder { hosted.becomeFirstResponder() }
+            for subview in self.subviews where subview !== hosted { subview.removeFromSuperview() }
+        }
     }
 }
 

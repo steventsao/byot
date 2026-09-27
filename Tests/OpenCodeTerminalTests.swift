@@ -541,6 +541,21 @@ struct OpenCodeTerminalStoreTests {
         #expect(store.terminals.map(\.id) == ["pty_a"])
         #expect(store.terminals[0].state == .exited(code: nil))
     }
+
+    @Test("A tab opened while the list refreshes is not mistaken for an ended one")
+    func newTerminalDuringRefresh() async throws {
+        let service = FakeTerminalService(info: nil, listed: [OpenCodePty(id: "pty_a", title: "Terminal 1")])
+        let store = OpenCodeTerminalStore(service: service)
+        await store.load()
+        await service.setListDelay(.milliseconds(200))
+        let refresh = Task { await store.load() }
+        try await until { await service.listCount == 2 }
+        await store.newTerminal()
+        await refresh.value
+        #expect(store.terminals.map(\.id) == ["pty_a", "pty_new_1"])
+        #expect(!store.terminals.contains { $0.isExited })
+        #expect(store.selectedID == "pty_new_1")
+    }
 }
 
 // MARK: - Fakes
@@ -593,6 +608,8 @@ private actor FakeTerminalService: OpenCodeTerminalServicing {
     private var shellsValue: [OpenCodeTerminalShell] = []
     private var shellsError: OpenCodeConnectionError?
     private(set) var removed: [String] = []
+    private(set) var listCount = 0
+    private var listDelay: Duration?
     private var handedOut = 0
 
     init(info: OpenCodePty?, listed: [OpenCodePty] = [], availability: OpenCodeTerminalAvailability = .available,
@@ -608,6 +625,7 @@ private actor FakeTerminalService: OpenCodeTerminalServicing {
     func setConnectError(_ value: OpenCodeTerminalDisconnect?) { connectError = value }
     func setRemoveFails(_ value: Bool) { removeFails = value }
     func setUpdateFails(_ value: Bool) { updateFails = value }
+    func setListDelay(_ value: Duration?) { listDelay = value }
     func setShells(_ value: [OpenCodeTerminalShell], error: OpenCodeConnectionError? = nil) {
         shellsValue = value
         shellsError = error
@@ -625,7 +643,13 @@ private actor FakeTerminalService: OpenCodeTerminalServicing {
     }
 
     func availability() async throws -> OpenCodeTerminalAvailability { availabilityValue }
-    func list() async throws -> [OpenCodePty] { listedValue }
+    /// Answers with the PTYs as they were when the request arrived, like a slow server.
+    func list() async throws -> [OpenCodePty] {
+        let snapshot = listedValue
+        listCount += 1
+        if let listDelay { try await Task.sleep(for: listDelay) }
+        return snapshot
+    }
 
     func shells() async throws -> [OpenCodeTerminalShell] {
         if let shellsError { throw shellsError }

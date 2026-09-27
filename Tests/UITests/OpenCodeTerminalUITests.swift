@@ -12,6 +12,9 @@ final class OpenCodeTerminalUITests: XCTestCase {
         let emulator = app.descendants(matching: .any)["terminal-emulator"]
         XCTAssertTrue(emulator.waitForExistence(timeout: 5))
         XCTAssertTrue(waitForValue(of: emulator, containing: "terminal fixture"), String(describing: emulator.value))
+        // The shell's window title replaces the project name under the screen title.
+        let title = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "dev@byot: ~/byot")).firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5), app.debugDescription)
 
         // Accessory keys reach the shell: the fixture echoes esc and tab in caret notation.
         let control = app.buttons["terminal-key-control"]
@@ -46,6 +49,8 @@ final class OpenCodeTerminalUITests: XCTestCase {
         attach("terminal-keyboard")
         // The emulator is a UIKeyInput view, so type with the keyboard's own keys.
         let keyboard = app.keyboards.firstMatch
+        // A fresh simulator covers the keys with the one-time slide-to-type tip.
+        if app.buttons["Continue"].waitForExistence(timeout: 2) { app.buttons["Continue"].tap() }
         keyboard.buttons["return"].tap()
         XCTAssertTrue(waitForValue(of: emulator, containing: "ran: ^[^I|"), String(describing: emulator.value))
         for letter in ["e", "x", "i", "t"] { keyboard.keys[letter].tap() }
@@ -58,6 +63,10 @@ final class OpenCodeTerminalUITests: XCTestCase {
         app.buttons["Close tab"].tap()
         XCTAssertTrue(first.waitForNonExistence(timeout: 5))
         XCTAssertTrue(second.isSelected)
+        // Typing carries over to the tab that takes its place.
+        XCTAssertTrue(app.buttons["Hide keyboard"].waitForExistence(timeout: 5))
+        keyboard.keys["l"].tap()
+        XCTAssertTrue(waitForValue(of: emulator, containing: "$ l"), String(describing: emulator.value))
     }
 
     @MainActor func testDarkAppearanceAtLargestTextSize() throws {
@@ -76,11 +85,13 @@ final class OpenCodeTerminalUITests: XCTestCase {
         attach("terminal-dark-largest-text")
         app.buttons["terminal-actions"].tap()
         XCTAssertTrue(app.buttons["Larger text"].waitForExistence(timeout: 5))
+        // The menu follows the tab's connection, which opened after the screen first rendered.
+        XCTAssertTrue(app.buttons["Paste"].isEnabled)
         attach("terminal-actions-menu")
 
-        // The server lists shells: another one opens from the actions menu, and two
+        // The server lists shells: New terminal in the actions menu picks one, and two
         // shells sharing a name are told apart by path.
-        app.buttons["New terminal with…"].tap()
+        app.collectionViews.buttons["New terminal"].tap()
         XCTAssertTrue(app.buttons["Default shell"].waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(app.buttons["zsh"].exists)
         XCTAssertTrue(app.buttons["/bin/bash"].exists)

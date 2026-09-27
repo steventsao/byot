@@ -80,7 +80,9 @@ final class OpenCodeTerminalFixtureSocket: OpenCodeTerminalSocket, @unchecked Se
         (stream, continuation) = AsyncStream.makeStream()
         self.onExit = onExit
         if replay {
-            continuation.yield(.text("Welcome to the \u{1b}[1mbyot\u{1b}[0m terminal fixture.\r\n"
+            // The shell titles its window (OSC 0) like zsh and bash do.
+            continuation.yield(.text("\u{1b}]0;dev@byot: ~/byot\u{7}"
+                + "Welcome to the \u{1b}[1mbyot\u{1b}[0m terminal fixture.\r\n"
                 + "\u{1b}[31mred\u{1b}[0m \u{1b}[32mgreen\u{1b}[0m \u{1b}[33myellow\u{1b}[0m \u{1b}[34mblue\u{1b}[0m "
                 + "\u{1b}[35mmagenta\u{1b}[0m \u{1b}[36mcyan\u{1b}[0m \u{1b}[37mwhite\u{1b}[0m\r\n" + Self.prompt))
         }

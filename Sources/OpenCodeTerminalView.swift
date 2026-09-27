@@ -49,14 +49,11 @@ struct OpenCodeTerminalScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                VStack(spacing: 0) {
-                    Text("Terminal").font(.cleanBodySemibold)
-                    Text(store.selected?.processTitle ?? route.projectName)
-                        .font(.cleanCaption)
-                        .foregroundStyle(.secondary)
+                if let session = store.selected {
+                    OpenCodeTerminalTitle(session: session, projectName: route.projectName)
+                } else {
+                    OpenCodeTerminalTitle.label(subtitle: route.projectName)
                 }
-                .lineLimit(1)
-                .accessibilityElement(children: .combine)
             }
             ToolbarItem(placement: .topBarTrailing) { actionsMenu }
         }
@@ -156,22 +153,24 @@ struct OpenCodeTerminalScreen: View {
 
     private var actionsMenu: some View {
         Menu {
-            Button("New terminal", systemImage: "plus", action: newTerminal)
-                .disabled(store.phase != .ready || store.isCreating)
+            // Where the server lists shells, New terminal opens a shell picker in place, so
+            // the menu keeps its length at large text sizes.
             if store.phase == .ready && !store.shells.isEmpty {
-                Menu("New terminal with…", systemImage: "apple.terminal") {
+                Menu("New terminal", systemImage: "plus") {
                     OpenCodeTerminalShellPicker(shells: store.shells, open: newTerminal(shell:))
                 }
                 .disabled(store.isCreating)
+            } else {
+                Button("New terminal", systemImage: "plus", action: newTerminal)
+                    .disabled(store.phase != .ready || store.isCreating)
             }
             if let session = store.selected {
-                Button("Paste", systemImage: "doc.on.clipboard") { cache.paste() }
-                    .disabled(session.state != .connected)
-                Button("Rename…", systemImage: "pencil") { beginRename(session) }
-                if case .failed = session.state {
-                    Button("Reconnect", systemImage: "arrow.clockwise") { session.reconnectNow() }
-                }
-                Button("Close terminal", systemImage: "xmark", role: .destructive) { requestClose(session) }
+                OpenCodeTerminalSessionActions(
+                    session: session,
+                    paste: { cache.paste() },
+                    rename: { beginRename(session) },
+                    close: { requestClose(session) }
+                )
             }
             Section("Text size") {
                 Button("Larger text", systemImage: "textformat.size.larger") { adjustText(by: 1) }
@@ -226,6 +225,47 @@ struct OpenCodeTerminalScreen: View {
     private func close(_ session: OpenCodeTerminalSession) {
         closing = nil
         Task { await store.close(session) }
+    }
+}
+
+/// The screen title, with the running program's OSC title (else the project) beneath.
+/// Observes the tab so the subtitle follows the program as it changes.
+private struct OpenCodeTerminalTitle: View {
+    @ObservedObject var session: OpenCodeTerminalSession
+    let projectName: String
+
+    var body: some View {
+        Self.label(subtitle: session.processTitle ?? projectName)
+    }
+
+    static func label(subtitle: String) -> some View {
+        VStack(spacing: 0) {
+            Text("Terminal").font(.cleanBodySemibold)
+            Text(subtitle)
+                .font(.cleanCaption)
+                .foregroundStyle(.secondary)
+        }
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The selected tab's menu actions. Observes the tab so Paste and Reconnect follow its
+/// connection instead of the state when the screen last rendered.
+private struct OpenCodeTerminalSessionActions: View {
+    @ObservedObject var session: OpenCodeTerminalSession
+    let paste: () -> Void
+    let rename: () -> Void
+    let close: () -> Void
+
+    var body: some View {
+        Button("Paste", systemImage: "doc.on.clipboard", action: paste)
+            .disabled(session.state != .connected)
+        Button("Rename…", systemImage: "pencil", action: rename)
+        if case .failed = session.state {
+            Button("Reconnect", systemImage: "arrow.clockwise") { session.reconnectNow() }
+        }
+        Button("Close terminal", systemImage: "xmark", role: .destructive, action: close)
     }
 }
 
