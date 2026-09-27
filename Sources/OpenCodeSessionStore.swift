@@ -67,6 +67,12 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var forkedSession: OpenCodeSession?
     @Published private(set) var childSessions: [OpenCodeSession] = []
     @Published private(set) var parentSession: OpenCodeSession?
+    /// Children of this session's parent, including this one, when this is a
+    /// subagent session.
+    @Published private(set) var siblingSessions: [OpenCodeSession] = []
+    /// Live status of the subagent sessions this conversation started.
+    @Published private(set) var subagents = OpenCodeSubagentTracker()
+    @Published private(set) var openingSubagentID: String?
     @Published private(set) var sessionDetailsError: String?
     @Published private(set) var isPerformingSessionAction = false
     @Published private(set) var isLoadingRelatedSessions = false
@@ -261,6 +267,10 @@ final class OpenCodeSessionStore: ObservableObject {
             await self?.reloadModels()
         }
         await refresh(showLoading: true)
+        if generation == lifecycleGeneration, isRunning,
+           session.parentID != nil || OpenCodeSubagentTask.containsTask(in: transcript.messages) {
+            await loadRelatedSessions()
+        }
         if Task.isCancelled, generation == lifecycleGeneration { stop() }
     }
 
@@ -413,6 +423,7 @@ final class OpenCodeSessionStore: ObservableObject {
                     didStatusProbeFailWithFreshTranscript = false
                     applyReconciledStatus(statuses[session.id] ?? .idle)
                 }
+                applySubagentStatuses(statuses)
             case .failure(let error):
                 if statusBaseline == statusMutationGeneration {
                     didStatusProbeFailWithFreshTranscript = didApplyFreshMessages
@@ -647,15 +658,111 @@ final class OpenCodeSessionStore: ObservableObject {
         guard let featureService, !isLoadingRelatedSessions else { return }
         isLoadingRelatedSessions = true
         defer { isLoadingRelatedSessions = false }
-        do {
-            if sessionFeatures.children {
-                childSessions = try await featureService.childSessions(sessionID: session.id, directory: directory, workspace: workspace)
-            }
-            if let parentID = session.parentID ?? session.forkSourceID, sessionFeatures.details {
+        let sessionID = session.id, directory = directory, workspace = workspace
+        var errors: [Error] = []
+        if sessionFeatures.children {
+            do {
+                childSessions = OpenCodeSubagentFamily.ordered(
+                    try await featureService.childSessions(sessionID: sessionID, directory: directory, workspace: workspace))
+                trackSubagents(childSessions.map(\.id))
+            } catch { errors.append(error) }
+        }
+        if let parentID = session.parentID ?? session.forkSourceID, sessionFeatures.details {
+            do {
                 parentSession = try await featureService.sessionDetails(sessionID: parentID, directory: directory, workspace: workspace).session
-            }
-            sessionDetailsError = nil
-        } catch { sessionDetailsError = error.localizedDescription }
+            } catch { errors.append(error) }
+        }
+        // A subagent steps between its siblings: the parent's other children.
+        if let parentID = session.parentID, sessionFeatures.children {
+            do {
+                siblingSessions = try await featureService.childSessions(sessionID: parentID, directory: directory, workspace: workspace)
+            } catch { errors.append(error) }
+        }
+        sessionDetailsError = errors.first?.localizedDescription
+        // Children found here may have started before this screen opened.
+        if !subagents.activity.isEmpty,
+           let statuses = try? await service.sessionStatuses(directory: directory, workspace: workspace) {
+            applySubagentStatuses(statuses)
+        }
+    }
+
+    /// The session behind a subagent link: a known relative, or the server's
+    /// record of it. nil, with an explanation, when neither is available.
+    func relatedSession(_ sessionID: String) async -> OpenCodeSession? {
+        let known = childSessions + siblingSessions + [parentSession].compactMap { $0 }
+        if let session = known.first(where: { $0.id == sessionID }) { return session }
+        guard let featureService, sessionFeatures.details else {
+            actionErrorMessage = "This server can’t open subagent sessions."
+            return nil
+        }
+        guard openingSubagentID == nil else { return nil }
+        openingSubagentID = sessionID
+        defer { openingSubagentID = nil }
+        do {
+            return try await featureService.sessionDetails(sessionID: sessionID, directory: directory, workspace: workspace).session
+        } catch is CancellationError {
+            return nil
+        } catch {
+            actionErrorMessage = "Couldn’t open the subagent session: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    /// This session among its siblings, when it is a subagent.
+    var subagentFamily: OpenCodeSubagentFamily? {
+        OpenCodeSubagentFamily(session: session, parent: parentSession, siblings: siblingSessions)
+    }
+
+    private func trackSubagents<IDs: Sequence>(_ ids: IDs) where IDs.Element == String {
+        let new = ids.filter { !subagents.isTracking($0) }
+        guard !new.isEmpty else { return }
+        subagents.track(new)
+    }
+
+    private func applySubagentStatuses(_ statuses: [String: OpenCodeSessionStatus]) {
+        var next = subagents
+        next.applyStatuses(statuses)
+        if next != subagents { subagents = next }
+    }
+
+    /// Events about other sessions: this one's subagents, its siblings, and
+    /// its parent. Returns true when the event belongs to another session.
+    private func handleRelatedSessionEvent(_ event: OpenCodeEvent) -> Bool {
+        if ["session.created", "session.updated", "session.deleted"].contains(event.type),
+           let info: OpenCodeSession = decode(event.properties["info"]) {
+            guard info.id != session.id else { return false }
+            applyRelatedSession(info, removed: event.type == "session.deleted")
+            return true
+        }
+        let properties = event.properties
+        guard let sessionID = event.sessionID ?? properties["part"]?.objectValue?["sessionID"]?.stringValue,
+              sessionID != session.id else { return false }
+        if subagents.isTracking(sessionID) {
+            var next = subagents
+            if next.apply(event) { subagents = next }
+        }
+        return true
+    }
+
+    private func applyRelatedSession(_ info: OpenCodeSession, removed: Bool) {
+        let gone = removed || info.time.archived != nil
+        if info.parentID == session.id {
+            let next = Self.upsert(info, into: childSessions, removing: gone)
+            if next != childSessions { childSessions = next }
+            if !gone { trackSubagents([info.id]) }
+        }
+        guard let parentID = session.parentID else { return }
+        if info.parentID == parentID {
+            let next = Self.upsert(info, into: siblingSessions, removing: gone)
+            if next != siblingSessions { siblingSessions = next }
+        }
+        if info.id == parentID, !removed, info != parentSession { parentSession = info }
+    }
+
+    nonisolated static func upsert(_ session: OpenCodeSession, into sessions: [OpenCodeSession], removing: Bool) -> [OpenCodeSession] {
+        var next = sessions.filter { $0.id != session.id }
+        if !removing { next.append(session) }
+        return OpenCodeSubagentFamily.ordered(next)
     }
 
     func renameSession(_ title: String) async -> Bool {
@@ -1257,6 +1364,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     func handle(_ event: OpenCodeEvent) {
+        if handleRelatedSessionEvent(event) { return }
         if let eventSessionID = event.sessionID, eventSessionID != session.id {
             return
         }
@@ -1415,6 +1523,7 @@ final class OpenCodeSessionStore: ObservableObject {
         updateCurrentTurnActivityTracking()
         updateUnansweredPromptRecovery()
         updateUsage()
+        trackSubagents(OpenCodeSubagentTask.sessionIDs(in: transcript.messages))
         transcriptRevision &+= 1
     }
 
@@ -1956,6 +2065,16 @@ final class OpenCodeSessionStore: ObservableObject {
             from: v2QuestionResult,
             fallback: questions.filter { $0.resolvedAPIVersion == .v2 }
         )
+        // The legacy lists cover the whole directory, so they also say which
+        // subagents are waiting on the user. v2 lists are per session; for
+        // those, the tracker follows asked and replied events instead.
+        if !subagents.activity.isEmpty, case .success(let legacyPermissions) = permissionResult,
+           case .success(let legacyQuestions) = questionResult {
+            var next = subagents
+            next.applyPendingRequests(legacyPermissions.map { ($0.sessionID, $0.id) }
+                + legacyQuestions.map { ($0.sessionID, $0.id) })
+            if next != subagents { subagents = next }
+        }
         errors.append(contentsOf: [
             legacyPermissionOutcome.error,
             v2PermissionOutcome.error,

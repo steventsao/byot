@@ -287,7 +287,8 @@ enum OpenCodeV2Normalization {
                 title: nil,
                 output: toolOutputText(state["content"]),
                 error: state["error"]?.objectValue?["message"]?.stringValue,
-                time: toolTime
+                time: toolTime,
+                metadata: state["structured"]?.objectValue
             )
         default:
             // Current servers project a pending tool's partial input as a
@@ -299,7 +300,8 @@ enum OpenCodeV2Normalization {
                 title: nil,
                 output: toolOutputText(state["content"]),
                 error: nil,
-                time: toolTime
+                time: toolTime,
+                metadata: state["structured"]?.objectValue
             )
         }
     }

@@ -350,6 +350,9 @@ struct OpenCodeToolState: Codable, Equatable, Sendable {
     let output: String?
     let error: String?
     let time: OpenCodeToolTime?
+    /// What the tool recorded about itself: v1 `metadata`, v2 `structured`.
+    /// A `task` call keeps its subagent session's ID here (`sessionId`).
+    var metadata: [String: OpenCodeJSONValue]? = nil
 }
 
 struct OpenCodeToolTime: Codable, Equatable, Sendable {

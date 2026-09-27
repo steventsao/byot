@@ -1,6 +1,54 @@
 import SwiftUI
 
+/// A conversation screen. A subagent session can step to a sibling or up to
+/// its parent in place, so the host swaps the session it shows rather than
+/// deepening the navigation stack.
 struct OpenCodeSessionView: View {
+    private let client: OpenCodeClient
+    private let directory: String
+    private let attention: OpenCodeSessionAttentionStore?
+    private let startsWithComposerFocused: Bool
+    private let presentingSessionID: String?
+    @State private var session: OpenCodeSession
+    @State private var didReplaceSession = false
+
+    /// `presentingSessionID` is the conversation beneath this one on the
+    /// navigation stack, so returning to it can pop instead of push.
+    init(
+        client: OpenCodeClient,
+        session: OpenCodeSession,
+        directory: String,
+        attention: OpenCodeSessionAttentionStore? = nil,
+        startsWithComposerFocused: Bool = false,
+        presentingSessionID: String? = nil
+    ) {
+        self.client = client
+        self.directory = directory
+        self.attention = attention
+        self.startsWithComposerFocused = startsWithComposerFocused
+        self.presentingSessionID = presentingSessionID
+        _session = State(initialValue: session)
+    }
+
+    var body: some View {
+        OpenCodeSessionScreen(
+            client: client,
+            session: session,
+            directory: directory,
+            attention: attention,
+            startsWithComposerFocused: startsWithComposerFocused && !didReplaceSession,
+            presentingSessionID: presentingSessionID
+        ) { next in
+            guard next.id != session.id else { return }
+            didReplaceSession = true
+            session = next
+            AccessibilityNotification.Announcement("Showing \(OpenCodeSubagentTitle.displayTitle(of: next))").post()
+        }
+        .id(session.id)
+    }
+}
+
+struct OpenCodeSessionScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -21,6 +69,8 @@ struct OpenCodeSessionView: View {
     private let serverName: String
     private let attention: OpenCodeSessionAttentionStore?
     private let startsWithComposerFocused: Bool
+    private let presentingSessionID: String?
+    private let replaceSession: (OpenCodeSession) -> Void
 
     private let bottomAnchorID = "opencode-session-bottom"
 
@@ -28,13 +78,17 @@ struct OpenCodeSessionView: View {
         client: OpenCodeClient,
         session: OpenCodeSession,
         directory: String,
-        attention: OpenCodeSessionAttentionStore? = nil,
-        startsWithComposerFocused: Bool = false
+        attention: OpenCodeSessionAttentionStore?,
+        startsWithComposerFocused: Bool,
+        presentingSessionID: String?,
+        replaceSession: @escaping (OpenCodeSession) -> Void
     ) {
         self.client = client
         serverName = client.profile.name
         self.attention = attention
         self.startsWithComposerFocused = startsWithComposerFocused
+        self.presentingSessionID = presentingSessionID
+        self.replaceSession = replaceSession
         _store = StateObject(
             wrappedValue: OpenCodeSessionStore(
                 client: client,
@@ -280,18 +334,18 @@ struct OpenCodeSessionView: View {
             }
         }
         .background(BYOTBrand.canvas)
-        .navigationTitle(store.session.title)
+        .navigationTitle(OpenCodeSubagentTitle.displayTitle(of: store.session))
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top, spacing: 0) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
-                    sessionContext
+                    sessionHeader
                     Spacer(minLength: 8)
                     contextMeter
                     sessionStatus
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    sessionContext
+                    sessionHeader
                     HStack(spacing: 12) {
                         contextMeter
                         sessionStatus
@@ -304,21 +358,28 @@ struct OpenCodeSessionView: View {
             .background(BYOTBrand.canvas)
         }
         .safeAreaInset(edge: .bottom) {
-            OpenCodeSessionComposerView(
-                store: store,
-                startsFocused: startsWithComposerFocused,
-                onNewSession: { isShowingNewSession = true },
-                sessionActions: OpenCodeSessionAction.allCases.map { action in
-                    OpenCodeComposerAction(name: action.rawValue, title: action.title,
-                        unavailableReason: store.actionUnavailableReason(action),
-                        run: { Task { await store.performSessionAction(action) } })
-                },
-                restoredMessage: store.restoredPrompt?.message,
-                onRestoreConsumed: { store.consumeRestoredPrompt() }
-            )
+            if let family = store.subagentFamily {
+                OpenCodeSubagentBar(
+                    agentLabel: OpenCodeSubagentTitle.agentLabel(OpenCodeSubagentTitle.agent(of: store.session)),
+                    family: family,
+                    canStop: store.canStopTurn,
+                    isStopping: store.isStoppingTurn,
+                    stop: { Task { await store.stopTurn() } },
+                    open: replaceSession
+                )
+            } else {
+                composer
+            }
         }
         .environment(\.openCodeRemoteFiles, store.remoteFiles)
         .environment(\.openCodeContextLimits, store.modelContextLimits)
+        .environment(\.openCodeSubagents, OpenCodeSubagentLinks(
+            activity: store.subagents.activity,
+            children: store.childSessions,
+            openingSessionID: store.openingSubagentID
+        ) { sessionID in
+            openSubagent(sessionID)
+        })
         .environment(\.openCodeDiffNavigator, OpenCodeDiffNavigator(diffs: store.diffs, directory: store.directory) { diffID in
             diffSheet = OpenCodeDiffSheet(focusedDiffID: diffID)
         })
@@ -365,7 +426,7 @@ struct OpenCodeSessionView: View {
         .sheet(isPresented: $isShowingDetails) {
             OpenCodeSessionDetailsView(store: store) { session in
                 isShowingDetails = false
-                nextSession = OpenCodeSessionRoute(session: session)
+                open(session)
             }
         }
         .sheet(isPresented: $isShowingUsage) {
@@ -375,7 +436,8 @@ struct OpenCodeSessionView: View {
             OpenCodeTaskProgressView(progress: store.todoProgress, supportsSnapshot: store.sessionFeatures.todoSnapshot)
         }
         .navigationDestination(item: $nextSession) { route in
-            OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory, attention: attention)
+            OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory,
+                                attention: attention, presentingSessionID: store.session.id)
         }
         .navigationDestination(isPresented: $isShowingNewSession) {
             OpenCodeNewSessionView(profiles: [client.profile], initialProfile: client.profile, makeClient: { _ in client })
@@ -414,6 +476,21 @@ struct OpenCodeSessionView: View {
         }
     }
 
+    private var composer: some View {
+        OpenCodeSessionComposerView(
+            store: store,
+            startsFocused: startsWithComposerFocused,
+            onNewSession: { isShowingNewSession = true },
+            sessionActions: OpenCodeSessionAction.allCases.map { action in
+                OpenCodeComposerAction(name: action.rawValue, title: action.title,
+                    unavailableReason: store.actionUnavailableReason(action),
+                    run: { Task { await store.performSessionAction(action) } })
+            },
+            restoredMessage: store.restoredPrompt?.message,
+            onRestoreConsumed: { store.consumeRestoredPrompt() }
+        )
+    }
+
     @ViewBuilder
     private func messageRow(_ message: OpenCodeMessageEnvelope) -> some View {
         if message.info.role == "user" {
@@ -435,6 +512,47 @@ struct OpenCodeSessionView: View {
         guard !store.messages.isEmpty || store.errorMessage != nil else { return }
         attention?.record(sessionID: store.session.id,
             message: OpenCodeSessionAttentionStore.message(in: store.messages) ?? store.errorMessage)
+    }
+
+    /// A subagent names the conversation that started it; any other session
+    /// names its server and project.
+    @ViewBuilder
+    private var sessionHeader: some View {
+        if let family = store.subagentFamily {
+            OpenCodeSubagentBreadcrumb(parentTitle: family.parentTitle) { openParent(family.parentID) }
+        } else {
+            sessionContext
+        }
+    }
+
+    /// Opens a subagent from one of its task cards.
+    private func openSubagent(_ sessionID: String) {
+        Task {
+            if let session = await store.relatedSession(sessionID) { open(session) }
+        }
+    }
+
+    /// Goes to a related session. Returning to the conversation beneath this
+    /// one pops back to it; stepping to the parent from anywhere else, or to a
+    /// sibling, swaps this screen in place so the stack never loops.
+    private func open(_ session: OpenCodeSession) {
+        if session.id == presentingSessionID {
+            dismiss()
+        } else if session.id == store.session.parentID || (session.parentID != nil && session.parentID == store.session.parentID) {
+            replaceSession(session)
+        } else {
+            nextSession = OpenCodeSessionRoute(session: session)
+        }
+    }
+
+    private func openParent(_ parentID: String) {
+        if parentID == presentingSessionID {
+            dismiss()
+            return
+        }
+        Task {
+            if let parent = await store.relatedSession(parentID) { replaceSession(parent) }
+        }
     }
 
     private var sessionContext: some View {
@@ -682,7 +800,9 @@ private struct OpenCodePartView: View {
                 .disclosureGroupStyle(OpenCodeInlineDisclosureStyle())
             }
         case "tool":
-            if let state = part.state {
+            if let task = OpenCodeSubagentTask(part: part) {
+                OpenCodeSubagentTaskCard(task: task)
+            } else if let state = part.state {
                 OpenCodeToolView(name: part.tool ?? "Tool", state: state)
             }
         case "file":

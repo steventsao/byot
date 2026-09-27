@@ -218,6 +218,7 @@ struct OpenCodeV2EventReducer: Sendable {
         var input = old?.input
         var output = old?.output
         var error = old?.error
+        var metadata = old?.metadata
         var start = old?.time?.start ?? created
         var end = old?.time?.end
         switch type {
@@ -236,9 +237,11 @@ struct OpenCodeV2EventReducer: Sendable {
             // Replayable checkpoints of a running tool; show its latest output.
             guard status == "running" else { return .unchanged }
             output = OpenCodeV2Normalization.toolOutputText(data["content"]) ?? output
+            metadata = data["structured"]?.objectValue ?? metadata
         case "session.tool.success":
             guard status != "completed" && status != "error" else { return .unchanged }
             status = "completed"; output = OpenCodeV2Normalization.toolOutputText(data["content"]); end = created
+            metadata = data["structured"]?.objectValue ?? metadata
         case "session.tool.failed":
             guard status != "completed" && status != "error" else { return .unchanged }
             status = "error"
@@ -250,7 +253,7 @@ struct OpenCodeV2EventReducer: Sendable {
         }
         let state = OpenCodeToolState(status: status, input: input, raw: raw,
             title: data["metadata"]?.objectValue?["title"]?.stringValue ?? old?.title,
-            output: output, error: error, time: OpenCodeToolTime(start: start, end: end))
+            output: output, error: error, time: OpenCodeToolTime(start: start, end: end), metadata: metadata)
         let updated = part(id: id, messageID: messageID, sessionID: sessionID, type: "tool", text: nil,
                            tool: data["name"]?.stringValue ?? data["tool"]?.stringValue ?? previous?.tool, state: state)
         if let i = messages[index].parts.firstIndex(where: { $0.id == id }) {
