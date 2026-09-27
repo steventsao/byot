@@ -143,6 +143,11 @@ struct OpenCodeSessionComposerView: View {
             saveDraft()
         }
         .onChange(of: isShellMode) { _, _ in saveDraft() }
+        // A shell draft on a server without the operation becomes a message
+        // draft once that is known, rather than a composer that can't send.
+        .onChange(of: isShellUnsupported) { _, unsupported in
+            if unsupported { isShellMode = false }
+        }
         .onChange(of: store.restoredShellCommand) { _, command in
             guard let command else { return }
             // Never overwrite a message typed while the command was running;
@@ -226,7 +231,7 @@ struct OpenCodeSessionComposerView: View {
             text = draft.text
             remoteReferences = draft.references
             attachments = savedAttachments
-            isShellMode = draft.isShellMode == true
+            isShellMode = draft.isShellMode == true && !isShellUnsupported
         } catch {
             draftErrorMessage = "Couldn’t restore this draft from this iPhone."
         }
@@ -261,6 +266,8 @@ struct OpenCodeSessionComposerView: View {
 
     /// Shell mode only shows once the server's shell operation is confirmed.
     private var inShellMode: Bool { isShellMode && store.supportsShell }
+
+    private var isShellUnsupported: Bool { store.isShellSupportKnown && !store.supportsShell }
 
     // The composer only carries its knobs while it is in use. Sending clears the
     // draft and releases focus, so the container animates back to the single
@@ -319,9 +326,7 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private var hasSendableContent: Bool {
-        if inShellMode { return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !attachments.isEmpty || !remoteReferences.isEmpty
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (!inShellMode && hasAttachedContext)
     }
 
     private var hasAttachedContext: Bool { !attachments.isEmpty || !remoteReferences.isEmpty }
@@ -506,7 +511,8 @@ struct OpenCodeSessionComposerView: View {
         .accessibilityLabel(showsStopControl ? "Stop the current turn" :
             (inShellMode ? "Run command" : (store.willQueueNextPrompt ? "Queue message" : "Send message")))
         .accessibilityIdentifier(showsStopControl ? "opencode-composer-stop" : "opencode-composer-send")
-        .disabled(!showsStopControl && (!hasSendableContent || isImportingAttachment
+        // A shell draft waiting on the server's features must not send as a message.
+        .disabled(!showsStopControl && (!hasSendableContent || isImportingAttachment || isShellMode != inShellMode
             || (inShellMode ? store.shellUnavailableReason != nil : !store.canSubmitPrompt)))
     }
 

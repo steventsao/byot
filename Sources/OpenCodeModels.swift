@@ -179,7 +179,29 @@ struct OpenCodeToolState: Codable, Equatable, Sendable {
     let error: String?
     let time: OpenCodeToolTime?
     /// v1 streams a running shell's output here before `output` is final.
-    var metadata: [String: OpenCodeJSONValue]? = nil
+    var metadata: OpenCodeToolMetadata? = nil
+}
+
+/// The few tool metadata fields BYOT reads. Tools also keep large values in
+/// metadata, such as an edit's whole file before and after, so only these
+/// are decoded and retained, and a field of an unexpected type is ignored.
+struct OpenCodeToolMetadata: Codable, Equatable, Sendable {
+    var output: String?
+    var exit: Double?
+    var truncated: Bool?
+
+    init(output: String? = nil, exit: Double? = nil, truncated: Bool? = nil) {
+        self.output = output
+        self.exit = exit
+        self.truncated = truncated
+    }
+
+    init(from decoder: any Decoder) throws {
+        guard let container = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+        output = try? container.decodeIfPresent(String.self, forKey: .output)
+        exit = try? container.decodeIfPresent(Double.self, forKey: .exit)
+        truncated = try? container.decodeIfPresent(Bool.self, forKey: .truncated)
+    }
 }
 
 struct OpenCodeToolTime: Codable, Equatable, Sendable {

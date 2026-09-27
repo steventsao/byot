@@ -131,6 +131,20 @@ struct OpenCodeShellModeTests {
         #expect(stopped.output.isEmpty)
     }
 
+    @Test("Tool metadata keeps only the fields shell cards read")
+    func toolMetadataIsNarrow() throws {
+        let json = #"""
+        {"status":"completed","input":{},"output":"ok","metadata":{"output":"ok","exit":2,"truncated":true,
+         "filediff":{"file":"a.swift","before":"old body","after":"new body"}}}
+        """#
+        let state = try JSONDecoder().decode(OpenCodeToolState.self, from: Data(json.utf8))
+        #expect(state.metadata == OpenCodeToolMetadata(output: "ok", exit: 2, truncated: true))
+        // A tool that uses these names for other shapes still decodes.
+        let other = try JSONDecoder().decode(OpenCodeToolState.self, from: Data(
+            #"{"status":"completed","metadata":{"output":{"lines":3},"exit":"1"}}"#.utf8))
+        #expect(other.metadata == OpenCodeToolMetadata())
+    }
+
     @Test("The server's shell bookkeeping text is never shown as something the user typed")
     func v1MarkerAloneIsHidden() throws {
         let marker = try #require(try Self.v1ShellTurn(status: "running", output: nil).first)
@@ -294,6 +308,31 @@ struct OpenCodeShellModeTests {
         #expect(await unsupported.startedCommands.isEmpty)
     }
 
+    @MainActor
+    @Test("Undo restores a v1 run as a command, but redo that clears the composer does not")
+    func storeRestoresOnlyRealShellTurns() async throws {
+        let turn = try Self.v1ShellTurn(status: "completed", output: "hi\n")
+        let service = ShellStoreService(history: turn)
+        let store = try await Self.startedStore(service)
+        defer { store.stop() }
+        try await Self.until { store.messages.count == 2 }
+        #expect(store.shellCommand(restoring: turn[0]) == "echo hi; ls")
+        let cleared = OpenCodeMessageEnvelope(info: turn[0].info, parts: [])
+        #expect(store.shellCommand(restoring: cleared) == nil)
+    }
+
+    @MainActor
+    @Test("Shell support is unknown until the server's session features load")
+    func storeShellSupportKnown() async throws {
+        let service = ShellStoreService()
+        let store = OpenCodeSessionStore(service: service, serverID: Self.profile.id, session: Self.session,
+                                         directory: "/repo", defaults: try #require(UserDefaults(suiteName: "shell-known-\(UUID())")))
+        #expect(!store.isShellSupportKnown)
+        await store.refreshSessionFeatures()
+        #expect(store.isShellSupportKnown)
+        #expect(store.supportsShell)
+    }
+
     // MARK: Fixtures
 
     fileprivate static let profile = OpenCodeServerProfile(
@@ -393,10 +432,14 @@ private actor ShellTransport: OpenCodeHTTPTransport {
 
 private actor ShellStoreService: OpenCodeSessionServicing, OpenCodeSessionFeatureServicing, OpenCodeShellServicing {
     let supportsShell: Bool
+    let history: [OpenCodeMessageEnvelope]
     var startedCommands: [OpenCodeShellCommand] = []
     var sentTexts: [String] = []
     private var shellContinuation: CheckedContinuation<Error?, Never>?
-    init(supportsShell: Bool = true) { self.supportsShell = supportsShell }
+    init(supportsShell: Bool = true, history: [OpenCodeMessageEnvelope] = []) {
+        self.supportsShell = supportsShell
+        self.history = history
+    }
 
     func finishShell(with error: Error?) {
         shellContinuation?.resume(returning: error)
@@ -437,7 +480,7 @@ private actor ShellStoreService: OpenCodeSessionServicing, OpenCodeSessionFeatur
     }
     func capabilities() async throws -> OpenCodeProtocolCapabilities { .v1 }
     func connectedProviderModels(directory: String, workspace: String?) async throws -> [OpenCodeProviderModels] { [] }
-    func messages(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeMessageEnvelope] { [] }
+    func messages(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeMessageEnvelope] { history }
     func sendMessage(sessionID: String, directory: String, workspace: String?, model: OpenCodeModelOption?, text: String,
                      attachments: [OpenCodePromptAttachment], promptID: UUID) async throws {}
     func abort(sessionID: String, directory: String, workspace: String?) async throws -> Bool { true }

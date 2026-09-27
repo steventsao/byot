@@ -154,7 +154,7 @@ enum OpenCodeShellTranscript {
         let tools = assistant.parts.filter { $0.type == "tool" }
         guard tools.count == 1, let tool = tools.first, tool.tool == "bash", let state = tool.state,
               let command = state.input?["command"]?.stringValue else { return nil }
-        var output = state.output ?? state.metadata?["output"]?.stringValue ?? ""
+        var output = state.output ?? state.metadata?.output ?? ""
         let status: OpenCodeShellRun.Status
         switch state.status {
         case "pending", "running":
@@ -175,7 +175,7 @@ enum OpenCodeShellTranscript {
 
     private static func v2Run(_ message: OpenCodeMessageEnvelope) -> OpenCodeShellRun? {
         guard let part = message.parts.first(where: { $0.type == "shell" }), let state = part.state else { return nil }
-        let exit = state.metadata?["exit"]?.numberValue.map { Int($0) }
+        let exit = state.metadata?.exit.flatMap { Int(exactly: $0) }
         let status: OpenCodeShellRun.Status = switch state.status {
         case "running": .running
         case "timeout": .timedOut
@@ -184,7 +184,7 @@ enum OpenCodeShellTranscript {
         }
         return OpenCodeShellRun(id: message.id, command: state.input?["command"]?.stringValue ?? "",
                                 output: trimmedOutput(state.output ?? ""), status: status,
-                                isTruncated: state.metadata?["truncated"] == .bool(true))
+                                isTruncated: state.metadata?.truncated == true)
     }
 
     /// Keeps leading indentation but drops the blank lines shells often end with.

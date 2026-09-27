@@ -62,6 +62,7 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var localShell: OpenCodeLocalShell?
     /// A command OpenCode did not run, for the composer to take back.
     @Published private(set) var restoredShellCommand: String?
+    @Published private(set) var didLoadSessionFeatures = false
     private let featureService: (any OpenCodeSessionFeatureServicing)?
     private let shellService: (any OpenCodeShellServicing)?
     private var shellTask: Task<Void, Never>?
@@ -173,6 +174,10 @@ final class OpenCodeSessionStore: ObservableObject {
 
     /// Hidden, not an error, when the server lacks a shell operation.
     var supportsShell: Bool { shellService != nil && sessionFeatures.shell }
+
+    /// False until the server's session features load, so a draft saved in
+    /// shell mode can wait for them instead of being read as a message.
+    var isShellSupportKnown: Bool { shellService == nil || featureService == nil || didLoadSessionFeatures }
 
     /// Why shell mode can't run a command right now. The command stays in the
     /// composer; shell runs are never queued behind a turn, as in OpenCode.
@@ -473,6 +478,7 @@ final class OpenCodeSessionStore: ObservableObject {
             try Task.checkCancellation()
             guard generation == featureRefreshGeneration else { return }
             sessionFeatures = support
+            didLoadSessionFeatures = true
             let sessionID = session.id, directory = directory, workspace = workspace
             async let detailsResult = Self.capture { () -> OpenCodeSessionDetails? in
                 guard support.details else { return nil }
@@ -800,8 +806,11 @@ final class OpenCodeSessionStore: ObservableObject {
 
     /// The command behind a v1 shell turn, so undoing that turn restores it in
     /// shell mode instead of the server's bookkeeping text.
+    /// Redo past the last turn restores a partless message to clear the
+    /// composer, so only a message that still carries its parts is a run.
     func shellCommand(restoring message: OpenCodeMessageEnvelope) -> String? {
-        OpenCodeShellTranscript.command(forMarker: message.id, in: transcript.messages)
+        guard !message.parts.isEmpty else { return nil }
+        return OpenCodeShellTranscript.command(forMarker: message.id, in: transcript.messages)
     }
 
     private func performShell(_ shell: OpenCodeShellCommand, local: OpenCodeLocalShell,

@@ -208,9 +208,8 @@ enum OpenCodeV2Normalization {
         messageID: String, sessionID: String, shellID: String, command: String, status: String,
         exit: OpenCodeJSONValue?, output: [String: OpenCodeJSONValue]?, created: Double, completed: Double?
     ) -> OpenCodeMessageEnvelope {
-        var metadata: [String: OpenCodeJSONValue] = [:]
-        if let exit, exit != .null { metadata["exit"] = exit }
-        if let truncated = output?["truncated"] { metadata["truncated"] = truncated }
+        let truncated: Bool? = if case .bool(let value)? = output?["truncated"] { value } else { nil }
+        let metadata = OpenCodeToolMetadata(exit: exit?.numberValue, truncated: truncated)
         let state = OpenCodeToolState(
             status: status, input: ["command": .string(command)], raw: nil, title: nil,
             output: output?["output"]?.stringValue, error: nil,
