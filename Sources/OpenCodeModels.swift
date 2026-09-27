@@ -350,9 +350,33 @@ struct OpenCodeToolState: Codable, Equatable, Sendable {
     let output: String?
     let error: String?
     let time: OpenCodeToolTime?
-    /// What the tool recorded about itself: v1 `metadata`, v2 `structured`.
-    /// A `task` call keeps its subagent session's ID here (`sessionId`).
+    /// What the tool recorded about itself (v1 `metadata`, v2 `structured`),
+    /// cut down to the fields BYOT reads: a `task` call's subagent session
+    /// and whether it runs in the background. Other tools record whole files
+    /// here (an edit's before and after), which a transcript need not hold.
     var metadata: [String: OpenCodeJSONValue]? = nil
+
+    static let retainedMetadataKeys: Set<String> = ["sessionId", "sessionID", "session_id", "background"]
+
+    static func retainedMetadata(_ metadata: [String: OpenCodeJSONValue]?) -> [String: OpenCodeJSONValue]? {
+        guard let kept = metadata?.filter({ retainedMetadataKeys.contains($0.key) }), !kept.isEmpty else { return nil }
+        return kept
+    }
+}
+
+extension OpenCodeToolState {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        status = try c.decode(String.self, forKey: .status)
+        input = try c.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: .input)
+        raw = try c.decodeIfPresent(String.self, forKey: .raw)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        output = try c.decodeIfPresent(String.self, forKey: .output)
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        time = try c.decodeIfPresent(OpenCodeToolTime.self, forKey: .time)
+        // Metadata is a tool's own record; an odd shape never drops the part.
+        metadata = Self.retainedMetadata(try? c.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: .metadata))
+    }
 }
 
 struct OpenCodeToolTime: Codable, Equatable, Sendable {

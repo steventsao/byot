@@ -6,10 +6,18 @@ struct OpenCodeSubagentLinks: Sendable {
     let activity: [String: OpenCodeSubagentActivity]
     let children: [OpenCodeSession]
     let openingSessionID: String?
+    /// Whether the server can look up a session this screen hasn't listed.
+    let canOpenUnlisted: Bool
     let open: @MainActor @Sendable (_ sessionID: String) -> Void
 
     func sessionID(for task: OpenCodeSubagentTask) -> String? {
         task.sessionID ?? children.first(where: task.isChild)?.id
+    }
+
+    /// A card links only to a session it can actually open; otherwise it
+    /// stays a plain card rather than a button that fails.
+    func canOpen(_ sessionID: String) -> Bool {
+        canOpenUnlisted || children.contains { $0.id == sessionID }
     }
 }
 
@@ -35,10 +43,11 @@ struct OpenCodeSubagentTaskCard: View {
 
     var body: some View {
         let sessionID = links?.sessionID(for: task)
+        let linkedID = sessionID.flatMap { id in links?.canOpen(id) == true ? id : nil }
         let presentation = OpenCodeSubagentCardPresentation(
-            task: task, activity: sessionID.flatMap { links?.activity[$0] }, isLinked: sessionID != nil && links != nil)
+            task: task, activity: sessionID.flatMap { links?.activity[$0] }, isLinked: linkedID != nil)
         VStack(alignment: .leading, spacing: BYOTBrand.Space.sm) {
-            if let sessionID, let links {
+            if let sessionID = linkedID, let links {
                 Button { links.open(sessionID) } label: {
                     card(presentation, isOpening: links.openingSessionID == sessionID)
                 }

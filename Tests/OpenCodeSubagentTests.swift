@@ -37,6 +37,41 @@ struct OpenCodeSubagentTests {
         #expect(running.result == nil && running.duration == nil)
     }
 
+    @Test("Tool metadata keeps only the subagent fields and never drops a part")
+    func metadataRetention() throws {
+        let edit: OpenCodeJSONValue = .object([
+            "id": .string("prt_edit"), "sessionID": .string("ses_parent"), "messageID": .string("msg_a"), "type": .string("tool"),
+            "tool": .string("edit"), "state": .object(["status": .string("completed"), "input": .object([:]),
+                "metadata": .object(["filediff": .object(["before": .string("old file"), "after": .string("new file")])]),
+                "time": .object(["start": .number(1)])])])
+        let editPart = try JSONDecoder().decode(OpenCodePart.self, from: JSONEncoder().encode(edit))
+        #expect(editPart.state?.metadata == nil)
+        let odd: OpenCodeJSONValue = .object([
+            "id": .string("prt_odd"), "sessionID": .string("ses_parent"), "messageID": .string("msg_a"), "type": .string("tool"),
+            "tool": .string("task"), "state": .object(["status": .string("running"), "metadata": .string("unexpected"),
+                "output": .string("<task id=\"ses_out\" state=\"running\">")])])
+        let oddPart = try JSONDecoder().decode(OpenCodePart.self, from: JSONEncoder().encode(odd))
+        #expect(OpenCodeSubagentTask(part: oddPart)?.sessionID == "ses_out")
+        let task = try taskPart(status: "running", metadata: ["sessionId": .string("ses_child"), "parentSessionId": .string("ses_parent"),
+                                                              "model": .object(["modelID": .string("m")]), "background": .bool(true)], output: nil)
+        #expect(task.state?.metadata == ["sessionId": .string("ses_child"), "background": .bool(true)])
+    }
+
+    @Test("A card links only to a session the screen can open")
+    @MainActor
+    func linkGating() throws {
+        let task = try #require(OpenCodeSubagentTask(part: try taskPart(status: "running", metadata: ["sessionId": .string("ses_child")], output: nil)))
+        let child = session("ses_child", parent: "ses_parent")
+        let unlisted = OpenCodeSubagentLinks(activity: [:], children: [], openingSessionID: nil, canOpenUnlisted: false) { _ in }
+        #expect(unlisted.sessionID(for: task) == "ses_child" && !unlisted.canOpen("ses_child"))
+        let listed = OpenCodeSubagentLinks(activity: [:], children: [child], openingSessionID: nil, canOpenUnlisted: false) { _ in }
+        #expect(listed.canOpen("ses_child"))
+        #expect(OpenCodeSubagentLinks(activity: [:], children: [], openingSessionID: nil, canOpenUnlisted: true) { _ in }.canOpen("ses_child"))
+        let waiting = OpenCodeSubagentActivity(status: .busy, pendingRequestIDs: ["per_1"])
+        #expect(OpenCodeSubagentCardPresentation(task: task, activity: waiting, isLinked: true).detail == "Open to answer")
+        #expect(OpenCodeSubagentCardPresentation(task: task, activity: waiting, isLinked: false).detail == nil)
+    }
+
     @Test("V2 projects a tool's structured record as its metadata")
     func v2StructuredMetadata() throws {
         let state = try #require(OpenCodeV2Normalization.toolState(
@@ -127,6 +162,15 @@ struct OpenCodeSubagentTests {
         tracker.applyPendingRequests([("ses_child", "que_1"), ("ses_other", "que_2")])
         #expect(tracker.activity["ses_child"]?.pendingRequestIDs == ["que_1"])
         #expect(tracker.activity["ses_other"] == nil)
+        // v2 requests are known only from events, so a legacy snapshot (empty
+        // on a v2 server) leaves them waiting until they are answered.
+        changed = tracker.apply(OpenCodeEvent(id: "q3", type: "permission.v2.asked", properties: ["id": .string("per_v2"), "sessionID": .string("ses_child")], isV2: true))
+        #expect(changed)
+        tracker.applyPendingRequests([])
+        #expect(tracker.activity["ses_child"]?.needsResponse == true)
+        changed = tracker.apply(OpenCodeEvent(id: "q4", type: "permission.v2.replied", properties: ["requestID": .string("per_v2"), "sessionID": .string("ses_child")], isV2: true))
+        #expect(changed)
+        #expect(tracker.activity["ses_child"]?.needsResponse == false)
         tracker.applyStatuses([:])
         #expect(tracker.activity["ses_child"]?.status == .idle)
         changed = tracker.apply(OpenCodeEvent(id: "v2", type: "session.next.step.started", properties: ["sessionID": .string("ses_child")], isV2: true))

@@ -237,11 +237,11 @@ struct OpenCodeV2EventReducer: Sendable {
             // Replayable checkpoints of a running tool; show its latest output.
             guard status == "running" else { return .unchanged }
             output = OpenCodeV2Normalization.toolOutputText(data["content"]) ?? output
-            metadata = data["structured"]?.objectValue ?? metadata
+            metadata = OpenCodeToolState.retainedMetadata(data["structured"]?.objectValue) ?? metadata
         case "session.tool.success":
             guard status != "completed" && status != "error" else { return .unchanged }
             status = "completed"; output = OpenCodeV2Normalization.toolOutputText(data["content"]); end = created
-            metadata = data["structured"]?.objectValue ?? metadata
+            metadata = OpenCodeToolState.retainedMetadata(data["structured"]?.objectValue) ?? metadata
         case "session.tool.failed":
             guard status != "completed" && status != "error" else { return .unchanged }
             status = "error"

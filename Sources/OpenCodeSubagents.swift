@@ -136,10 +136,15 @@ struct OpenCodeSubagentActivity: Equatable, Sendable {
     var toolCallIDs: Set<String> = []
     /// The latest tool call, as its transcript row reads.
     var latestTool: String?
+    /// Legacy permission and question requests. The directory-wide legacy
+    /// lists replace these wholesale.
     var pendingRequestIDs: Set<String> = []
+    /// v2 permission, question, and form requests, known only from events:
+    /// v2 lists are per session, so no snapshot covers them.
+    var eventRequestIDs: Set<String> = []
 
     var toolCount: Int { toolCallIDs.count }
-    var needsResponse: Bool { !pendingRequestIDs.isEmpty }
+    var needsResponse: Bool { !pendingRequestIDs.isEmpty || !eventRequestIDs.isEmpty }
 }
 
 /// Follows the child sessions a parent knows about through the parent's own
@@ -167,8 +172,9 @@ struct OpenCodeSubagentTracker: Equatable, Sendable {
         }
     }
 
-    /// Replaces the pending requests of every followed session with a
-    /// directory-wide snapshot of `(sessionID, requestID)` pairs.
+    /// Replaces the legacy pending requests of every followed session with a
+    /// directory-wide snapshot of `(sessionID, requestID)` pairs. Requests
+    /// learned from v2 events are left alone.
     mutating func applyPendingRequests(_ requests: [(sessionID: String, id: String)]) {
         var pending: [String: Set<String>] = [:]
         for request in requests where activity[request.sessionID] != nil {
@@ -211,14 +217,18 @@ struct OpenCodeSubagentTracker: Equatable, Sendable {
             let state = OpenCodeToolState(status: "running", input: data["input"]?.objectValue, raw: nil,
                                           title: nil, output: nil, error: nil, time: nil)
             entry.latestTool = Self.toolLine(name: name, state: state)
-        case "permission.asked", "permission.v2.asked", "question.asked", "question.v2.asked", "form.created":
-            guard let id = data["id"]?.stringValue ?? data["form"]?.objectValue?["id"]?.stringValue else { return false }
+        case "permission.asked", "question.asked":
+            guard let id = data["id"]?.stringValue else { return false }
             entry.pendingRequestIDs.insert(id)
+        case "permission.v2.asked", "question.v2.asked", "form.created":
+            guard let id = data["id"]?.stringValue ?? data["form"]?.objectValue?["id"]?.stringValue else { return false }
+            entry.eventRequestIDs.insert(id)
         case "permission.replied", "permission.v2.replied", "question.replied", "question.v2.replied",
              "question.rejected", "question.v2.rejected", "form.replied", "form.cancelled":
             guard let id = data["requestID"]?.stringValue ?? data["id"]?.stringValue
                     ?? data["form"]?.objectValue?["id"]?.stringValue else { return false }
             entry.pendingRequestIDs.remove(id)
+            entry.eventRequestIDs.remove(id)
         default:
             return false
         }
@@ -334,7 +344,7 @@ struct OpenCodeSubagentCardPresentation: Equatable, Sendable {
                 detail = nil
             }
         case .needsResponse:
-            detail = "Open to answer"
+            detail = isLinked ? "Open to answer" : nil
         case .completed, .failed:
             let parts = [calls, task.duration.map(Self.durationText)].compactMap { $0 }
             detail = parts.isEmpty ? nil : parts.joined(separator: " · ")

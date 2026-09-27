@@ -376,7 +376,8 @@ struct OpenCodeSessionScreen: View {
         .environment(\.openCodeSubagents, OpenCodeSubagentLinks(
             activity: store.subagents.activity,
             children: store.childSessions,
-            openingSessionID: store.openingSubagentID
+            openingSessionID: store.openingSubagentID,
+            canOpenUnlisted: store.sessionFeatures.details
         ) { sessionID in
             openSubagent(sessionID)
         })
@@ -518,7 +519,10 @@ struct OpenCodeSessionScreen: View {
     /// names its server and project.
     @ViewBuilder
     private var sessionHeader: some View {
-        if let family = store.subagentFamily {
+        // The breadcrumb needs a way back: the parent beneath on the stack,
+        // or one the server can look up.
+        if let family = store.subagentFamily,
+           family.parent != nil || family.parentID == presentingSessionID || store.sessionFeatures.details {
             OpenCodeSubagentBreadcrumb(parentTitle: family.parentTitle) { openParent(family.parentID) }
         } else {
             sessionContext

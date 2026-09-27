@@ -36,26 +36,30 @@ struct OpenCodeSessionDetailsView: View {
                         .accessibilityIdentifier("session-parent")
                     }
                 }
-                Section {
-                    ForEach(store.childSessions) { child in
-                        Button { openSession(child) } label: {
-                            OpenCodeSubagentSessionRow(session: child, activity: store.subagents.activity[child.id])
+                // Subagents rarely start their own; a subagent session lists
+                // children only when it has some.
+                if store.session.parentID == nil || !store.childSessions.isEmpty {
+                    Section {
+                        ForEach(store.childSessions) { child in
+                            Button { openSession(child) } label: {
+                                OpenCodeSubagentSessionRow(session: child, activity: store.subagents.activity[child.id])
+                            }
+                            .accessibilityHint("Opens the subagent session")
+                            .accessibilityIdentifier("session-child-\(child.id)")
                         }
-                        .accessibilityHint("Opens the subagent session")
-                        .accessibilityIdentifier("session-child-\(child.id)")
-                    }
-                    if store.isLoadingRelatedSessions && store.childSessions.isEmpty {
-                        ProgressView("Loading subagents")
-                    } else if !store.sessionFeatures.children {
-                        Text("Subagent sessions are unavailable on this server.").foregroundStyle(.secondary)
-                    } else if store.childSessions.isEmpty {
-                        Text("No subagents yet").foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text("Subagents")
-                } footer: {
-                    if !store.childSessions.isEmpty {
-                        Text("Sessions this conversation started with the task tool. They keep their own transcripts and totals.")
+                        if store.isLoadingRelatedSessions && store.childSessions.isEmpty {
+                            ProgressView("Loading subagents")
+                        } else if !store.sessionFeatures.children {
+                            Text("Subagent sessions are unavailable on this server.").foregroundStyle(.secondary)
+                        } else if store.childSessions.isEmpty {
+                            Text("No subagents yet").foregroundStyle(.secondary)
+                        }
+                    } header: {
+                        Text("Subagents")
+                    } footer: {
+                        if !store.childSessions.isEmpty {
+                            Text("Sessions this conversation started with the task tool. They keep their own transcripts and totals.")
+                        }
                     }
                 }
                 Section("History") {
