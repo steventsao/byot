@@ -60,6 +60,8 @@ struct OpenCodeDiffReviewView: View {
     let sessionDiffs: [OpenCodeDiff]
     @State private var path: [String] = []
     @State private var didOpenRequestedFile = false
+    /// Keeps state overlays below the source picker; the menu picker grows with Dynamic Type.
+    @ScaledMetric(relativeTo: .body) private var pickerClearance: CGFloat = 72
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -93,7 +95,9 @@ struct OpenCodeDiffReviewView: View {
                     }
                 }
             }
-            .overlay { stateOverlay }
+            .overlay {
+                stateOverlay.padding(.top, store.sources.count > 1 ? pickerClearance : 0)
+            }
             .refreshable { await store.refresh(latestTurnMessageID: latestTurnMessageID) }
             .navigationTitle("Changes")
             .navigationBarTitleDisplayMode(.inline)
@@ -191,8 +195,6 @@ struct OpenCodeDiffReviewView: View {
             } description: {
                 if let caption { Text(caption) }
             }
-            // Keep the source picker reachable above the empty state.
-            .padding(.top, store.sources.count > 1 ? 72 : 0)
         default:
             EmptyView()
         }
@@ -367,7 +369,8 @@ struct OpenCodeDiffFileView: View {
                     .accessibilityIdentifier("diff-next-file")
             }
         }
-        .task(id: "\(fileID)|\(file?.patch?.utf8.count ?? -1)") { await parse() }
+        // Keyed by the whole file so a refresh that edits a patch in place reparses it.
+        .task(id: file) { await parse() }
     }
 
     private func header(_ file: OpenCodeDiffFile) -> some View {
@@ -478,19 +481,24 @@ struct OpenCodeDiffFileView: View {
         guard let patch = file?.patch else {
             parsed = OpenCodeUnifiedDiff()
             rows = []
+            columns = 0
             return
         }
         expandedGaps = []
-        let result = await Task.detached(priority: .userInitiated) { OpenCodeUnifiedDiff.parse(patch) }.value
+        // Width covers every line, collapsed or not, so expanding a gap never re-lays the page.
+        let (result, width) = await Task.detached(priority: .userInitiated) {
+            let diff = OpenCodeUnifiedDiff.parse(patch)
+            return (diff, OpenCodeDiffRow.columns(in: diff))
+        }.value
         guard !Task.isCancelled else { return }
         parsed = result
+        columns = width
         rebuildRows()
     }
 
     private func rebuildRows() {
         guard let parsed else { rows = []; return }
         rows = OpenCodeDiffRow.rows(for: parsed, expandedGaps: expandedGaps)
-        columns = OpenCodeDiffRow.columns(in: rows)
     }
 
     private func expand(_ id: String) {
@@ -556,6 +564,7 @@ private struct OpenCodeDiffLineRow: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityAction(named: "Copy line") { UIPasteboard.general.string = line.text }
     }
 
     private var text: String {

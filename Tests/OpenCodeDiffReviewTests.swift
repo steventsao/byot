@@ -82,6 +82,11 @@ struct OpenCodeUnifiedDiffTests {
         let middle = OpenCodeUnifiedDiff.parse("@@ -1,12 +1,12 @@\n-a\n+A\n" + (1...10).map { " \($0)" }.joined(separator: "\n") + "\n-z\n+Z\n")
         let middleRows = OpenCodeDiffRow.rows(for: middle, expandedGaps: [])
         #expect(middleRows.contains(.gap(id: "h0-gap2", hiddenLines: 4)))
+
+        // The page width covers hidden context too, so expanding a gap never widens it.
+        let wideContext = (1...20).map { $0 == 2 ? " " + String(repeating: "w", count: 40) : " line \($0)" }
+        let wide = OpenCodeUnifiedDiff.parse("@@ -1,21 +1,21 @@\n" + (wideContext + ["-old", "+new"]).joined(separator: "\n") + "\n")
+        #expect(OpenCodeDiffRow.columns(in: wide) == 40)
     }
 
     @Test("Display text expands tabs, bounds huge lines and measures wide characters")
@@ -310,9 +315,35 @@ struct OpenCodeDiffReviewStoreTests {
         await store.open(OpenCodeDiffReviewRequest(), latestTurnMessageID: "msg", sessionDiffs: [])
         if case .failed = store.phase {} else { Issue.record("An unreachable server must offer a retry") }
         #expect(store.source == nil)
+        #expect(store.sources.isEmpty)
         await store.refresh()
         #expect(store.source == .turn)
         #expect(store.files.map(\.path) == ["a.txt"])
+    }
+
+    @Test("Changes controls hide only when the server offers nothing to compare")
+    func reviewAvailability() async {
+        let v2WithoutVcs = OpenCodeDiffReviewStore(service: FakeDiffService(availability: .none), directory: "/repo")
+        #expect(await !v2WithoutVcs.isReviewAvailable())
+        let onDefaultBranch = OpenCodeDiffAvailability(branch: .init(current: "main", defaultBranch: "main"))
+        #expect(await !OpenCodeDiffReviewStore(service: FakeDiffService(availability: onDefaultBranch), directory: "/repo").isReviewAvailable())
+        #expect(await OpenCodeDiffReviewStore(service: FakeDiffService(availability: .init(turn: true)), directory: "/repo").isReviewAvailable())
+        #expect(await OpenCodeDiffReviewStore(service: FakeDiffService(availability: .init(uncommitted: true)), directory: "/repo").isReviewAvailable())
+        // An unreachable server keeps the controls so the reviewer can show a retry.
+        let offline = FakeDiffService(availability: .none, availabilityFailures: 1)
+        #expect(await OpenCodeDiffReviewStore(service: offline, directory: "/repo").isReviewAvailable())
+    }
+
+    @Test("A failed negotiation after a successful one hides the old sources")
+    func failedReopenClearsSources() async {
+        let service = FakeDiffService(availability: .init(turn: true, uncommitted: true), diffs: [.turn: [diff]])
+        let store = OpenCodeDiffReviewStore(service: service, directory: "/repo")
+        await store.open(OpenCodeDiffReviewRequest(), latestTurnMessageID: "msg", sessionDiffs: [])
+        #expect(store.sources == [.turn, .uncommitted])
+        await service.failNextAvailability()
+        await store.open(OpenCodeDiffReviewRequest(), latestTurnMessageID: "msg", sessionDiffs: [])
+        #expect(store.sources.isEmpty)
+        #expect(store.source == nil)
     }
 
     @Test("Refreshing the latest turn follows a newer prompt; a pinned turn stays put")
@@ -363,6 +394,8 @@ private actor FakeDiffService: OpenCodeDiffReviewServicing {
     }
 
     private var availabilityFailures: Int
+
+    func failNextAvailability() { availabilityFailures += 1 }
 
     func availability() async throws -> OpenCodeDiffAvailability {
         guard availabilityFailures == 0 else {

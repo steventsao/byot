@@ -154,6 +154,8 @@ struct OpenCodeUnifiedDiff: Equatable, Sendable {
         var header: String {
             "@@ -\(oldStart),\(oldCount) +\(newStart),\(newCount) @@"
         }
+
+        var title: String { section.map { "\(header) \($0)" } ?? header }
     }
 
     var hunks: [Hunk] = []
@@ -311,8 +313,7 @@ enum OpenCodeDiffRow: Identifiable, Equatable, Sendable {
     static func rows(for diff: OpenCodeUnifiedDiff, expandedGaps: Set<String>) -> [OpenCodeDiffRow] {
         var rows: [OpenCodeDiffRow] = []
         for hunk in diff.hunks {
-            let title = hunk.section.map { "\(hunk.header) \($0)" } ?? hunk.header
-            rows.append(.hunk(id: "h\(hunk.id)", title: title))
+            rows.append(.hunk(id: "h\(hunk.id)", title: hunk.title))
             var index = 0
             while index < hunk.lines.count {
                 guard hunk.lines[index].kind == .context else {
@@ -352,14 +353,10 @@ enum OpenCodeDiffRow: Identifiable, Equatable, Sendable {
         }
     }
 
-    /// Longest rendered line, in monospaced columns, so every row shares one width.
-    static func columns(in rows: [OpenCodeDiffRow]) -> Int {
-        rows.reduce(0) { longest, row in
-            switch row {
-            case .line(_, let line): max(longest, displayColumns(displayText(line.text)))
-            case .hunk(_, let title): max(longest, displayColumns(title))
-            case .gap: longest
-            }
+    /// Longest line in the whole patch, hidden context included, in monospaced columns.
+    static func columns(in diff: OpenCodeUnifiedDiff) -> Int {
+        diff.hunks.reduce(0) { longest, hunk in
+            hunk.lines.reduce(max(longest, displayColumns(hunk.title))) { max($0, displayColumns(displayText($1.text))) }
         }
     }
 }

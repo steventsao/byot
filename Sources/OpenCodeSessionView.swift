@@ -7,6 +7,9 @@ struct OpenCodeSessionView: View {
     @StateObject private var store: OpenCodeSessionStore
     @StateObject private var diffReview: OpenCodeDiffReviewStore
     @State private var diffRequest: OpenCodeDiffReviewRequest?
+    /// Starts shown so v1 servers don't shift the toolbar; hidden once negotiation
+    /// finds nothing to compare.
+    @State private var canReviewChanges = true
     @State private var isShowingQueue = false
     @ObservedObject private var push = BYOTPushNotifications.shared
     @State private var notificationError: String?
@@ -325,9 +328,9 @@ struct OpenCodeSessionView: View {
             )
         }
         .environment(\.openCodeRemoteFiles, store.remoteFiles)
-        .environment(\.openCodeReviewChanges, OpenCodeReviewChangesAction { request in
+        .environment(\.openCodeReviewChanges, isReviewChangesVisible ? OpenCodeReviewChangesAction { request in
             diffRequest = request
-        })
+        } : nil)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -335,8 +338,10 @@ struct OpenCodeSessionView: View {
                         .accessibilityIdentifier("session-queue")
                     Button("Session details", systemImage: "info.circle") { isShowingDetails = true }
                     Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
-                    Button("Review changes", systemImage: "plusminus") { diffRequest = OpenCodeDiffReviewRequest() }
-                        .accessibilityIdentifier("session-menu-review-changes")
+                    if isReviewChangesVisible {
+                        Button("Review changes", systemImage: "plusminus") { diffRequest = OpenCodeDiffReviewRequest() }
+                            .accessibilityIdentifier("session-menu-review-changes")
+                    }
                     if canOpenTerminal {
                         Button("Terminal", systemImage: "apple.terminal") {
                             terminalRoute = OpenCodeTerminalRoute(
@@ -363,13 +368,15 @@ struct OpenCodeSessionView: View {
                 .accessibilityLabel("Session actions")
                 .accessibilityIdentifier("session-actions")
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Changes", systemImage: "plusminus") {
-                    diffRequest = OpenCodeDiffReviewRequest()
+            if isReviewChangesVisible {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Changes", systemImage: "plusminus") {
+                        diffRequest = OpenCodeDiffReviewRequest()
+                    }
+                    .labelStyle(.iconOnly)
+                    .tint(BYOTBrand.chromeTint)
+                    .accessibilityHint("Review files changed in this session")
                 }
-                .labelStyle(.iconOnly)
-                .tint(BYOTBrand.chromeTint)
-                .accessibilityHint("Review files changed in this session")
             }
         }
         .sheet(isPresented: $isShowingQueue) {
@@ -421,6 +428,7 @@ struct OpenCodeSessionView: View {
         } message: { Text(notificationError ?? "") }
         .task { await store.start() }
         .task { canOpenTerminal = await terminalService.isAvailable() }
+        .task { canReviewChanges = await diffReview.isReviewAvailable() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.refreshAfterForeground() }
         }
@@ -448,6 +456,9 @@ struct OpenCodeSessionView: View {
             OpenCodeMessageView(message: message, turnMessageID: turnMessageID(for: message))
         }
     }
+
+    /// A legacy session snapshot is reviewable even where negotiation found nothing else.
+    private var isReviewChangesVisible: Bool { canReviewChanges || !store.diffs.isEmpty }
 
     /// The user prompt an assistant reply answers: its declared parent, else the
     /// nearest earlier prompt in the transcript.
@@ -697,6 +708,7 @@ private struct OpenCodePartView: View {
 
 /// A turn's patch summary; opens the reviewer pinned to that turn.
 private struct OpenCodePatchPartRow: View {
+    @Environment(\.isEnabled) private var isEnabled
     let files: [String]
     let action: () -> Void
 
@@ -718,10 +730,13 @@ private struct OpenCodePatchPartRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .truncationMode(.middle)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+                // Where the server can't review changes the row is a plain summary.
+                if isEnabled {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
             }
             .padding(.vertical, 3)
             .frame(minHeight: 44, alignment: .leading)
@@ -729,7 +744,7 @@ private struct OpenCodePatchPartRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
-        .accessibilityHint("Reviews the changes from this turn")
+        .accessibilityHint(isEnabled ? "Reviews the changes from this turn" : "")
         .accessibilityIdentifier("transcript-patch")
     }
 }

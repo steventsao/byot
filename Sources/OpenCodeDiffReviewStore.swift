@@ -62,7 +62,10 @@ final class OpenCodeDiffReviewStore: ObservableObject {
             availability = try await service.availability()
         } catch {
             guard openGeneration == generation, !Task.isCancelled, !(error is CancellationError) else { return }
+            // Sources from an earlier open no longer describe this server; hide the picker.
+            sources = []
             source = nil
+            branch = nil
             phase = .failed(error.localizedDescription)
             return
         }
@@ -78,6 +81,14 @@ final class OpenCodeDiffReviewStore: ObservableObject {
             return
         }
         await load(first)
+    }
+
+    /// Whether the session's Changes controls should show. They hide only when the
+    /// server positively offers nothing to compare (an OpenCode 2 schema without VCS
+    /// diffs); an unreachable server keeps them so the reviewer can explain and retry.
+    func isReviewAvailable() async -> Bool {
+        guard let availability = try? await service.availability() else { return true }
+        return availability.turn || availability.uncommitted || availability.branch?.comparesWithDefault == true
     }
 
     func select(_ source: OpenCodeDiffSource) async {
