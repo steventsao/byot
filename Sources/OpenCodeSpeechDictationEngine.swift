@@ -20,6 +20,7 @@ final class OpenCodeSpeechDictationEngine: OpenCodeDictationEngine {
     private var observers: [NSObjectProtocol] = []
     private var isSessionActive = false
     private var session = 0
+    private var transcript = OpenCodeDictationTranscript()
     private var events: (@MainActor (OpenCodeDictationEvent) -> Void)?
 
     var isSupported: Bool { recognizer != nil }
@@ -55,8 +56,16 @@ final class OpenCodeSpeechDictationEngine: OpenCodeDictationEngine {
         guard recognizer.isAvailable else { throw OpenCodeDictationFailure.unavailable }
 
         let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
-        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        do {
+            try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+            // The composer's start haptic plays once the microphone is live,
+            // which recording would otherwise mute.
+            try audioSession.setAllowHapticsAndSystemSoundsDuringRecording(true)
+            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            // Activation is refused while a call or another app holds the input.
+            throw OpenCodeDictationFailure.noMicrophone
+        }
         isSessionActive = true
 
         let audioEngine = AVAudioEngine()
@@ -90,7 +99,9 @@ final class OpenCodeSpeechDictationEngine: OpenCodeDictationEngine {
         self.audioEngine = audioEngine
         self.request = request
         self.events = events
-        task = Self.recognize(request, with: recognizer, deliver: deliver)
+        transcript = OpenCodeDictationTranscript()
+        task = Self.recognize(request, with: recognizer,
+                              deliverResult: Self.resultDeliverer(to: self, session: session), deliver: deliver)
         observers = Self.observeInterruptions(of: audioEngine, interrupt: Self.interrupter(for: self, session: session))
         return onDevice
     }
@@ -118,17 +129,23 @@ final class OpenCodeSpeechDictationEngine: OpenCodeDictationEngine {
             task = nil
             request = nil
             self.events = nil
-        case .transcript, .level:
+        case .transcript, .level, .interrupted:
             break
         }
         events(event)
     }
 
-    /// A call, Siri, or a new audio route (headphones in or out) ends the
-    /// microphone; whatever was recognized so far still arrives.
-    private func interrupted(session: Int) {
+    private func receiveResult(_ text: String, endsSegment: Bool, isFinal: Bool, session: Int) {
         guard session == self.session else { return }
-        finish()
+        let full = transcript.update(text, endsSegment: endsSegment || isFinal)
+        receive(.transcript(full, isFinal: isFinal), session: session)
+    }
+
+    /// A call, Siri, or a new audio route (headphones in or out) ends the
+    /// microphone; the controller finishes, so whatever was recognized so far
+    /// still arrives.
+    private func interrupted(session: Int) {
+        receive(.interrupted, session: session)
     }
 
     private func stopAudio() {
@@ -172,6 +189,18 @@ final class OpenCodeSpeechDictationEngine: OpenCodeDictationEngine {
         }
     }
 
+    nonisolated private static func resultDeliverer(
+        to engine: OpenCodeSpeechDictationEngine, session: Int
+    ) -> @Sendable (String, Bool, Bool) -> Void {
+        { [weak engine] text, endsSegment, isFinal in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    engine?.receiveResult(text, endsSegment: endsSegment, isFinal: isFinal, session: session)
+                }
+            }
+        }
+    }
+
     nonisolated private static func interrupter(
         for engine: OpenCodeSpeechDictationEngine, session: Int
     ) -> @Sendable () -> Void {
@@ -197,11 +226,15 @@ final class OpenCodeSpeechDictationEngine: OpenCodeDictationEngine {
 
     nonisolated private static func recognize(
         _ request: SFSpeechAudioBufferRecognitionRequest, with recognizer: SFSpeechRecognizer,
+        deliverResult: @escaping @Sendable (String, _ endsSegment: Bool, _ isFinal: Bool) -> Void,
         deliver: @escaping @Sendable (OpenCodeDictationEvent) -> Void
     ) -> SFSpeechRecognitionTask {
         recognizer.recognitionTask(with: request) { result, error in
             if let result {
-                deliver(.transcript(result.bestTranscription.formattedString, isFinal: result.isFinal))
+                // Metadata comes with the end of an utterance, after which the
+                // recognizer may start over without the words before the pause.
+                deliverResult(result.bestTranscription.formattedString,
+                              result.speechRecognitionMetadata != nil, result.isFinal)
             }
             if let error {
                 deliver(.ended(OpenCodeDictationFailure(error)))

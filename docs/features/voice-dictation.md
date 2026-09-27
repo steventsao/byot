@@ -18,6 +18,9 @@ app have no dictation of their own (the web app only probes for the browser's
 - Words stream into the draft after anything already typed, with one space.
   Mid-sentence, the recognizer's sentence capital is lowered ("Please fix…");
   "I", acronyms and names like "OpenCode" keep their case.
+- Pauses don't lose words. After an utterance ends, recent recognizers start a
+  fresh transcription; the engine keeps the earlier segments and joins them,
+  unless the recognizer's new result already carries them.
 - Dictation ends, keeping every word so far, on Done or a second tap of the
   microphone, after 15 seconds without new words, when the person types or
   edits, on Send, on entering shell mode, when the app goes to the background,
@@ -42,7 +45,8 @@ model names are passed as contextual strings to improve recognition.
 - Accessibility text sizes wrap the header and give Done its own row; all
   controls keep 44 pt targets.
 - Reduce Motion stops the microphone pulse and holds the level bars still.
-- Start and stop play the system start/stop haptics.
+- Start and stop play the system start/stop haptics; the audio session allows
+  haptics while recording so the start haptic isn't muted by the microphone.
 
 ## Testing
 
@@ -50,5 +54,6 @@ model names are passed as contextual strings to improve recognition.
 (permissions, streaming, edits, Done, timeouts, failures, the level meter).
 `OpenCodeDictationUITests` launches with `--dictation-fixture`, a DEBUG-only
 scripted engine, to check the composer in light, dark and AX XXXL. Real speech
-needs a device: dictate a sentence, pause, tap Done, and check the final text,
-then repeat after denying Microphone in Settings.
+needs a device: dictate two sentences with a pause between them, tap Done, and
+check both are in the final text; then repeat after denying Microphone in
+Settings, and once during a call (expect the "No microphone" note).

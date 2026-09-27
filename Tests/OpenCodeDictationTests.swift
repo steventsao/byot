@@ -50,6 +50,27 @@ struct OpenCodeDictationTests {
         #expect(draft.owns("Run tests"))
     }
 
+    @Test("A recognizer that restarts after a pause keeps the words before it")
+    func joinsSegmentsAfterPause() {
+        var transcript = OpenCodeDictationTranscript()
+        #expect(transcript.update("Fix the build", endsSegment: false) == "Fix the build")
+        #expect(transcript.update("Fix the build.", endsSegment: true) == "Fix the build.")
+        #expect(transcript.update("Then", endsSegment: false) == "Fix the build. Then")
+        #expect(transcript.update("Then run the tests", endsSegment: false) == "Fix the build. Then run the tests")
+        #expect(transcript.update("", endsSegment: true) == "Fix the build.", "An empty result never drops words")
+    }
+
+    @Test("A recognizer that keeps earlier words isn't doubled, even re-punctuated")
+    func keepsContinuousTranscript() {
+        var transcript = OpenCodeDictationTranscript()
+        _ = transcript.update("hello world", endsSegment: true)
+        #expect(transcript.update("Hello, world. Again", endsSegment: false) == "Hello, world. Again")
+        #expect(OpenCodeDictationTranscript.join("Rename the", "Function") == "Rename the function",
+                "A new segment mid-sentence isn't capitalized")
+        #expect(OpenCodeDictationTranscript.join("Go to", "Tomorrow works") == "Go to tomorrow works",
+                "Matching is by whole words")
+    }
+
     // MARK: Permissions
 
     @Test("Refusals block before anything is requested; undecided permissions are asked one at a time")
@@ -152,6 +173,20 @@ struct OpenCodeDictationTests {
         #expect(engine.finishes == 1)
         engine.emit(.transcript("Add a test.", isFinal: true))
         #expect(text.value == "Add a test.")
+        #expect(controller.phase == .idle)
+    }
+
+    @Test("An audio interruption stops listening and still takes the final wording")
+    func interruptionFinishes() async throws {
+        let (engine, controller, text) = try await Self.listening(base: "")
+        engine.emit(.transcript("call me", isFinal: false))
+        engine.emit(.level(0.8))
+        engine.emit(.interrupted)
+        #expect(controller.phase == .finishing)
+        #expect(controller.meter.level == 0)
+        #expect(engine.finishes == 1)
+        engine.emit(.transcript("Call me.", isFinal: true))
+        #expect(text.value == "Call me.")
         #expect(controller.phase == .idle)
     }
 

@@ -78,6 +78,8 @@ struct OpenCodeDictationStatusView: View {
                 .font(.cleanCaption)
                 .foregroundStyle(.secondary)
                 .opacity(dictation.phase == .preparing ? 0 : 1)
+                // Before the engine starts, where audio goes isn't known yet.
+                .accessibilityHidden(dictation.phase == .preparing)
         }
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .combine)

@@ -58,6 +58,38 @@ struct OpenCodeDictationDraft: Equatable {
     }
 }
 
+/// One transcript across the recognizer's segments. After a pause, recent
+/// recognizers mark the segment finished and start transcribing afresh without
+/// the earlier words; those are kept here so a second sentence doesn't replace
+/// the first. A recognizer that still carries the earlier words is left as is.
+struct OpenCodeDictationTranscript: Equatable {
+    private(set) var committed = ""
+
+    /// The full transcript so far. `endsSegment` is the recognizer's end of an
+    /// utterance, after which it may restart from an empty transcription.
+    mutating func update(_ text: String, endsSegment: Bool) -> String {
+        let full = Self.join(committed, text)
+        if endsSegment { committed = full }
+        return full
+    }
+
+    static func join(_ committed: String, _ text: String) -> String {
+        var text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !committed.isEmpty else { return text }
+        guard !text.isEmpty else { return committed }
+        // Compare words only, since the recognizer may re-punctuate or re-case them.
+        guard !words(text).starts(with: words(committed)) else { return text }
+        if OpenCodeDictationDraft.continuesSentence(committed) {
+            text = OpenCodeDictationDraft.lowercasingFirstWord(text)
+        }
+        return committed + " " + text
+    }
+
+    private static func words(_ text: String) -> [String] {
+        text.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+    }
+}
+
 // MARK: - Permissions
 
 enum OpenCodeDictationPermission: Equatable, Sendable {
@@ -163,6 +195,9 @@ enum OpenCodeDictationFailure: Error, Equatable, Sendable {
 enum OpenCodeDictationEvent: Equatable, Sendable {
     case transcript(String, isFinal: Bool)
     case level(Float)
+    /// A call, Siri, or an audio route change took the microphone; the words so
+    /// far are still on their way.
+    case interrupted
     case ended(OpenCodeDictationFailure?)
 }
 
@@ -374,6 +409,9 @@ final class OpenCodeDictationController: ObservableObject {
         switch event {
         case .level(let level):
             if phase == .listening { meter.level = level }
+        case .interrupted:
+            // The header shows finishing rather than listening to a dead microphone.
+            finish()
         case .transcript(let transcript, let isFinal):
             guard var draft, let text else { return }
             guard let merged = draft.apply(transcript, to: text.wrappedValue) else {
