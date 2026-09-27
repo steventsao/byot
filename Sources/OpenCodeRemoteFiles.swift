@@ -52,8 +52,14 @@ struct OpenCodeRemoteFileContent: Equatable, Sendable {
     /// Raw bytes, kept so binary files such as images can be previewed.
     var data: Data? = nil
     var lines: [String] {
+        normalizedText?.components(separatedBy: "\n") ?? []
+    }
+    /// The text with every line ending as `\n`.
+    var normalizedText: String? {
         text?.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
-            .components(separatedBy: "\n") ?? []
+    }
+    var syntaxLanguage: BYOTSyntaxLanguage? {
+        BYOTSyntaxLanguage(path: path) ?? BYOTSyntaxLanguage(mimeType: mimeType)
     }
 }
 

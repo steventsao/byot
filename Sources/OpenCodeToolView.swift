@@ -19,7 +19,12 @@ struct OpenCodeToolView: View {
                 if let input = presentation.input {
                     OpenCodeToolDetailBlock(title: "Input", text: input)
                 }
-                if let output = presentation.output {
+                if let code = presentation.inputCode {
+                    OpenCodeToolDetailBlock(code: code)
+                }
+                if let code = presentation.outputCode {
+                    OpenCodeToolDetailBlock(code: code)
+                } else if let output = presentation.output {
                     OpenCodeToolDetailBlock(title: "Output", text: output)
                 }
                 if let error = presentation.error {

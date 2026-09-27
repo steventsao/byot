@@ -6,6 +6,7 @@ struct AgentTextSelection: Identifiable {
     let id = UUID()
     let text: String
     var isCode = false
+    var language: BYOTSyntaxLanguage? = nil
 }
 
 struct AgentTextSelectionSheet: View {
@@ -14,7 +15,7 @@ struct AgentTextSelectionSheet: View {
 
     var body: some View {
         NavigationStack {
-            AgentSelectableText(text: selection.text, isCode: selection.isCode)
+            AgentSelectableText(text: selection.text, isCode: selection.isCode, language: selection.language)
                 .navigationTitle(selection.isCode ? "Select code" : "Select text")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -34,6 +35,7 @@ struct AgentTextSelectionSheet: View {
 struct AgentSelectableText: UIViewRepresentable {
     let text: String
     var isCode = false
+    var language: BYOTSyntaxLanguage? = nil
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
 
@@ -42,7 +44,7 @@ struct AgentSelectableText: UIViewRepresentable {
     }
 
     func updateUIView(_ view: UITextView, context: Context) {
-        let content = AgentSelectionDocument.render(text, isCode: isCode)
+        let content = AgentSelectionDocument.render(text, isCode: isCode, language: language)
         guard !view.attributedText.isEqual(to: content) else { return }
         let selectedRange = view.selectedRange
         let offset = view.contentOffset
@@ -69,8 +71,8 @@ struct AgentSelectableText: UIViewRepresentable {
 
 /// One text storage preserves native selections across prose, links, and code.
 enum AgentSelectionDocument {
-    static func render(_ text: String, isCode: Bool = false) -> NSAttributedString {
-        if isCode { return code(text) }
+    static func render(_ text: String, isCode: Bool = false, language: BYOTSyntaxLanguage? = nil) -> NSAttributedString {
+        if isCode { return code(text, language: language) }
         let result = NSMutableAttributedString()
         for block in AgentMarkdownParser.parse(text) {
             if result.length > 0 { result.append(NSAttributedString(string: "\n\n")) }
@@ -83,15 +85,16 @@ enum AgentSelectionDocument {
                     if index > 0 { result.append(NSAttributedString(string: "\n")) }
                     result.append(inline("\(ordered ? "\(index + 1)." : "•") \(item)"))
                 }
-            case .codeBlock(_, let text): result.append(code(text))
+            case .codeBlock(let label, let text):
+                result.append(code(text, language: BYOTSyntaxLanguage(fenceLabel: label)))
             case .divider: result.append(inline("———"))
             }
         }
         return result
     }
 
-    private static func code(_ text: String) -> NSAttributedString {
-        NSAttributedString(string: text, attributes: [
+    private static func code(_ text: String, language: BYOTSyntaxLanguage?) -> NSAttributedString {
+        BYOTSyntaxRenderer.nsAttributedString(code: text, language: language, attributes: [
             .font: UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 15, weight: .regular)),
             .foregroundColor: UIColor.label,
             .backgroundColor: UIColor.secondarySystemBackground

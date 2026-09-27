@@ -309,7 +309,7 @@ private struct AgentCodeBlockView: View {
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 Button {
-                    selection = AgentTextSelection(text: code, isCode: true)
+                    selection = AgentTextSelection(text: code, isCode: true, language: syntaxLanguage)
                 } label: {
                     Label("Select code", systemImage: "text.cursor")
                         .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
@@ -340,9 +340,7 @@ private struct AgentCodeBlockView: View {
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.cleanMono)
-                    .foregroundStyle(.primary)
+                BYOTCodeText(code: code, language: syntaxLanguage)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -354,6 +352,10 @@ private struct AgentCodeBlockView: View {
                 .stroke(BYOTBrand.hairline, lineWidth: 1)
         }
         .sheet(item: $selection) { AgentTextSelectionSheet(selection: $0) }
+    }
+
+    private var syntaxLanguage: BYOTSyntaxLanguage? {
+        BYOTSyntaxLanguage(fenceLabel: language)
     }
 
     private func copy() {

@@ -724,7 +724,7 @@ private struct OpenCodeDiffView: View {
                     DisclosureGroup(isExpanded: isExpanded(diff.id)) {
                         if let patch = diff.patch, !patch.isEmpty {
                             ScrollView(.horizontal) {
-                                Text(patch)
+                                Text(BYOTSyntaxRenderer.attributedString(code: patch, language: .diff))
                                     .font(.system(.caption, design: .monospaced))
                                     .textSelection(.enabled)
                                     .padding(.vertical, 8)
