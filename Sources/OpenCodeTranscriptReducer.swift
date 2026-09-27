@@ -13,7 +13,7 @@ struct OpenCodeTranscriptReducer: Sendable {
     }
 
     mutating func apply(_ event: OpenCodeEvent) -> Bool {
-        if event.isV2 { return v2.apply(event, to: &messages) }
+        if event.isV2 { return applyV2(event) != .unresolved }
         switch event.type {
         case "message.updated":
             return applyMessageUpdated(event)
@@ -28,6 +28,12 @@ struct OpenCodeTranscriptReducer: Sendable {
         default:
             return false
         }
+    }
+
+    /// Applies a v2 session event, distinguishing events that leave the
+    /// transcript untouched from those that need a projection refetch.
+    mutating func applyV2(_ event: OpenCodeEvent) -> OpenCodeV2EventReducer.Outcome {
+        v2.apply(event, to: &messages)
     }
 
     private mutating func applyMessageUpdated(_ event: OpenCodeEvent) -> Bool {

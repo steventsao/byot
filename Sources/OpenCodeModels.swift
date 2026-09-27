@@ -100,6 +100,31 @@ struct OpenCodeSession: Codable, Identifiable, Equatable, Sendable {
     let time: OpenCodeSessionTime
     // Fork lineage differs from a subagent's parentID. Forks remain roots.
     var forkSourceID: String? = nil
+    // The server's running spend for the session, summed over every step it
+    // has stored, including history older than the transcript page loaded.
+    var cost: Double? = nil
+    var tokens: OpenCodeTokenUsage? = nil
+}
+
+extension OpenCodeSession {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        slug = try c.decode(String.self, forKey: .slug)
+        projectID = try c.decode(String.self, forKey: .projectID)
+        workspaceID = try c.decodeIfPresent(String.self, forKey: .workspaceID)
+        directory = try c.decode(String.self, forKey: .directory)
+        parentID = try c.decodeIfPresent(String.self, forKey: .parentID)
+        summary = try c.decodeIfPresent(OpenCodeSessionSummary.self, forKey: .summary)
+        title = try c.decode(String.self, forKey: .title)
+        agent = try c.decodeIfPresent(String.self, forKey: .agent)
+        version = try c.decode(String.self, forKey: .version)
+        time = try c.decode(OpenCodeSessionTime.self, forKey: .time)
+        forkSourceID = try c.decodeIfPresent(String.self, forKey: .forkSourceID)
+        // Older servers omit usage; an unexpected shape must not drop the session.
+        cost = try? c.decodeIfPresent(Double.self, forKey: .cost)
+        tokens = try? c.decodeIfPresent(OpenCodeTokenUsage.self, forKey: .tokens)
+    }
 }
 
 struct OpenCodeSessionSummary: Codable, Equatable, Sendable {
@@ -120,19 +145,31 @@ struct OpenCodeMessageEnvelope: Codable, Identifiable, Equatable, Sendable {
     var parts: [OpenCodePart]
 
     var id: String { info.id }
+
+    /// A v2 system or synthetic message: context OpenCode added for the
+    /// model. It is not a reply, so it never counts as the turn answering.
+    var isSyntheticContext: Bool {
+        !parts.isEmpty && parts.allSatisfy { $0.type.lowercased() == "text" && $0.synthetic == true }
+    }
 }
 
 struct OpenCodeMessageInfo: Codable, Identifiable, Equatable, Sendable {
     let id: String
     let sessionID: String
     let role: String
-    let time: OpenCodeMessageTime
+    var time: OpenCodeMessageTime
     let agent: String?
     let modelID: String?
     let providerID: String?
     let finish: String?
     let error: OpenCodeMessageError?
     var variant: String? = nil
+    // Assistant accounting: v1 keeps the reply's summed `cost` and its last
+    // step's `tokens`; v2 assistant messages are one step each. `summary`
+    // marks the v1 reply that wrote a compaction summary.
+    var cost: Double? = nil
+    var tokens: OpenCodeTokenUsage? = nil
+    var summary: Bool? = nil
 }
 
 struct OpenCodeMessageTime: Codable, Equatable, Sendable {
@@ -166,6 +203,143 @@ struct OpenCodePart: Codable, Identifiable, Equatable, Sendable {
     let files: [String]?
     let description: String?
     let agent: String?
+    // Fields of the remaining v1 part types (packages/schema/src/v1/session.ts):
+    // agent `name`; compaction `auto`/`overflow`; retry `attempt`/`error`;
+    // step-finish `reason`/`cost`/`tokens`; snapshot and step `snapshot`;
+    // patch `hash`; text `synthetic`/`ignored`, which mark context OpenCode
+    // added for the model rather than words the user typed. They decode
+    // leniently so an unfamiliar shape never drops the part, and default to
+    // nil so memberwise construction stays compact.
+    var name: String? = nil
+    var auto: Bool? = nil
+    var overflow: Bool? = nil
+    var attempt: Int? = nil
+    var error: OpenCodeMessageError? = nil
+    var reason: String? = nil
+    var cost: Double? = nil
+    var tokens: OpenCodeTokenUsage? = nil
+    var snapshot: String? = nil
+    var hash: String? = nil
+    var synthetic: Bool? = nil
+    var ignored: Bool? = nil
+    /// A v1 compaction's retained tail: the first message the model still
+    /// reads verbatim after the summary.
+    var tailStartID: String? = nil
+
+    /// Text the user actually wrote, as upstream clients restore and resend
+    /// it: synthetic context (attached file contents, MCP resources,
+    /// reminders) and ignored text are left out.
+    var isAuthoredText: Bool {
+        type.lowercased() == "text" && synthetic != true && ignored != true
+    }
+}
+
+extension OpenCodePart {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        sessionID = try c.decode(String.self, forKey: .sessionID)
+        messageID = try c.decode(String.self, forKey: .messageID)
+        type = try c.decode(String.self, forKey: .type)
+        text = try c.decodeIfPresent(String.self, forKey: .text)
+        mime = try c.decodeIfPresent(String.self, forKey: .mime)
+        filename = try c.decodeIfPresent(String.self, forKey: .filename)
+        url = try c.decodeIfPresent(String.self, forKey: .url)
+        callID = try c.decodeIfPresent(String.self, forKey: .callID)
+        tool = try c.decodeIfPresent(String.self, forKey: .tool)
+        state = try c.decodeIfPresent(OpenCodeToolState.self, forKey: .state)
+        files = try c.decodeIfPresent([String].self, forKey: .files)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        agent = try c.decodeIfPresent(String.self, forKey: .agent)
+        name = try? c.decodeIfPresent(String.self, forKey: .name)
+        auto = try? c.decodeIfPresent(Bool.self, forKey: .auto)
+        overflow = try? c.decodeIfPresent(Bool.self, forKey: .overflow)
+        attempt = (try? c.decodeIfPresent(Double.self, forKey: .attempt)).map { Int($0) }
+        error = try? c.decodeIfPresent(OpenCodeMessageError.self, forKey: .error)
+        reason = try? c.decodeIfPresent(String.self, forKey: .reason)
+        cost = try? c.decodeIfPresent(Double.self, forKey: .cost)
+        tokens = try? c.decodeIfPresent(OpenCodeTokenUsage.self, forKey: .tokens)
+        snapshot = try? c.decodeIfPresent(String.self, forKey: .snapshot)
+        hash = try? c.decodeIfPresent(String.self, forKey: .hash)
+        synthetic = try? c.decodeIfPresent(Bool.self, forKey: .synthetic)
+        ignored = try? c.decodeIfPresent(Bool.self, forKey: .ignored)
+        if type == "compaction" {
+            let wire = try? decoder.container(keyedBy: WireKeys.self)
+            tailStartID = (try? wire?.decodeIfPresent(String.self, forKey: .tailStartID))
+                ?? (try? c.decodeIfPresent(String.self, forKey: .tailStartID))
+        }
+    }
+
+    private enum WireKeys: String, CodingKey { case tailStartID = "tail_start_id" }
+}
+
+/// Token accounting for one model step. v1 step-finish parts and v2
+/// step.ended events share this shape; `total` is optional upstream.
+struct OpenCodeTokenUsage: Codable, Equatable, Sendable {
+    var input: Double
+    var output: Double
+    var reasoning: Double
+    var cacheRead: Double
+    var cacheWrite: Double
+    var reportedTotal: Double?
+
+    init(input: Double, output: Double, reasoning: Double = 0, cacheRead: Double = 0, cacheWrite: Double = 0,
+         reportedTotal: Double? = nil) {
+        self.input = input; self.output = output; self.reasoning = reasoning
+        self.cacheRead = cacheRead; self.cacheWrite = cacheWrite; self.reportedTotal = reportedTotal
+    }
+
+    init?(_ value: OpenCodeJSONValue?) {
+        guard let object = value?.objectValue else { return nil }
+        let cache = object["cache"]?.objectValue
+        self.init(input: object["input"]?.numberValue ?? 0, output: object["output"]?.numberValue ?? 0,
+                  reasoning: object["reasoning"]?.numberValue ?? 0, cacheRead: cache?["read"]?.numberValue ?? 0,
+                  cacheWrite: cache?["write"]?.numberValue ?? 0, reportedTotal: object["total"]?.numberValue)
+    }
+
+    /// Every token the step consumed or produced, as OpenCode counts context usage.
+    var total: Double { reportedTotal ?? contextTokens }
+
+    /// The step's footprint in the context window, summed from its parts the
+    /// way OpenCode's sidebar and context panel count it.
+    var contextTokens: Double { input + output + reasoning + cacheRead + cacheWrite }
+
+    static let zero = OpenCodeTokenUsage(input: 0, output: 0)
+
+    /// Session totals add steps part by part; a reported total survives only
+    /// when a step supplied one.
+    static func + (lhs: OpenCodeTokenUsage, rhs: OpenCodeTokenUsage) -> OpenCodeTokenUsage {
+        OpenCodeTokenUsage(
+            input: lhs.input + rhs.input, output: lhs.output + rhs.output,
+            reasoning: lhs.reasoning + rhs.reasoning, cacheRead: lhs.cacheRead + rhs.cacheRead,
+            cacheWrite: lhs.cacheWrite + rhs.cacheWrite,
+            reportedTotal: lhs.reportedTotal == nil && rhs.reportedTotal == nil ? nil : lhs.total + rhs.total)
+    }
+
+    private enum CodingKeys: String, CodingKey { case input, output, reasoning, cache, total }
+    private enum CacheKeys: String, CodingKey { case read, write }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let cache = try? c.nestedContainer(keyedBy: CacheKeys.self, forKey: .cache)
+        input = (try? c.decodeIfPresent(Double.self, forKey: .input)) ?? 0
+        output = (try? c.decodeIfPresent(Double.self, forKey: .output)) ?? 0
+        reasoning = (try? c.decodeIfPresent(Double.self, forKey: .reasoning)) ?? 0
+        cacheRead = (try? cache?.decodeIfPresent(Double.self, forKey: .read)) ?? 0
+        cacheWrite = (try? cache?.decodeIfPresent(Double.self, forKey: .write)) ?? 0
+        reportedTotal = try? c.decodeIfPresent(Double.self, forKey: .total)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(input, forKey: .input)
+        try c.encode(output, forKey: .output)
+        try c.encode(reasoning, forKey: .reasoning)
+        var cache = c.nestedContainer(keyedBy: CacheKeys.self, forKey: .cache)
+        try cache.encode(cacheRead, forKey: .read)
+        try cache.encode(cacheWrite, forKey: .write)
+        try c.encodeIfPresent(reportedTotal, forKey: .total)
+    }
 }
 
 struct OpenCodeToolState: Codable, Equatable, Sendable {
@@ -176,6 +350,33 @@ struct OpenCodeToolState: Codable, Equatable, Sendable {
     let output: String?
     let error: String?
     let time: OpenCodeToolTime?
+    /// What the tool recorded about itself (v1 `metadata`, v2 `structured`),
+    /// cut down to the fields BYOT reads: a `task` call's subagent session
+    /// and whether it runs in the background. Other tools record whole files
+    /// here (an edit's before and after), which a transcript need not hold.
+    var metadata: [String: OpenCodeJSONValue]? = nil
+
+    static let retainedMetadataKeys: Set<String> = ["sessionId", "sessionID", "session_id", "background"]
+
+    static func retainedMetadata(_ metadata: [String: OpenCodeJSONValue]?) -> [String: OpenCodeJSONValue]? {
+        guard let kept = metadata?.filter({ retainedMetadataKeys.contains($0.key) }), !kept.isEmpty else { return nil }
+        return kept
+    }
+}
+
+extension OpenCodeToolState {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        status = try c.decode(String.self, forKey: .status)
+        input = try c.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: .input)
+        raw = try c.decodeIfPresent(String.self, forKey: .raw)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        output = try c.decodeIfPresent(String.self, forKey: .output)
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        time = try c.decodeIfPresent(OpenCodeToolTime.self, forKey: .time)
+        // Metadata is a tool's own record; an odd shape never drops the part.
+        metadata = Self.retainedMetadata(try? c.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: .metadata))
+    }
 }
 
 struct OpenCodeToolTime: Codable, Equatable, Sendable {
@@ -409,14 +610,21 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
 
     var created: Double? = nil
     var isV2: Bool = false
+    // Current v2 envelopes carry prompt metadata (for example displayText)
+    // beside `data`; the message projection copies it onto the message.
+    var metadata: [String: OpenCodeJSONValue]? = nil
 
     var sessionID: String? {
         properties["sessionID"]?.stringValue ?? properties["form"]?.objectValue?["sessionID"]?.stringValue
     }
 
-    private enum CodingKeys: String, CodingKey { case id, type, properties, data, created }
-    init(id: String, type: String, properties: [String: OpenCodeJSONValue], created: Double? = nil, isV2: Bool = false) {
+    private enum CodingKeys: String, CodingKey { case id, type, properties, data, created, metadata }
+    init(
+        id: String, type: String, properties: [String: OpenCodeJSONValue], created: Double? = nil, isV2: Bool = false,
+        metadata: [String: OpenCodeJSONValue]? = nil
+    ) {
         self.id = id; self.type = type; self.properties = properties; self.created = created; self.isV2 = isV2
+        self.metadata = metadata
     }
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -425,6 +633,7 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
         created = try container.decodeIfPresent(Double.self, forKey: .created)
         isV2 = container.contains(.data)
         properties = try container.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: isV2 ? .data : .properties) ?? [:]
+        metadata = isV2 ? try? container.decodeIfPresent([String: OpenCodeJSONValue].self, forKey: .metadata) : nil
     }
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -432,6 +641,7 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
         try container.encode(type, forKey: .type)
         try container.encodeIfPresent(created, forKey: .created)
         try container.encode(properties, forKey: isV2 ? .data : .properties)
+        try container.encodeIfPresent(metadata, forKey: .metadata)
     }
 }
 
@@ -451,5 +661,9 @@ extension OpenCodeMessageInfo {
         variant = try c.decodeIfPresent(String.self, forKey: .variant) ?? model?["variant"]?.stringValue
         modelID = try c.decodeIfPresent(String.self, forKey: .modelID) ?? model?["modelID"]?.stringValue
         providerID = try c.decodeIfPresent(String.self, forKey: .providerID) ?? model?["providerID"]?.stringValue
+        // User messages reuse `summary` for an object; only the assistant flag matters here.
+        cost = try? c.decodeIfPresent(Double.self, forKey: .cost)
+        tokens = try? c.decodeIfPresent(OpenCodeTokenUsage.self, forKey: .tokens)
+        summary = try? c.decodeIfPresent(Bool.self, forKey: .summary)
     }
 }

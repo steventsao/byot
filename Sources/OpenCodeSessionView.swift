@@ -1,11 +1,59 @@
 import SwiftUI
 
+/// A conversation screen. A subagent session can step to a sibling or up to
+/// its parent in place, so the host swaps the session it shows rather than
+/// deepening the navigation stack.
 struct OpenCodeSessionView: View {
+    private let client: OpenCodeClient
+    private let directory: String
+    private let attention: OpenCodeSessionAttentionStore?
+    private let startsWithComposerFocused: Bool
+    private let presentingSessionID: String?
+    @State private var session: OpenCodeSession
+    @State private var didReplaceSession = false
+
+    /// `presentingSessionID` is the conversation beneath this one on the
+    /// navigation stack, so returning to it can pop instead of push.
+    init(
+        client: OpenCodeClient,
+        session: OpenCodeSession,
+        directory: String,
+        attention: OpenCodeSessionAttentionStore? = nil,
+        startsWithComposerFocused: Bool = false,
+        presentingSessionID: String? = nil
+    ) {
+        self.client = client
+        self.directory = directory
+        self.attention = attention
+        self.startsWithComposerFocused = startsWithComposerFocused
+        self.presentingSessionID = presentingSessionID
+        _session = State(initialValue: session)
+    }
+
+    var body: some View {
+        OpenCodeSessionScreen(
+            client: client,
+            session: session,
+            directory: directory,
+            attention: attention,
+            startsWithComposerFocused: startsWithComposerFocused && !didReplaceSession,
+            presentingSessionID: presentingSessionID
+        ) { next in
+            guard next.id != session.id else { return }
+            didReplaceSession = true
+            session = next
+            AccessibilityNotification.Announcement("Showing \(OpenCodeSubagentTitle.displayTitle(of: next))").post()
+        }
+        .id(session.id)
+    }
+}
+
+struct OpenCodeSessionScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var store: OpenCodeSessionStore
-    @State private var isShowingDiff = false
+    @State private var diffSheet: OpenCodeDiffSheet?
     @State private var isShowingQueue = false
     @ObservedObject private var push = BYOTPushNotifications.shared
     @State private var notificationError: String?
@@ -14,12 +62,19 @@ struct OpenCodeSessionView: View {
     @State private var hasPositionedTranscript = false
     @State private var isShowingDetails = false
     @State private var isShowingTasks = false
+    @State private var isShowingUsage = false
     @State private var isShowingNewSession = false
+    @State private var isShowingExport = false
+    @State private var isShowingAgentsSetup = false
+    @State private var transcriptCopies = 0
+    @State private var showsTranscriptCopied = false
     @State private var nextSession: OpenCodeSessionRoute?
     private let client: OpenCodeClient
     private let serverName: String
     private let attention: OpenCodeSessionAttentionStore?
     private let startsWithComposerFocused: Bool
+    private let presentingSessionID: String?
+    private let replaceSession: (OpenCodeSession) -> Void
 
     private let bottomAnchorID = "opencode-session-bottom"
 
@@ -27,13 +82,17 @@ struct OpenCodeSessionView: View {
         client: OpenCodeClient,
         session: OpenCodeSession,
         directory: String,
-        attention: OpenCodeSessionAttentionStore? = nil,
-        startsWithComposerFocused: Bool = false
+        attention: OpenCodeSessionAttentionStore?,
+        startsWithComposerFocused: Bool,
+        presentingSessionID: String?,
+        replaceSession: @escaping (OpenCodeSession) -> Void
     ) {
         self.client = client
         serverName = client.profile.name
         self.attention = attention
         self.startsWithComposerFocused = startsWithComposerFocused
+        self.presentingSessionID = presentingSessionID
+        self.replaceSession = replaceSession
         _store = StateObject(
             wrappedValue: OpenCodeSessionStore(
                 client: client,
@@ -279,18 +338,22 @@ struct OpenCodeSessionView: View {
             }
         }
         .background(BYOTBrand.canvas)
-        .navigationTitle(store.session.title)
+        .navigationTitle(OpenCodeSubagentTitle.displayTitle(of: store.session))
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top, spacing: 0) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
-                    sessionContext
+                    sessionHeader
                     Spacer(minLength: 8)
+                    contextMeter
                     sessionStatus
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    sessionContext
-                    sessionStatus
+                    sessionHeader
+                    HStack(spacing: 12) {
+                        contextMeter
+                        sessionStatus
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -299,26 +362,40 @@ struct OpenCodeSessionView: View {
             .background(BYOTBrand.canvas)
         }
         .safeAreaInset(edge: .bottom) {
-            OpenCodeSessionComposerView(
-                store: store,
-                startsFocused: startsWithComposerFocused,
-                onNewSession: { isShowingNewSession = true },
-                sessionActions: OpenCodeSessionAction.allCases.map { action in
-                    OpenCodeComposerAction(name: action.rawValue, title: action.title,
-                        unavailableReason: store.actionUnavailableReason(action),
-                        run: { Task { await store.performSessionAction(action) } })
-                },
-                restoredMessage: store.restoredPrompt?.message,
-                onRestoreConsumed: { store.consumeRestoredPrompt() }
-            )
+            if let family = store.subagentFamily {
+                OpenCodeSubagentBar(
+                    agentLabel: OpenCodeSubagentTitle.agentLabel(OpenCodeSubagentTitle.agent(of: store.session)),
+                    family: family,
+                    canStop: store.canStopTurn,
+                    isStopping: store.isStoppingTurn,
+                    stop: { Task { await store.stopTurn() } },
+                    open: replaceSession
+                )
+            } else {
+                composer
+            }
         }
         .environment(\.openCodeRemoteFiles, store.remoteFiles)
+        .environment(\.openCodeContextLimits, store.modelContextLimits)
+        .environment(\.openCodeSubagents, OpenCodeSubagentLinks(
+            activity: store.subagents.activity,
+            children: store.childSessions,
+            openingSessionID: store.openingSubagentID,
+            canOpenUnlisted: store.sessionFeatures.details
+        ) { sessionID in
+            openSubagent(sessionID)
+        })
+        .environment(\.openCodeDiffNavigator, OpenCodeDiffNavigator(diffs: store.diffs, directory: store.directory) { diffID in
+            diffSheet = OpenCodeDiffSheet(focusedDiffID: diffID)
+        })
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("Message queue", systemImage: "list.bullet.rectangle") { isShowingQueue = true }
                         .accessibilityIdentifier("session-queue")
                     Button("Session details", systemImage: "info.circle") { isShowingDetails = true }
+                    Button("Context and usage", systemImage: "gauge.with.dots.needle.33percent") { isShowingUsage = true }
+                        .accessibilityIdentifier("session-usage")
                     Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
                     if push.credentials[client.profile.id] != nil {
                         Button(push.isMuted(serverID: client.profile.id, sessionID: store.session.id) ? "Unmute notifications" : "Mute notifications", systemImage: "bell.slash") {
@@ -334,6 +411,19 @@ struct OpenCodeSessionView: View {
                         }.disabled(store.actionUnavailableReason(action) != nil)
                             .accessibilityIdentifier("session-menu-\(action.rawValue)")
                     }
+                    Section {
+                        if store.supportsAgentsSetup {
+                            Button("Set up AGENTS.md…", systemImage: "doc.badge.gearshape") { isShowingAgentsSetup = true }
+                                .disabled(store.agentsSetupUnavailableReason != nil)
+                                .accessibilityIdentifier("session-menu-init")
+                        }
+                        Button("Export transcript…", systemImage: "square.and.arrow.up") { isShowingExport = true }
+                            .disabled(store.transcriptUnavailableReason != nil)
+                            .accessibilityIdentifier("session-menu-export")
+                        Button("Copy transcript", systemImage: "doc.on.doc", action: copyTranscript)
+                            .disabled(store.transcriptUnavailableReason != nil)
+                            .accessibilityIdentifier("session-menu-copy")
+                    }
                 } label: { Image(systemName: "ellipsis.circle") }
                 .tint(BYOTBrand.chromeTint)
                 .accessibilityLabel("Session actions")
@@ -341,7 +431,7 @@ struct OpenCodeSessionView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Changes", systemImage: "doc.text.magnifyingglass") {
-                    isShowingDiff = true
+                    diffSheet = OpenCodeDiffSheet(focusedDiffID: nil)
                 }
                 .labelStyle(.iconOnly)
                 .tint(BYOTBrand.chromeTint)
@@ -354,14 +444,42 @@ struct OpenCodeSessionView: View {
         .sheet(isPresented: $isShowingDetails) {
             OpenCodeSessionDetailsView(store: store) { session in
                 isShowingDetails = false
-                nextSession = OpenCodeSessionRoute(session: session)
+                open(session)
             }
+        }
+        .sheet(isPresented: $isShowingUsage) {
+            OpenCodeSessionUsageView(store: store)
         }
         .sheet(isPresented: $isShowingTasks) {
             OpenCodeTaskProgressView(progress: store.todoProgress, supportsSnapshot: store.sessionFeatures.todoSnapshot)
         }
+        .sheet(isPresented: $isShowingExport) {
+            OpenCodeTranscriptExportView(export: store.transcriptExport)
+        }
+        .openCodeAgentsSetupAlert(isPresented: $isShowingAgentsSetup, store: store)
+        .overlay(alignment: .top) {
+            if showsTranscriptCopied {
+                Label("Transcript copied", systemImage: "checkmark.circle.fill")
+                    .font(.cleanCaptionBold)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay { Capsule().strokeBorder(BYOTBrand.hairline, lineWidth: 1) }
+                    .padding(.top, 8)
+                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("transcript-copied")
+            }
+        }
+        .task(id: transcriptCopies) {
+            guard transcriptCopies > 0 else { return }
+            try? await Task.sleep(for: .seconds(2.4))
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick)) { showsTranscriptCopied = false }
+        }
         .navigationDestination(item: $nextSession) { route in
-            OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory, attention: attention)
+            OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory,
+                                attention: attention, presentingSessionID: store.session.id)
         }
         .navigationDestination(isPresented: $isShowingNewSession) {
             OpenCodeNewSessionView(profiles: [client.profile], initialProfile: client.profile, makeClient: { _ in client })
@@ -376,8 +494,9 @@ struct OpenCodeSessionView: View {
         .onChange(of: store.didDeleteSession) { _, deleted in
             if deleted { isShowingDetails = false; dismiss() }
         }
-        .sheet(isPresented: $isShowingDiff) {
-            OpenCodeDiffView(diffs: store.diffs, unavailableReason: store.diffPresentation.unavailableReason)
+        .sheet(item: $diffSheet) { sheet in
+            OpenCodeDiffView(diffs: store.diffs, unavailableReason: store.diffPresentation.unavailableReason,
+                             focusedDiffID: sheet.focusedDiffID)
         }
         .sheet(isPresented: $isShowingRecoveryModelPicker) {
             OpenCodeModelPickerView(store: store)
@@ -399,6 +518,26 @@ struct OpenCodeSessionView: View {
         }
     }
 
+    private var composer: some View {
+        OpenCodeSessionComposerView(
+            store: store,
+            startsFocused: startsWithComposerFocused,
+            onNewSession: { isShowingNewSession = true },
+            sessionActions: OpenCodeSessionAction.allCases.map { action in
+                OpenCodeComposerAction(name: action.rawValue, title: action.title,
+                    unavailableReason: store.actionUnavailableReason(action),
+                    run: { Task { await store.performSessionAction(action) } })
+            } + [
+                OpenCodeComposerAction(name: "export", title: "Export transcript as Markdown",
+                    unavailableReason: store.transcriptUnavailableReason, run: { isShowingExport = true }),
+                OpenCodeComposerAction(name: "copy", title: "Copy transcript as Markdown",
+                    unavailableReason: store.transcriptUnavailableReason, run: copyTranscript),
+            ],
+            restoredMessage: store.restoredPrompt?.message,
+            onRestoreConsumed: { store.consumeRestoredPrompt() }
+        )
+    }
+
     @ViewBuilder
     private func messageRow(_ message: OpenCodeMessageEnvelope) -> some View {
         if message.info.role == "user" {
@@ -416,10 +555,62 @@ struct OpenCodeSessionView: View {
         }
     }
 
+    /// The TUI's `/copy`: the whole conversation as Markdown, with the
+    /// choices last made in Export transcript.
+    private func copyTranscript() {
+        OpenCodeTranscriptClipboard.copy(store.transcriptExport)
+        transcriptCopies += 1
+        withAnimation(reduceMotion ? nil : .spring(duration: BYOTBrand.Motion.composerResize)) { showsTranscriptCopied = true }
+    }
+
     private func rememberAttention() {
         guard !store.messages.isEmpty || store.errorMessage != nil else { return }
         attention?.record(sessionID: store.session.id,
             message: OpenCodeSessionAttentionStore.message(in: store.messages) ?? store.errorMessage)
+    }
+
+    /// A subagent names the conversation that started it; any other session
+    /// names its server and project.
+    @ViewBuilder
+    private var sessionHeader: some View {
+        // The breadcrumb needs a way back: the parent beneath on the stack,
+        // or one the server can look up.
+        if let family = store.subagentFamily,
+           family.parent != nil || family.parentID == presentingSessionID || store.sessionFeatures.details {
+            OpenCodeSubagentBreadcrumb(parentTitle: family.parentTitle) { openParent(family.parentID) }
+        } else {
+            sessionContext
+        }
+    }
+
+    /// Opens a subagent from one of its task cards.
+    private func openSubagent(_ sessionID: String) {
+        Task {
+            if let session = await store.relatedSession(sessionID) { open(session) }
+        }
+    }
+
+    /// Goes to a related session. Returning to the conversation beneath this
+    /// one pops back to it; stepping to the parent from anywhere else, or to a
+    /// sibling, swaps this screen in place so the stack never loops.
+    private func open(_ session: OpenCodeSession) {
+        if session.id == presentingSessionID {
+            dismiss()
+        } else if session.id == store.session.parentID || (session.parentID != nil && session.parentID == store.session.parentID) {
+            replaceSession(session)
+        } else {
+            nextSession = OpenCodeSessionRoute(session: session)
+        }
+    }
+
+    private func openParent(_ parentID: String) {
+        if parentID == presentingSessionID {
+            dismiss()
+            return
+        }
+        Task {
+            if let parent = await store.relatedSession(parentID) { replaceSession(parent) }
+        }
     }
 
     private var sessionContext: some View {
@@ -429,6 +620,13 @@ struct OpenCodeSessionView: View {
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel("Server \(serverName), project \(store.directory)")
+    }
+
+    @ViewBuilder
+    private var contextMeter: some View {
+        if let meter = OpenCodeContextMeterPresentation(usage: store.usage) {
+            OpenCodeContextMeter(presentation: meter) { isShowingUsage = true }
+        }
     }
 
     private var sessionStatus: some View {
@@ -564,46 +762,85 @@ private struct OpenCodeScrollMetricsKey: PreferenceKey {
 }
 
 /// OpenCode's turn layout: the prompt is a trailing pill and the reply runs
-/// full width beneath it, with no role headers.
+/// full width beneath it, with no role headers. Conversation markers such as
+/// compaction sit outside the pill.
 private struct OpenCodeMessageView: View {
     let message: OpenCodeMessageEnvelope
+    @Environment(\.openCodeContextLimits) private var contextLimits
 
     private var isUser: Bool { message.info.role == "user" }
 
+    private var contextLimit: Int? {
+        guard let providerID = message.info.providerID, let modelID = message.info.modelID else { return nil }
+        return contextLimits["\(providerID)/\(modelID)"]
+    }
+
     var body: some View {
+        let items = OpenCodeTranscriptLayout.items(for: message.parts, inPrompt: isUser)
+        let bubble = isUser ? items.filter { !$0.isBanner } : items
+        let banners = isUser ? items.filter(\.isBanner) : []
+        let reply = OpenCodeStepSummary(reply: message, contextLimit: contextLimit)
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(message.parts) { part in
-                OpenCodePartView(part: part, isUser: isUser)
+            if !bubble.isEmpty || message.info.error != nil || reply != nil {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(bubble) { item in
+                        OpenCodeTranscriptItemView(item: item, isUser: isUser, contextLimit: contextLimit)
+                    }
+                    if let reply {
+                        OpenCodeStepSummaryView(summary: reply)
+                    }
+                    if let error = message.info.error {
+                        Label(error.displayMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(.cleanCaption)
+                            .foregroundStyle(.red)
+                    }
+                }
+                .padding(.horizontal, isUser ? 16 : 0)
+                .padding(.vertical, isUser ? 10 : 0)
+                .background {
+                    if isUser {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(BYOTBrand.surface)
+                    }
+                }
+                .padding(.leading, isUser ? 48 : 0)
+                .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
             }
-            if let error = message.info.error {
-                Label(error.displayMessage, systemImage: "exclamationmark.triangle.fill")
-                    .font(.cleanCaption)
-                    .foregroundStyle(.red)
+            ForEach(banners) { item in
+                OpenCodeTranscriptItemView(item: item, isUser: false, contextLimit: nil)
             }
         }
-        .padding(.horizontal, isUser ? 16 : 0)
-        .padding(.vertical, isUser ? 10 : 0)
-        .background {
-            if isUser {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(BYOTBrand.surface)
-            }
-        }
-        .padding(.leading, isUser ? 48 : 0)
-        .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(isUser ? "You" : message.info.agent ?? "OpenCode")
+    }
+}
+
+private struct OpenCodeTranscriptItemView: View {
+    let item: OpenCodeTranscriptItem
+    let isUser: Bool
+    let contextLimit: Int?
+
+    var body: some View {
+        switch item {
+        case .images(let parts):
+            OpenCodeInlineImageGallery(parts: parts)
+        case .part(let part):
+            OpenCodePartView(part: part, isUser: isUser, contextLimit: contextLimit)
+        }
     }
 }
 
 private struct OpenCodePartView: View {
     let part: OpenCodePart
     let isUser: Bool
+    let contextLimit: Int?
 
     var body: some View {
         switch part.type {
         case "text":
-            if let text = part.text, !text.isEmpty {
+            if let context = OpenCodeSyntheticContextPresentation(part: part) {
+                OpenCodeSyntheticContextView(presentation: context)
+            } else if part.synthetic != true, let text = part.text, !text.isEmpty {
                 AgentMarkdownText(text: text)
             }
         case "reasoning":
@@ -621,24 +858,16 @@ private struct OpenCodePartView: View {
                 .disclosureGroupStyle(OpenCodeInlineDisclosureStyle())
             }
         case "tool":
-            if let state = part.state {
+            if let task = OpenCodeSubagentTask(part: part) {
+                OpenCodeSubagentTaskCard(task: task)
+            } else if let state = part.state {
                 OpenCodeToolView(name: part.tool ?? "Tool", state: state)
             }
         case "file":
             OpenCodeRemoteFilePartView(part: part)
         case "patch":
             if let files = part.files, !files.isEmpty {
-                // Same glyph column as the tool rows' disclosure chevrons.
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "plusminus")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                    Text("Changed \(files.count) file\(files.count == 1 ? "" : "s")")
-                        .font(.cleanMono)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 3)
+                OpenCodePatchPartView(files: files)
             }
         case "subtask":
             VStack(alignment: .leading, spacing: 4) {
@@ -650,37 +879,83 @@ private struct OpenCodePartView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        case "compaction":
+            OpenCodeCompactionDivider(presentation: OpenCodeCompactionPresentation(part: part))
+        case "retry":
+            OpenCodeRetryNotice(presentation: OpenCodeRetryPresentation(part: part))
+        case "agent", "model":
+            if let presentation = OpenCodeSwitchPresentation(part: part, inPrompt: isUser) {
+                if isUser {
+                    OpenCodeAgentMentionChip(presentation: presentation)
+                } else {
+                    OpenCodeTranscriptMarkerRow(symbol: presentation.symbol, title: presentation.title,
+                                                accessibilityLabel: presentation.accessibilityLabel)
+                }
+            }
+        case "step-finish":
+            if let summary = OpenCodeStepSummary(part: part, contextLimit: contextLimit) {
+                OpenCodeStepSummaryView(summary: summary)
+            }
+        case "snapshot":
+            if let snapshot = OpenCodeSnapshotPresentation(part: part) {
+                OpenCodeTranscriptMarkerRow(symbol: "clock.arrow.circlepath", title: snapshot.title,
+                                            accessibilityLabel: snapshot.accessibilityLabel)
+            }
         default:
             EmptyView()
         }
     }
 }
 
+/// One presentation of the session diff, optionally opened at a file.
+private struct OpenCodeDiffSheet: Identifiable {
+    let id = UUID()
+    let focusedDiffID: String?
+}
+
 private struct OpenCodeDiffView: View {
     @Environment(\.dismiss) private var dismiss
     let diffs: [OpenCodeDiff]
     let unavailableReason: String?
+    let focusedDiffID: String?
+    @State private var expanded: Set<String>
+
+    init(diffs: [OpenCodeDiff], unavailableReason: String?, focusedDiffID: String? = nil) {
+        self.diffs = diffs
+        self.unavailableReason = unavailableReason
+        self.focusedDiffID = focusedDiffID
+        _expanded = State(initialValue: focusedDiffID.map { [$0] } ?? [])
+    }
 
     var body: some View {
         NavigationStack {
-            List(diffs) { diff in
-                DisclosureGroup {
-                    if let patch = diff.patch, !patch.isEmpty {
-                        ScrollView(.horizontal) {
-                            Text(patch)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                                .padding(.vertical, 8)
+            ScrollViewReader { proxy in
+                List(diffs) { diff in
+                    DisclosureGroup(isExpanded: isExpanded(diff.id)) {
+                        if let patch = diff.patch, !patch.isEmpty {
+                            ScrollView(.horizontal) {
+                                Text(BYOTSyntaxRenderer.attributedString(code: patch, language: .diff))
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .padding(.vertical, 8)
+                            }
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(diff.file ?? "Changed file")
+                                .font(.cleanBodySemibold)
+                            Text("+\(diff.additions) −\(diff.deletions)")
+                                .font(.cleanCaptionBold)
+                                .foregroundStyle(BYOTBrand.accent)
                         }
                     }
-                } label: {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(diff.file ?? "Changed file")
-                            .font(.cleanBodySemibold)
-                        Text("+\(diff.additions) −\(diff.deletions)")
-                            .font(.cleanCaptionBold)
-                            .foregroundStyle(BYOTBrand.accent)
-                    }
+                    .id(diff.id)
+                }
+                .task {
+                    // Opened from a transcript file: bring that file's diff into view.
+                    guard let focusedDiffID, diffs.contains(where: { $0.id == focusedDiffID }) else { return }
+                    await Task.yield()
+                    proxy.scrollTo(focusedDiffID, anchor: .top)
                 }
             }
             .overlay {
@@ -696,5 +971,12 @@ private struct OpenCodeDiffView: View {
                 }
             }
         }
+    }
+
+    private func isExpanded(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { expanded.contains(id) },
+            set: { if $0 { expanded.insert(id) } else { expanded.remove(id) } }
+        )
     }
 }

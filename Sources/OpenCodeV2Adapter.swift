@@ -110,7 +110,8 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
                             modelID: model.id,
                             modelName: model.name,
                             status: model.status,
-                            variants: contract.schema.objectValue?["components"]?.objectValue?["schemas"]?.objectValue?["Model.Ref"]?.objectValue?["properties"]?.objectValue?["variant"] != nil ? (model.variants ?? []).map(\.id) : []
+                            variants: contract.schema.objectValue?["components"]?.objectValue?["schemas"]?.objectValue?["Model.Ref"]?.objectValue?["properties"]?.objectValue?["variant"] != nil ? (model.variants ?? []).map(\.id) : [],
+                            contextLimit: model.limit?.context.flatMap { $0 >= 1 ? Int($0) : nil }
                         )
                     }
                     .sorted {
@@ -412,7 +413,16 @@ private struct OpenCodeV2Provider: Decodable {
 
 private struct OpenCodeV2Model: Decodable {
     struct Variant: Decodable { let id: String }
+    // Optional and lenient: an unexpected limit shape must not drop the model.
+    struct Limit: Decodable {
+        let context: Double?
+        private enum CodingKeys: String, CodingKey { case context }
+        init(from decoder: Decoder) throws {
+            context = try? decoder.container(keyedBy: CodingKeys.self).decodeIfPresent(Double.self, forKey: .context)
+        }
+    }
     let variants: [Variant]?
+    let limit: Limit?
     let id: String
     let providerID: String
     let name: String

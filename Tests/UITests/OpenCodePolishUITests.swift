@@ -85,6 +85,188 @@ final class OpenCodePolishUITests: XCTestCase {
     }
 
     @MainActor
+    func testTranscriptPartsRenderAndOpenViewers() {
+        let app = launch(["--transcript-parts"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Rich transcript'")).firstMatch.tap()
+        let compaction = app.descendants(matching: .any)["transcript-compaction"]
+        XCTAssertTrue(compaction.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["transcript-retry"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["transcript-step-summary"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["transcript-patch"].exists)
+        XCTAssertTrue(app.staticTexts["Checkpoint · 9c1e2d4"].exists || app.otherElements["Workspace checkpoint 9c1e2d4"].exists)
+        screenshot(app, name: "transcript-parts-bottom")
+        app.scrollViews.firstMatch.swipeDown()
+        let image = app.buttons.matching(identifier: "transcript-image").firstMatch
+        XCTAssertTrue(image.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons.matching(identifier: "transcript-image").count, 2)
+        screenshot(app, name: "transcript-parts-top")
+
+        image.tap()
+        let done = app.buttons["image-viewer-done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["1 of 2"].exists)
+        screenshot(app, name: "image-viewer")
+        done.tap()
+        XCTAssertTrue(done.waitForNonExistence(timeout: 5))
+
+        app.scrollViews.firstMatch.swipeUp()
+        let file = app.buttons["Sources/App.swift"]
+        XCTAssertTrue(file.waitForExistence(timeout: 5))
+        file.tap()
+        XCTAssertTrue(app.navigationBars["Session changes"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Guard the empty state'")).firstMatch.waitForExistence(timeout: 5))
+        screenshot(app, name: "patch-opens-diff")
+    }
+
+    @MainActor
+    func testTranscriptPartsInDarkAppearance() {
+        let app = launch(["--transcript-parts", "-byot.appearance", "dark"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Rich transcript'")).firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["transcript-compaction"].waitForExistence(timeout: 10))
+        screenshot(app, name: "transcript-parts-dark-bottom")
+        app.scrollViews.firstMatch.swipeDown()
+        XCTAssertTrue(app.buttons.matching(identifier: "transcript-image").firstMatch.waitForExistence(timeout: 5))
+        screenshot(app, name: "transcript-parts-dark-top")
+    }
+
+    @MainActor
+    func testContextMeterOpensUsageDetails() {
+        let app = launch(["--usage"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Token budget'")).firstMatch.tap()
+        let meter = app.buttons["session-context-meter"]
+        XCTAssertTrue(meter.waitForExistence(timeout: 10))
+        XCTAssertEqual(meter.value as? String, "72 percent used, 144,000 of 200,000 tokens")
+        XCTAssertTrue(meter.isHittable)
+        XCTAssertGreaterThanOrEqual(app.descendants(matching: .any).matching(identifier: "transcript-step-summary").count, 2)
+        screenshot(app, name: "context-meter")
+
+        meter.tap()
+        XCTAssertTrue(app.navigationBars["Context and usage"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, containing: "72% of context used").exists)
+        XCTAssertTrue(element(app, containing: "Claude Sonnet 4.5").exists)
+        XCTAssertTrue(element(app, containing: "$1.24").exists)
+        // The sheet opens at half height; the token totals sit below the fold.
+        app.collectionViews.firstMatch.swipeUp()
+        XCTAssertTrue(element(app, containing: "242,400").waitForExistence(timeout: 5))
+        screenshot(app, name: "context-usage-sheet")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Context and usage"].waitForNonExistence(timeout: 5))
+
+        app.buttons["session-actions"].tap()
+        app.buttons["Session details"].tap()
+        XCTAssertTrue(app.navigationBars["Session details"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, containing: "$1.24").waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testContextMeterAtLargestTextSize() {
+        let app = launch(["--usage", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Token budget'")).firstMatch.tap()
+        let meter = app.buttons["session-context-meter"]
+        XCTAssertTrue(meter.waitForExistence(timeout: 10))
+        XCTAssertTrue(meter.isHittable)
+        XCTAssertLessThanOrEqual(meter.frame.maxX, app.windows.firstMatch.frame.maxX)
+        screenshot(app, name: "context-meter-xxxl")
+        meter.tap()
+        XCTAssertTrue(app.navigationBars["Context and usage"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, containing: "72% of context used").exists)
+        screenshot(app, name: "context-usage-sheet-xxxl")
+    }
+
+    @MainActor
+    func testContextUsageInDarkAppearance() {
+        let app = launch(["--usage", "-byot.appearance", "dark"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Token budget'")).firstMatch.tap()
+        let meter = app.buttons["session-context-meter"]
+        XCTAssertTrue(meter.waitForExistence(timeout: 10))
+        screenshot(app, name: "context-meter-dark")
+        meter.tap()
+        XCTAssertTrue(app.navigationBars["Context and usage"].waitForExistence(timeout: 5))
+        screenshot(app, name: "context-usage-sheet-dark")
+    }
+
+    @MainActor
+    func testTranscriptExportCopyAndAgentsSetup() {
+        // Export choices persist; start every run from the defaults.
+        let app = launch(["--usage", "-byot.transcriptExport.assistantMetadata", "YES",
+                          "-byot.transcriptExport.thinking", "NO", "-byot.transcriptExport.toolDetails", "NO"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Token budget'")).firstMatch.tap()
+        // The meter reads the model catalog, which also names the model in the export.
+        let meter = app.buttons["session-context-meter"]
+        XCTAssertTrue(meter.waitForExistence(timeout: 10))
+        let catalogLoaded = NSPredicate(format: "value CONTAINS '200,000'")
+        wait(for: [XCTNSPredicateExpectation(predicate: catalogLoaded, object: meter)], timeout: 10)
+
+        app.buttons["session-actions"].tap()
+        app.buttons["Export transcript…"].tap()
+        XCTAssertTrue(app.navigationBars["Export transcript"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, containing: "token-budget.md").exists)
+        XCTAssertTrue(element(app, containing: "## Assistant (Build · Claude Sonnet 4.5 · 0.5s)").waitForExistence(timeout: 5))
+        let share = app.buttons["transcript-export-share"]
+        XCTAssertTrue(share.waitForExistence(timeout: 5))
+        XCTAssertTrue(share.isEnabled && share.isHittable)
+        screenshot(app, name: "transcript-export")
+
+        let metadata = app.switches["transcript-export-assistant-metadata"]
+        XCTAssertTrue(metadata.exists)
+        metadata.switches.firstMatch.tap()
+        XCTAssertTrue(element(app, containing: "## Assistant\n").waitForExistence(timeout: 5))
+        XCTAssertFalse(element(app, containing: "(Build ·").exists)
+        app.buttons["transcript-export-copy"].tap()
+        XCTAssertTrue(app.buttons["Copied"].waitForExistence(timeout: 2))
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Export transcript"].waitForNonExistence(timeout: 5))
+
+        app.buttons["session-actions"].tap()
+        app.buttons["Copy transcript"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["transcript-copied"].waitForExistence(timeout: 3))
+
+        app.buttons["session-actions"].tap()
+        app.buttons["Set up AGENTS.md…"].tap()
+        let alert = app.alerts["Set up AGENTS.md"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.textFields["Focus (optional)"].exists)
+        screenshot(app, name: "agents-setup")
+        alert.buttons["Cancel"].tap()
+        XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
+
+        let composer = app.textViews["opencode-composer-message"].exists
+            ? app.textViews["opencode-composer-message"] : app.textFields["opencode-composer-message"]
+        composer.tap()
+        composer.typeText("/")
+        XCTAssertTrue(app.buttons["opencode-command-app-export"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["opencode-command-app-copy"].exists)
+        XCTAssertTrue(app.buttons["opencode-command-command:init"].exists)
+        screenshot(app, name: "slash-transcript-actions")
+    }
+
+    @MainActor
+    func testTranscriptExportAtLargestTextSizeInDarkAppearance() {
+        let app = launch(["--usage", "-byot.appearance", "dark",
+                          "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Token budget'")).firstMatch.tap()
+        XCTAssertTrue(app.buttons["session-context-meter"].waitForExistence(timeout: 10))
+        app.buttons["session-actions"].tap()
+        // At this size the actions menu scrolls; export sits below the fold.
+        let export = app.buttons["Export transcript…"]
+        for _ in 0..<4 where !export.isHittable { app.collectionViews.firstMatch.swipeUp() }
+        export.tap()
+        XCTAssertTrue(app.navigationBars["Export transcript"].waitForExistence(timeout: 5))
+        let share = app.buttons["transcript-export-share"]
+        let copy = app.buttons["transcript-export-copy"]
+        XCTAssertTrue(share.waitForExistence(timeout: 5))
+        XCTAssertTrue(share.isHittable && copy.isHittable)
+        XCTAssertLessThanOrEqual(share.frame.maxX, app.windows.firstMatch.frame.maxX)
+        screenshot(app, name: "transcript-export-xxxl-dark")
+    }
+
+    @MainActor
+    private func element(_ app: XCUIApplication, containing text: String) -> XCUIElement {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)).firstMatch
+    }
+
+    @MainActor
     private func launch(_ arguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--polish-ui-tests"] + arguments

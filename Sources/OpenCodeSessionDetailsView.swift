@@ -25,22 +25,42 @@ struct OpenCodeSessionDetailsView: View {
                     .accessibilityIdentifier("session-rename")
                     if !store.sessionFeatures.rename { Text("Renaming is unavailable on this server.").font(.cleanCaption).foregroundStyle(.secondary) }
                 }
-                Section("Related sessions") {
-                    if let parent = store.parentSession {
+                OpenCodeSessionUsageSections(usage: store.usage)
+                if let parent = store.parentSession {
+                    Section(store.session.parentID == nil ? "Forked from" : "Main session") {
                         Button { openSession(parent) } label: {
-                            Label("\(store.session.parentID == nil ? "Forked from" : "Parent"): \(parent.title)", systemImage: "arrow.turn.up.left")
+                            Label(OpenCodeSubagentTitle.displayTitle(of: parent), systemImage: "arrow.turn.left.up")
+                                .frame(minHeight: 44, alignment: .leading)
                         }
+                        .accessibilityHint("Opens this conversation")
                         .accessibilityIdentifier("session-parent")
                     }
-                    ForEach(store.childSessions) { child in
-                        Button { openSession(child) } label: {
-                            Label(child.title, systemImage: "arrow.triangle.branch")
+                }
+                // Subagents rarely start their own; a subagent session lists
+                // children only when it has some.
+                if store.session.parentID == nil || !store.childSessions.isEmpty {
+                    Section {
+                        ForEach(store.childSessions) { child in
+                            Button { openSession(child) } label: {
+                                OpenCodeSubagentSessionRow(session: child, activity: store.subagents.activity[child.id])
+                            }
+                            .accessibilityHint("Opens the subagent session")
+                            .accessibilityIdentifier("session-child-\(child.id)")
                         }
-                        .accessibilityIdentifier("session-child-\(child.id)")
+                        if store.isLoadingRelatedSessions && store.childSessions.isEmpty {
+                            ProgressView("Loading subagents")
+                        } else if !store.sessionFeatures.children {
+                            Text("Subagent sessions are unavailable on this server.").foregroundStyle(.secondary)
+                        } else if store.childSessions.isEmpty {
+                            Text("No subagents yet").foregroundStyle(.secondary)
+                        }
+                    } header: {
+                        Text("Subagents")
+                    } footer: {
+                        if !store.childSessions.isEmpty {
+                            Text("Sessions this conversation started with the task tool. They keep their own transcripts and totals.")
+                        }
                     }
-                    if store.isLoadingRelatedSessions { ProgressView("Loading related sessions") }
-                    else if !store.sessionFeatures.children { Text("Child-session browsing is unavailable on this server.").foregroundStyle(.secondary) }
-                    else if store.childSessions.isEmpty && store.parentSession == nil { Text("No related sessions").foregroundStyle(.secondary) }
                 }
                 Section("History") {
                     ForEach(OpenCodeSessionAction.allCases) { action in
@@ -89,6 +109,7 @@ struct OpenCodeSessionDetailsView: View {
                 Text("This removes the conversation from the server. It cannot be undone.")
             }
             .task { await store.loadRelatedSessions() }
+            .task(id: store.usage.context?.messageID) { await store.refreshContextWindow() }
         }
     }
 }

@@ -34,7 +34,8 @@ struct OpenCodeProviderCatalog: Decodable, Equatable, Sendable {
                     status: model["status"]?.stringValue,
                     variants: (model["variants"]?.objectValue ?? [:]).filter {
                         $0.value.objectValue?["disabled"] != .bool(true)
-                    }.map(\.key).sorted()
+                    }.map(\.key).sorted(),
+                    contextLimit: OpenCodeModelOption.contextLimit(model)
                 )
             }
             .sorted {

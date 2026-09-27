@@ -583,7 +583,7 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private func restore(_ message: OpenCodeMessageEnvelope) {
-        text = message.parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n")
+        text = message.parts.filter(\.isAuthoredText).compactMap(\.text).joined(separator: "\n\n")
         attachments = message.parts.compactMap { part in
             guard part.type == "file", let url = part.url, url.hasPrefix("data:"),
                   let comma = url.firstIndex(of: ","), url[..<comma].hasSuffix(";base64"),

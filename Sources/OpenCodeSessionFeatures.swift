@@ -34,6 +34,9 @@ struct OpenCodeSessionFeatureSupport: Equatable, Sendable {
     var fork = false
     var compactRequiresModel = false
     var undoIncludesFileChanges = false
+    /// The server lists the messages still in the model's context. v1 has no
+    /// such route; the transcript's last compaction marks the same boundary.
+    var contextWindow = false
 
     static func negotiated(_ context: OpenCodeFeatureContext) -> Self {
         if context.serverProtocol == .v1 {
@@ -54,7 +57,8 @@ struct OpenCodeSessionFeatureSupport: Equatable, Sendable {
                     undo: details && inbox && stage && commit,
                     redo: details && inbox && stage && commit && context.supports("/api/session/{sessionID}/revert/clear", method: "post"),
                     compact: context.supports("/api/session/{sessionID}/compact", method: "post"),
-                    fork: context.supports("/api/session/{sessionID}/fork", method: "post"))
+                    fork: context.supports("/api/session/{sessionID}/fork", method: "post"),
+                    contextWindow: context.supports("/api/session/{sessionID}/context"))
     }
 }
 
@@ -111,6 +115,14 @@ protocol OpenCodeSessionFeatureServicing: Sendable {
     func commitSessionRevert(sessionID: String, directory: String, workspace: String?) async throws -> Bool
     func compactSession(sessionID: String, directory: String, workspace: String?, model: OpenCodeModelOption?) async throws
     func forkSession(sessionID: String, directory: String, workspace: String?, beforeMessageID: String?) async throws -> OpenCodeSession
+    /// Messages after the last compaction, or nil when the server cannot say.
+    func sessionContextMessages(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeMessageEnvelope]?
+}
+
+extension OpenCodeSessionFeatureServicing {
+    func sessionContextMessages(sessionID: String, directory: String, workspace: String?) async throws -> [OpenCodeMessageEnvelope]? {
+        nil
+    }
 }
 
 struct OpenCodeSessionFeatureError: LocalizedError {

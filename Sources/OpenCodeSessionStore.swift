@@ -31,7 +31,20 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var actionErrorMessage: String?
     @Published private(set) var actionInFlightID: String?
     @Published private(set) var transcriptRevision = 0
-    @Published private(set) var providerModels: [OpenCodeProviderModels] = []
+    @Published private(set) var providerModels: [OpenCodeProviderModels] = [] {
+        didSet {
+            catalogModels = providerModels.flatMap(\.models)
+            modelContextLimits = Dictionary(
+                catalogModels.compactMap { model in model.contextLimit.map { (model.qualifiedID, $0) } },
+                uniquingKeysWith: { first, _ in first })
+            updateUsage()
+        }
+    }
+    /// Context and spend, recomputed as the transcript and model catalog change.
+    @Published private(set) var usage = OpenCodeSessionUsage()
+    /// Context windows by `provider/model`, for per-step context shares.
+    private(set) var modelContextLimits: [String: Int] = [:]
+    private var catalogModels: [OpenCodeModelOption] = []
     @Published private(set) var selectedModel: OpenCodeModelOption?
     @Published private(set) var composerCatalog = OpenCodeComposerCatalog()
     @Published private(set) var selectedAgentID: String?
@@ -54,6 +67,12 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var forkedSession: OpenCodeSession?
     @Published private(set) var childSessions: [OpenCodeSession] = []
     @Published private(set) var parentSession: OpenCodeSession?
+    /// Children of this session's parent, including this one, when this is a
+    /// subagent session.
+    @Published private(set) var siblingSessions: [OpenCodeSession] = []
+    /// Live status of the subagent sessions this conversation started.
+    @Published private(set) var subagents = OpenCodeSubagentTracker()
+    @Published private(set) var openingSubagentID: String?
     @Published private(set) var sessionDetailsError: String?
     @Published private(set) var isPerformingSessionAction = false
     @Published private(set) var isLoadingRelatedSessions = false
@@ -63,6 +82,9 @@ final class OpenCodeSessionStore: ObservableObject {
     private var featureMutationGeneration = 0
     private var todoMutationGeneration = 0
     private var revertedUserMessages: [OpenCodeMessageEnvelope] = []
+    // The server's active context and the newest message when it was read;
+    // a transcript that has moved on makes it stale.
+    private var serverContextWindow: (anchor: String?, messages: [OpenCodeMessageEnvelope])?
     let directory: String
     let remoteFiles: OpenCodeRemoteFileStore?
     let serverID: UUID
@@ -82,6 +104,7 @@ final class OpenCodeSessionStore: ObservableObject {
     private var eventTask: Task<Void, Never>?
     private var reconciliationTask: Task<Void, Never>?
     private var messageRefreshTask: Task<Void, Never>?
+    private var turnSettlementTask: Task<Void, Never>?
     private var actionRefreshTask: Task<Void, Never>?
     private var modelTask: Task<Void, Never>?
     private var promptDispatchTask: Task<Void, Never>?
@@ -137,6 +160,7 @@ final class OpenCodeSessionStore: ObservableObject {
         eventTask?.cancel()
         reconciliationTask?.cancel()
         messageRefreshTask?.cancel()
+        turnSettlementTask?.cancel()
         actionRefreshTask?.cancel()
         modelTask?.cancel()
         promptDispatchTask?.cancel()
@@ -174,7 +198,7 @@ final class OpenCodeSessionStore: ObservableObject {
         // or tool calls. A partially executed turn can still select a new model.
         guard messages.suffix(from: userIndex + 1).allSatisfy({ message in
             message.parts.allSatisfy { part in
-                part.type != "tool" && (part.text?.trimmedNonEmpty == nil)
+                part.type != "tool" && (part.synthetic == true || part.text?.trimmedNonEmpty == nil)
             }
         }) else { return nil }
         return recoverablePrompt(in: [messages[userIndex]])
@@ -243,6 +267,10 @@ final class OpenCodeSessionStore: ObservableObject {
             await self?.reloadModels()
         }
         await refresh(showLoading: true)
+        if generation == lifecycleGeneration, isRunning,
+           session.parentID != nil || OpenCodeSubagentTask.containsTask(in: transcript.messages) {
+            await loadRelatedSessions()
+        }
         if Task.isCancelled, generation == lifecycleGeneration { stop() }
     }
 
@@ -269,6 +297,7 @@ final class OpenCodeSessionStore: ObservableObject {
         reconciliationTask = nil
         messageRefreshTask?.cancel()
         messageRefreshTask = nil
+        cancelTurnSettlement()
         actionRefreshTask?.cancel()
         actionRefreshTask = nil
         modelTask?.cancel()
@@ -394,6 +423,7 @@ final class OpenCodeSessionStore: ObservableObject {
                     didStatusProbeFailWithFreshTranscript = false
                     applyReconciledStatus(statuses[session.id] ?? .idle)
                 }
+                applySubagentStatuses(statuses)
             case .failure(let error):
                 if statusBaseline == statusMutationGeneration {
                     didStatusProbeFailWithFreshTranscript = didApplyFreshMessages
@@ -481,6 +511,8 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func handleSessionFeatureEvent(_ event: OpenCodeEvent) -> Bool {
+        // Current v2 servers publish revert events as session.next.revert.*.
+        let type = OpenCodeV2EventReducer.canonicalType(event.type)
         if event.type == "todo.updated", event.sessionID == session.id {
             if let todos: [OpenCodeTodo] = decode(event.properties["todos"]) {
                 todoMutationGeneration &+= 1
@@ -488,7 +520,7 @@ final class OpenCodeSessionStore: ObservableObject {
             }
             return true
         }
-        if event.type == "session.revert.staged", event.sessionID == session.id {
+        if type == "session.revert.staged", event.sessionID == session.id {
             featureMutationGeneration &+= 1
             revertMessageID = event.properties["revert"]?.objectValue?["messageID"]?.stringValue
             promptQueue.pausePendingPrompts()
@@ -496,14 +528,14 @@ final class OpenCodeSessionStore: ObservableObject {
             publishTranscript()
             return true
         }
-        if event.type == "session.revert.committed", event.sessionID == session.id {
-            if let boundary = event.properties["to"]?.stringValue ?? revertMessageID {
+        if type == "session.revert.committed", event.sessionID == session.id {
+            if let boundary = event.properties["to"]?.stringValue ?? event.properties["messageID"]?.stringValue ?? revertMessageID {
                 commitHistoryLocally(before: boundary)
             }
             scheduleReconciliation()
             return true
         }
-        if event.type == "session.revert.cleared", event.sessionID == session.id {
+        if type == "session.revert.cleared", event.sessionID == session.id {
             featureMutationGeneration &+= 1
             revertMessageID = nil
             publishTranscript()
@@ -626,15 +658,111 @@ final class OpenCodeSessionStore: ObservableObject {
         guard let featureService, !isLoadingRelatedSessions else { return }
         isLoadingRelatedSessions = true
         defer { isLoadingRelatedSessions = false }
-        do {
-            if sessionFeatures.children {
-                childSessions = try await featureService.childSessions(sessionID: session.id, directory: directory, workspace: workspace)
-            }
-            if let parentID = session.parentID ?? session.forkSourceID, sessionFeatures.details {
+        let sessionID = session.id, directory = directory, workspace = workspace
+        var errors: [Error] = []
+        if sessionFeatures.children {
+            do {
+                childSessions = OpenCodeSubagentFamily.ordered(
+                    try await featureService.childSessions(sessionID: sessionID, directory: directory, workspace: workspace))
+                trackSubagents(childSessions.map(\.id))
+            } catch { errors.append(error) }
+        }
+        if let parentID = session.parentID ?? session.forkSourceID, sessionFeatures.details {
+            do {
                 parentSession = try await featureService.sessionDetails(sessionID: parentID, directory: directory, workspace: workspace).session
-            }
-            sessionDetailsError = nil
-        } catch { sessionDetailsError = error.localizedDescription }
+            } catch { errors.append(error) }
+        }
+        // A subagent steps between its siblings: the parent's other children.
+        if let parentID = session.parentID, sessionFeatures.children {
+            do {
+                siblingSessions = try await featureService.childSessions(sessionID: parentID, directory: directory, workspace: workspace)
+            } catch { errors.append(error) }
+        }
+        sessionDetailsError = errors.first?.localizedDescription
+        // Children found here may have started before this screen opened.
+        if !subagents.activity.isEmpty,
+           let statuses = try? await service.sessionStatuses(directory: directory, workspace: workspace) {
+            applySubagentStatuses(statuses)
+        }
+    }
+
+    /// The session behind a subagent link: a known relative, or the server's
+    /// record of it. nil, with an explanation, when neither is available.
+    func relatedSession(_ sessionID: String) async -> OpenCodeSession? {
+        let known = childSessions + siblingSessions + [parentSession].compactMap { $0 }
+        if let session = known.first(where: { $0.id == sessionID }) { return session }
+        guard let featureService, sessionFeatures.details else {
+            actionErrorMessage = "This server can’t open subagent sessions."
+            return nil
+        }
+        guard openingSubagentID == nil else { return nil }
+        openingSubagentID = sessionID
+        defer { openingSubagentID = nil }
+        do {
+            return try await featureService.sessionDetails(sessionID: sessionID, directory: directory, workspace: workspace).session
+        } catch is CancellationError {
+            return nil
+        } catch {
+            actionErrorMessage = "Couldn’t open the subagent session: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    /// This session among its siblings, when it is a subagent.
+    var subagentFamily: OpenCodeSubagentFamily? {
+        OpenCodeSubagentFamily(session: session, parent: parentSession, siblings: siblingSessions)
+    }
+
+    private func trackSubagents<IDs: Sequence>(_ ids: IDs) where IDs.Element == String {
+        let new = ids.filter { !subagents.isTracking($0) }
+        guard !new.isEmpty else { return }
+        subagents.track(new)
+    }
+
+    private func applySubagentStatuses(_ statuses: [String: OpenCodeSessionStatus]) {
+        var next = subagents
+        next.applyStatuses(statuses)
+        if next != subagents { subagents = next }
+    }
+
+    /// Events about other sessions: this one's subagents, its siblings, and
+    /// its parent. Returns true when the event belongs to another session.
+    private func handleRelatedSessionEvent(_ event: OpenCodeEvent) -> Bool {
+        if ["session.created", "session.updated", "session.deleted"].contains(event.type),
+           let info: OpenCodeSession = decode(event.properties["info"]) {
+            guard info.id != session.id else { return false }
+            applyRelatedSession(info, removed: event.type == "session.deleted")
+            return true
+        }
+        let properties = event.properties
+        guard let sessionID = event.sessionID ?? properties["part"]?.objectValue?["sessionID"]?.stringValue,
+              sessionID != session.id else { return false }
+        if subagents.isTracking(sessionID) {
+            var next = subagents
+            if next.apply(event) { subagents = next }
+        }
+        return true
+    }
+
+    private func applyRelatedSession(_ info: OpenCodeSession, removed: Bool) {
+        let gone = removed || info.time.archived != nil
+        if info.parentID == session.id {
+            let next = Self.upsert(info, into: childSessions, removing: gone)
+            if next != childSessions { childSessions = next }
+            if !gone { trackSubagents([info.id]) }
+        }
+        guard let parentID = session.parentID else { return }
+        if info.parentID == parentID {
+            let next = Self.upsert(info, into: siblingSessions, removing: gone)
+            if next != siblingSessions { siblingSessions = next }
+        }
+        if info.id == parentID, !removed, info != parentSession { parentSession = info }
+    }
+
+    nonisolated static func upsert(_ session: OpenCodeSession, into sessions: [OpenCodeSession], removing: Bool) -> [OpenCodeSession] {
+        var next = sessions.filter { $0.id != session.id }
+        if !removing { next.append(session) }
+        return OpenCodeSubagentFamily.ordered(next)
     }
 
     func renameSession(_ title: String) async -> Bool {
@@ -1236,6 +1364,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     func handle(_ event: OpenCodeEvent) {
+        if handleRelatedSessionEvent(event) { return }
         if let eventSessionID = event.sessionID, eventSessionID != session.id {
             return
         }
@@ -1301,20 +1430,88 @@ final class OpenCodeSessionStore: ObservableObject {
             }
             settleTurnLocally(dismissingUnansweredPrompt: false)
             scheduleMessageRefresh()
-        case "session.retry.scheduled":
+        case "session.retry.scheduled", "session.next.retried":
             statusMutationGeneration &+= 1
             applyEventStatus(.retry(attempt: Int(event.properties["attempt"]?.numberValue ?? 1),
                 message: event.properties["error"]?.objectValue?["message"]?.stringValue ?? "Retrying", next: event.properties["at"]?.numberValue ?? 0))
+        case "session.next.step.started":
+            // Current v2 has no execution events on /api/event; a step is the
+            // first sign of work and a new step supersedes any pending settle.
+            // Apply it even over an optimistic busy so the prompt queue records
+            // server activity and dispatches its follow-up when the turn ends.
+            cancelTurnSettlement()
+            statusMutationGeneration &+= 1
+            applyEventStatus(.busy)
+            applyV2Transcript(event)
+        case "session.next.step.ended", "session.next.step.failed":
+            applyV2Transcript(event)
+            // Any step can be the last one: tool calls stop continuing after a
+            // provider error or the agent's step limit. The next step.started
+            // cancels the probe while the server still owns the drain.
+            scheduleTurnSettlement(afterFailure: event.type == "session.next.step.failed")
         default:
-            if transcript.apply(event) {
-                transcriptMutationGeneration &+= 1
-                publishTranscript()
-            } else {
-                // Unrecognized or out-of-order beta events reconcile from projection.
-                scheduleMessageRefresh()
+            applyV2Transcript(event)
+        }
+    }
+
+    private func applyV2Transcript(_ event: OpenCodeEvent) {
+        switch transcript.applyV2(event) {
+        case .changed:
+            transcriptMutationGeneration &+= 1
+            publishTranscript()
+        case .unchanged:
+            break
+        case .unresolved:
+            // Unrecognized or out-of-order events reconcile from projection.
+            scheduleMessageRefresh()
+        }
+    }
+
+    /// Current v2 servers report no idle event, so after each step the store
+    /// asks the authoritative active-session list with a short backoff, then
+    /// keeps checking at the last interval until the drain ends. A failed
+    /// final step settles like session.error so queued prompts stay paused.
+    private func scheduleTurnSettlement(afterFailure: Bool) {
+        cancelTurnSettlement()
+        let baseline = statusMutationGeneration
+        turnSettlementTask = Task { [weak self] in
+            var attempt = 0
+            while true {
+                let delays = Self.turnSettlementDelays
+                try? await Task.sleep(for: delays[min(attempt, delays.count - 1)])
+                attempt += 1
+                guard !Task.isCancelled, let store = self, store.isRunning else { return }
+                // Another path (reconciliation, Stop) already settled the turn.
+                guard store.status.isActive, baseline == store.statusMutationGeneration else {
+                    store.turnSettlementTask = nil
+                    return
+                }
+                guard let statuses = try? await store.service.sessionStatuses(
+                    directory: store.directory, workspace: store.workspace
+                ) else { continue }
+                guard !Task.isCancelled, baseline == store.statusMutationGeneration else { return }
+                guard statuses[store.session.id]?.isActive != true else { continue }
+                store.turnSettlementTask = nil
+                if afterFailure {
+                    store.settleTurnLocally(dismissingUnansweredPrompt: false)
+                } else {
+                    store.statusMutationGeneration &+= 1
+                    store.applyEventStatus(.idle)
+                }
+                store.scheduleMessageRefresh()
+                return
             }
         }
     }
+
+    private func cancelTurnSettlement() {
+        turnSettlementTask?.cancel()
+        turnSettlementTask = nil
+    }
+
+    nonisolated static let turnSettlementDelays: [Duration] = [
+        .milliseconds(150), .milliseconds(400), .seconds(1), .seconds(2), .seconds(4),
+    ]
 
     private func publishTranscript() {
         if revertMessageID == nil { revertedUserMessages = [] }
@@ -1325,7 +1522,32 @@ final class OpenCodeSessionStore: ObservableObject {
         }
         updateCurrentTurnActivityTracking()
         updateUnansweredPromptRecovery()
+        updateUsage()
+        trackSubagents(OpenCodeSubagentTask.sessionIDs(in: transcript.messages))
         transcriptRevision &+= 1
+    }
+
+    private func updateUsage() {
+        var next = OpenCodeSessionUsage(messages: messages, models: catalogModels, session: session)
+        if let window = serverContextWindow, window.anchor == messages.last?.id {
+            next = next.reconciled(activeContext: window.messages)
+        }
+        // Streaming republishes the transcript per token; only real changes publish.
+        if next != usage { usage = next }
+    }
+
+    /// Reads the server's own active context where it offers one. Failure is
+    /// quiet: the transcript's last compaction already answers the question.
+    func refreshContextWindow() async {
+        guard let featureService, sessionFeatures.contextWindow else { return }
+        let anchor = messages.last?.id
+        do {
+            guard let window = try await featureService.sessionContextMessages(
+                sessionID: session.id, directory: directory, workspace: workspace),
+                anchor == messages.last?.id else { return }
+            serverContextWindow = (anchor, window)
+            updateUsage()
+        } catch {}
     }
 
     private func applyReconciledStatus(_ value: OpenCodeSessionStatus) {
@@ -1466,7 +1688,7 @@ final class OpenCodeSessionStore: ObservableObject {
             from: messages.index(after: latestUserIndex)
         )
         let hasAssistantEnvelope = messagesAfterUser.contains { message in
-            message.info.role.lowercased() == "assistant"
+            message.info.role.lowercased() == "assistant" && !message.isSyntheticContext
         }
         guard hasAssistantEnvelope == false else { return nil }
 
@@ -1494,7 +1716,7 @@ final class OpenCodeSessionStore: ObservableObject {
         guard (try? OpenCodePromptAttachment.validate(attachments)) != nil
         else { return nil }
         let text = userMessage.parts
-            .filter { $0.type.lowercased() == "text" }
+            .filter(\.isAuthoredText)
             .compactMap(\.text)
             .joined(separator: "\n\n")
         guard text.trimmedNonEmpty != nil || !attachments.isEmpty || !remoteReferences.isEmpty else { return nil }
@@ -1539,7 +1761,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let hasAssistantEnvelope = messages.suffix(
             from: messages.index(after: latestUserIndex)
         ).contains { message in
-            message.info.role.lowercased() == "assistant"
+            message.info.role.lowercased() == "assistant" && !message.isSyntheticContext
         }
         return hasAssistantEnvelope ? nil : messages[latestUserIndex].id
     }
@@ -1597,7 +1819,9 @@ final class OpenCodeSessionStore: ObservableObject {
             let isVisible: Bool
             switch part.type.lowercased() {
             case "text", "reasoning":
-                isVisible = part.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                // Context OpenCode injects for the model is not a reply.
+                isVisible = part.synthetic != true
+                    && part.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             case "tool":
                 isVisible = part.state != nil
             default:
@@ -1841,6 +2065,16 @@ final class OpenCodeSessionStore: ObservableObject {
             from: v2QuestionResult,
             fallback: questions.filter { $0.resolvedAPIVersion == .v2 }
         )
+        // The legacy lists cover the whole directory, so they also say which
+        // subagents are waiting on the user. v2 lists are per session; for
+        // those, the tracker follows asked and replied events instead.
+        if !subagents.activity.isEmpty, case .success(let legacyPermissions) = permissionResult,
+           case .success(let legacyQuestions) = questionResult {
+            var next = subagents
+            next.applyPendingRequests(legacyPermissions.map { ($0.sessionID, $0.id) }
+                + legacyQuestions.map { ($0.sessionID, $0.id) })
+            if next != subagents { subagents = next }
+        }
         errors.append(contentsOf: [
             legacyPermissionOutcome.error,
             v2PermissionOutcome.error,

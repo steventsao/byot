@@ -49,9 +49,17 @@ struct OpenCodeRemoteFileContent: Equatable, Sendable {
     let text: String?
     let mimeType: String
     let byteCount: Int
+    /// Raw bytes, kept so binary files such as images can be previewed.
+    var data: Data? = nil
     var lines: [String] {
+        normalizedText?.components(separatedBy: "\n") ?? []
+    }
+    /// The text with every line ending as `\n`.
+    var normalizedText: String? {
         text?.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
-            .components(separatedBy: "\n") ?? []
+    }
+    var syntaxLanguage: BYOTSyntaxLanguage? {
+        BYOTSyntaxLanguage(path: path) ?? BYOTSyntaxLanguage(mimeType: mimeType)
     }
 }
 
@@ -192,7 +200,7 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
             guard data.count <= Self.maximumPreviewBytes else { throw OpenCodeRemoteFileError.tooLarge }
             return .init(path: relative, text: value.type == "text" ? String(data: data, encoding: .utf8) : nil,
                          mimeType: value.mimeType ?? (value.type == "text" ? "text/plain" : "application/octet-stream"),
-                         byteCount: data.count)
+                         byteCount: data.count, data: data)
         }
         var request = try connection.transport.makeRequest(path: ["api", "fs", "read"],
             query: locationQuery(connection), method: "GET", body: nil)
@@ -211,7 +219,7 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
         guard data.count <= Self.maximumPreviewBytes else { throw OpenCodeRemoteFileError.tooLarge }
         let mime = http.mimeType ?? "application/octet-stream"
         let text = data.contains(0) ? nil : String(data: data, encoding: .utf8)
-        return .init(path: relative, text: text, mimeType: mime, byteCount: data.count)
+        return .init(path: relative, text: text, mimeType: mime, byteCount: data.count, data: data)
     }
 
     private func boundedData(_ connection: OpenCodeFeatureContext, request: URLRequest,
