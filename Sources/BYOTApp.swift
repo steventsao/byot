@@ -1,3 +1,4 @@
+import AppIntents
 import SwiftUI
 
 @main
@@ -67,6 +68,10 @@ private struct BYOTRootView: View {
             .sheet(isPresented: $isShowingAbout) {
                 AboutView(appearance: $appearance)
             }
+            .task {
+                // Server names in "Ask OpenCode on <server>" phrases.
+                if !BYOTLaunch.isAutomated { BYOTAppShortcuts.updateAppShortcutParameters() }
+            }
     }
 }
 
@@ -105,6 +110,17 @@ private struct AboutView: View {
                     } footer: {
                         Text("Follow a running turn on the Lock Screen and in the Dynamic Island, including when it needs your approval. Add the byot widget to your Home Screen to see active sessions at a glance.")
                     }
+                }
+                Section {
+                    ShortcutsLink()
+                        .shortcutsLinkStyle(.automaticOutline)
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
+                        .accessibilityIdentifier("shortcuts-link")
+                } header: {
+                    Text("Siri & Shortcuts")
+                } footer: {
+                    Text("Say “Ask OpenCode in byot” to start a session, or “What needs me in byot” to hear which sessions are waiting on you. byot’s actions are also in the Shortcuts app.")
                 }
                 Section {
                     LabeledContent("Version", value: version)

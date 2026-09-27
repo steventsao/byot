@@ -85,6 +85,8 @@ struct BYOTPushDestination: Identifiable, Equatable, Sendable {
         case notification
         /// A home-screen widget or Live Activity tap on this iPhone.
         case widget
+        /// Siri or the Shortcuts app ran Open Session on this iPhone.
+        case shortcut
     }
 
     let id = UUID()

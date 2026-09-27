@@ -198,7 +198,7 @@ struct OpenCodeRootView: View {
         let route = destination.route
         defer { if push.pendingDestination?.id == destination.id { push.pendingDestination = nil } }
         guard let profile = profileStore.profiles.first(where: { $0.id == route.serverID }) else {
-            push.routingError = destination.origin == .widget
+            push.routingError = destination.origin != .notification
                 ? "This server was removed from byot. Add it again to open its sessions."
                 : "The saved server has changed or was removed. Open Notifications on the correct server to pair it again."
             return
