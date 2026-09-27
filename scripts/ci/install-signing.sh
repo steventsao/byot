@@ -2,7 +2,7 @@
 # Prepare manual App Store signing on a CI runner, for
 # scripts/asc-build-testflight.sh.
 #
-# - Imports the Apple Distribution identity into a temporary keychain that
+# - Imports the distribution identity into a temporary keychain that
 #   codesign can use without a prompt (the errSecInternalComponent fix).
 # - Downloads, by App Store Connect API, the newest active App Store profile for
 #   the app and for each extension the app embeds, keeping only profiles that
@@ -11,7 +11,7 @@
 # - Appends the settings the release script reads to $GITHUB_ENV.
 #
 # Required environment:
-#   DIST_CERT_P12_BASE64    base64 of the Apple Distribution .p12
+#   DIST_CERT_P12_BASE64    base64 of the distribution .p12 (Apple or iPhone Distribution)
 #   DIST_CERT_P12_PASSWORD  its password
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY_PATH  App Store Connect API key
 #   RUNNER_TEMP, GITHUB_ENV (set by GitHub Actions)
@@ -77,12 +77,19 @@ while IFS= read -r keychain; do
 done < <(security list-keychains -d user)
 security list-keychains -d user -s "$KEYCHAIN" "${current_keychains[@]}"
 
-IDENTITY_COUNT="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -c 'Apple Distribution' || true)"
-if [[ "$IDENTITY_COUNT" != "1" ]]; then
-  echo "Expected one valid Apple Distribution identity in the .p12, found $IDENTITY_COUNT." >&2
+# Older teams' certificates are named "iPhone Distribution", newer ones
+# "Apple Distribution"; select the identity by its SHA-1 so either works.
+IDENTITIES="$(security find-identity -v -p codesigning "$KEYCHAIN" |
+  sed -nE 's/^ *[0-9]+\) ([0-9A-F]{40}) "((Apple|iPhone) Distribution: .*)"$/\1\t\2/p')"
+if [[ "$(printf '%s' "$IDENTITIES" | grep -c . || true)" != "1" ]]; then
+  echo "Expected exactly one valid distribution identity in the .p12." >&2
   exit 1
 fi
-CERT_SERIAL="$(security find-certificate -p -c 'Apple Distribution' "$KEYCHAIN" |
+IDENTITY_SHA1="${IDENTITIES%%$'\t'*}"
+IDENTITY_NAME="${IDENTITIES#*$'\t'}"
+echo "Signing identity: $IDENTITY_NAME"
+CERT_SERIAL="$(security find-certificate -a -Z -p "$KEYCHAIN" |
+  awk -v sha="$IDENTITY_SHA1" '/^SHA-1 hash:/ { keep = ($3 == sha) } keep' |
   openssl x509 -noout -serial | sed 's/^serial=//')"
 
 # Profiles: newest active IOS_APP_STORE profile per bundle ID that includes the
@@ -162,7 +169,7 @@ rm -f "$EXPORT_OPTIONS"
 /usr/libexec/PlistBuddy \
   -c 'Add :method string app-store-connect' \
   -c 'Add :signingStyle string manual' \
-  -c 'Add :signingCertificate string Apple Distribution' \
+  -c "Add :signingCertificate string $IDENTITY_SHA1" \
   -c "Add :teamID string $TEAM_ID" \
   -c 'Add :uploadSymbols bool true' \
   -c 'Add :manageAppVersionAndBuildNumber bool false' \
@@ -183,7 +190,7 @@ done < "$SIGNING_DIR/selected.tsv"
 {
   echo "BYOT_CODE_SIGN_KEYCHAIN=$KEYCHAIN"
   echo "BYOT_CODE_SIGN_KEYCHAIN_PASSWORD_FILE=$KEYCHAIN_PASSWORD_FILE"
-  echo "BYOT_CODE_SIGN_IDENTITY=Apple Distribution"
+  echo "BYOT_CODE_SIGN_IDENTITY=$IDENTITY_SHA1"
   echo "BYOT_EXPORT_OPTIONS_PLIST=$EXPORT_OPTIONS"
   echo "BYOT_ALLOW_PROVISIONING_UPDATES=0"
 } >> "$GITHUB_ENV"

@@ -34,7 +34,7 @@ A dispatch workflow only shows up in the Actions tab once its file is on
 
 `scripts/ci/install-signing.sh` runs before the archive:
 
-- It imports the Apple Distribution identity from a secret into a temporary
+- It imports the distribution identity from a secret into a temporary
   keychain, and sets the key's partition list so `codesign` can use it without
   a prompt. This is what prevents `errSecInternalComponent` in a
   non-interactive job.
@@ -63,9 +63,11 @@ list profiles.
 
 ### 2. Distribution certificate
 
-Export the Apple Distribution certificate and its private key as a
+Export the distribution certificate and its private key as a
 password-protected `.p12`. Use the certificate that the App Store profiles are
-issued for. Encode the file with `base64 -i distribution.p12 | pbcopy` and
+issued for. For this team that is the `iPhone Distribution` certificate in the
+shared signing keychain; the job selects it by SHA-1, so an `Apple
+Distribution` certificate works too. Encode the file with `base64 -i distribution.p12 | pbcopy` and
 delete the `.p12` afterwards.
 
 ### 3. App Store profiles
