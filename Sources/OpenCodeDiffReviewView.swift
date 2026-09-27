@@ -441,7 +441,7 @@ struct OpenCodeDiffFileView: View {
             // The gutter holds two line-number columns, a sign column and padding.
             let gutter = CGFloat(gutterDigits * 2 + 4) * columnWidth + 24
             let contentWidth = wrapsLines ? proxy.size.width
-                : max(proxy.size.width, gutter + CGFloat(columns + 1) * columnWidth + 16)
+                : max(proxy.size.width, gutter + CGFloat(columns + 2) * columnWidth + 16)
             ScrollView(wrapsLines ? .vertical : [.horizontal, .vertical]) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(rows) { row in
@@ -486,7 +486,8 @@ struct OpenCodeDiffFileView: View {
             .background(BYOTBrand.surface.opacity(0.6))
             .accessibilityIdentifier("diff-gap-\(id)")
         case .line(_, let line):
-            OpenCodeDiffLineRow(line: line, digits: gutterDigits, wraps: wrapsLines, contrast: contrast)
+            OpenCodeDiffLineRow(line: line, language: BYOTSyntaxLanguage(path: file?.path), digits: gutterDigits,
+                                wraps: wrapsLines, contrast: contrast)
         }
     }
 
@@ -557,20 +558,27 @@ struct OpenCodeDiffFileView: View {
 
 private struct OpenCodeDiffLineRow: View {
     let line: OpenCodeUnifiedDiff.Line
+    /// Colors each line on its own, like the file viewer and tool output; a
+    /// hunk can start inside a block comment, which then reads as code.
+    let language: BYOTSyntaxLanguage?
     let digits: Int
     let wraps: Bool
     let contrast: ColorSchemeContrast
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
+            // The gutter never wraps: at accessibility sizes the longest line
+            // could squeeze it until a line number dropped under the code.
             Text(number(line.oldNumber) + " " + number(line.newNumber))
                 .foregroundStyle(.tertiary)
+                .fixedSize()
                 .padding(.leading, 8)
             Text(sign)
                 .foregroundStyle(signInk)
+                .fixedSize()
                 .padding(.horizontal, 6)
                 .fontWeight(.semibold)
-            Text(text)
+            Text(BYOTSyntaxRenderer.attributedString(code: text, language: language))
                 .foregroundStyle(.primary)
                 .lineLimit(wraps ? nil : 1)
                 .fixedSize(horizontal: !wraps, vertical: true)

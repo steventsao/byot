@@ -655,7 +655,13 @@ private struct OpenCodeProfileEditorView: View {
                 Section {
                     TextField("Name", text: $name)
                         .textContentType(.name)
-                    TextField("https://your-mac.example.ts.net", text: $baseURL)
+                    // A localized key renders a bare URL as a blue link, so the
+                    // empty field looked filled in; the prompt is plain text.
+                    TextField(
+                        "https://your-mac.example.ts.net",
+                        text: $baseURL,
+                        prompt: Text(verbatim: "https://your-mac.example.ts.net")
+                    )
                         .textContentType(.URL)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)

@@ -37,9 +37,10 @@ struct OpenCodeCompactionDivider: View {
                 rule
             }
             if let detail = presentation.detail {
+                // Tertiary text fell under 3:1 contrast; glyphs stay tertiary.
                 Text(detail)
                     .font(.cleanCaption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
         }
@@ -212,7 +213,7 @@ struct OpenCodeStepSummaryView: View {
         } label: {
             Text([summary.title, summary.outcome].compactMap { $0 }.joined(separator: " · "))
                 .font(.cleanMono)
-                .foregroundStyle(summary.outcome == nil ? .tertiary : .secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel(summary.accessibilityLabel)
@@ -286,7 +287,7 @@ struct OpenCodePatchPartView: View {
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
             (Text(file.filename).foregroundStyle(linked ? BYOTBrand.accent : Color.primary)
-                + Text(file.folder.map { "  " + $0 } ?? "").foregroundStyle(.tertiary))
+                + Text(file.folder.map { "  " + $0 } ?? "").foregroundStyle(.secondary))
                 .font(.cleanMono)
                 .lineLimit(2)
                 .truncationMode(.middle)

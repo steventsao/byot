@@ -94,7 +94,7 @@ struct BYOTDurableQueueView: View {
     }
     private func perform(_ action: @escaping @MainActor () async throws -> Void) {
         busy = true
-        Task { do { try await action() } catch { queue.error = error.localizedDescription }; busy = false }
+        Task { do { try await action() } catch { queue.error = BYOTQueueError.displayMessage(for: error) }; busy = false }
     }
     private func symbol(_ state: String) -> String {
         switch state {

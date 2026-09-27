@@ -7,9 +7,13 @@ struct OpenCodePermissionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("Permission requested", systemImage: "hand.raised.fill")
-                .font(.cleanBodySemibold)
-                .foregroundStyle(.orange)
+            // Orange text on the light card fell below 3:1; the hand carries the color.
+            Label {
+                Text("Permission requested")
+            } icon: {
+                Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
+            }
+            .font(.cleanBodySemibold)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(request.permission)

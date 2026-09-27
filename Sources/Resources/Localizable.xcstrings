@@ -9272,6 +9272,16 @@
         }
       }
     },
+    "Sessions you start here or in OpenCode on this server appear here." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在这里或在此服务器的 OpenCode 中开始的会话会显示在这里。"
+          }
+        }
+      }
+    },
     "Set up AGENTS.md" : {
       "localizations" : {
         "zh-Hans" : {
@@ -10498,7 +10508,7 @@
         }
       }
     },
-    "The latest reply's input, output, reasoning and cached tokens, measured against the model's context window." : {
+    "The latest reply’s input, output, reasoning and cached tokens, measured against the model’s context window." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -10748,7 +10758,7 @@
         }
       }
     },
-    "The server's model catalog doesn't list a context size for this model." : {
+    "The server’s model catalog doesn’t list a context size for this model." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -11404,7 +11414,7 @@
         }
       }
     },
-    "Totals for this conversation's replies. Subagent sessions keep their own totals." : {
+    "Totals for this conversation’s replies. Subagent sessions keep their own totals." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

@@ -40,6 +40,15 @@ struct BYOTQueueEnvelope: Codable, Sendable {
 enum BYOTQueueError: LocalizedError {
     case message(String)
     var errorDescription: String? { switch self { case .message(let text): text } }
+
+    /// What the queue screen shows for a failure. A transport error read as
+    /// “NSURLErrorDomain error -1009”; it says what happened to the messages instead.
+    static func displayMessage(for error: any Error) -> String {
+        if error is URLError {
+            return String(localized: "Couldn’t reach the queue. Unsent messages remain saved on this iPhone.")
+        }
+        return error.localizedDescription
+    }
 }
 struct BYOTQueueEntry: Codable, Identifiable, Equatable, Sendable {
     var prompt: OpenCodeQueuedPrompt
@@ -201,7 +210,7 @@ private final class BYOTQueueRedirectDelegate: NSObject, URLSessionTaskDelegate 
                 try await upload(entry)
             }
             try await refresh(); error = nil
-        } catch is CancellationError { } catch { self.error = error.localizedDescription }
+        } catch is CancellationError { } catch { self.error = BYOTQueueError.displayMessage(for: error) }
     }
     private func upload(_ entry: BYOTQueueEntry) async throws {
         guard let credential else { return }

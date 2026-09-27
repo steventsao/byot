@@ -129,6 +129,12 @@ struct OpenCodeConnectedView: View {
                     Section {
                         ContentUnavailableView {
                             Label("No sessions", systemImage: "bubble.left.and.bubble.right")
+                        } description: {
+                            // At accessibility sizes the line would push the action
+                            // below the search bar; the title and button say enough.
+                            if !dynamicTypeSize.isAccessibilitySize {
+                                Text("Sessions you start here or in OpenCode on this server appear here.")
+                            }
                         } actions: {
                             Button(action: openNewSession) {
                                 // The compact icon button's label can collapse to
@@ -137,8 +143,10 @@ struct OpenCodeConnectedView: View {
                                     .fixedSize(horizontal: true, vertical: true)
                                     .frame(minHeight: 44)
                             }
-                            .buttonStyle(.bordered)
-                            .tint(BYOTBrand.chromeTint)
+                            // Prominent like the project screen's empty state; the
+                            // gray bordered button read as disabled in dark mode.
+                            .buttonStyle(.borderedProminent)
+                            .foregroundStyle(BYOTBrand.accentInk)
                         }
                     }
                 } else if !browser.sessions.isEmpty && visibleSessions(browser.sessions).isEmpty {
@@ -390,16 +398,24 @@ struct OpenCodeConnectedView: View {
         }
     }
 
+    @ViewBuilder
     private func projectSummary(_ group: OpenCodeSessionGroup) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                projectStatus(group)
-                Text("·")
-                projectUpdatedText(group)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                projectStatus(group)
-                projectUpdatedText(group)
+        let stacked = VStack(alignment: .leading, spacing: 4) {
+            projectStatus(group)
+            projectUpdatedText(group)
+        }
+        if dynamicTypeSize.isAccessibilitySize {
+            // Neither layout fits at these sizes, and ViewThatFits then kept
+            // the row, wrapping the status and time into narrow columns.
+            stacked
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    projectStatus(group)
+                    Text("·")
+                    projectUpdatedText(group)
+                }
+                stacked
             }
         }
     }
@@ -440,8 +456,13 @@ struct OpenCodeConnectedView: View {
                 Label("\(failures) need attention · \(countLabel)", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.red)
             } else if retries > 0 {
-                Label("\(retries) retrying · \(countLabel)", systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
+                // A retry is still working, as its orange row status says; red
+                // is for sessions that stopped with an error.
+                Label {
+                    Text("\(retries) retrying · \(countLabel)")
+                } icon: {
+                    Image(systemName: "arrow.clockwise").foregroundStyle(.orange)
+                }
             } else if active > 0 {
                 Label("\(active) active · \(countLabel)", systemImage: "circle.dotted")
             } else {

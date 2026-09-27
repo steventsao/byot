@@ -26,6 +26,7 @@ import XCTest
         XCTAssertEqual(envelope.route, queue.route)
         await queue.sync()
         XCTAssertFalse(queue.entries[0].uploaded)
+        XCTAssertEqual(queue.error, "Couldn’t reach the queue. Unsent messages remain saved on this iPhone.")
     }
     func testDiskFailureDoesNotAcceptOrClearPrompt() throws {
         let transport = QueueTestTransport()

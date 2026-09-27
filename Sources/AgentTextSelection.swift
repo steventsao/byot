@@ -87,6 +87,12 @@ enum AgentSelectionDocument {
                 }
             case .codeBlock(let label, let text):
                 result.append(code(text, language: BYOTSyntaxLanguage(fenceLabel: label)))
+            case .table(let table):
+                // Tab-separated rows paste cleanly into notes and spreadsheets.
+                for (index, row) in ([table.header] + table.rows).enumerated() {
+                    if index > 0 { result.append(NSAttributedString(string: "\n")) }
+                    result.append(inline(row.joined(separator: "\t")))
+                }
             case .divider: result.append(inline("———"))
             }
         }

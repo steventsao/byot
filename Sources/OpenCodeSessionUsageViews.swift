@@ -128,7 +128,7 @@ struct OpenCodeSessionUsageSections: View {
             Text("Session totals")
         } footer: {
             if usage.hasUsage {
-                Text("Totals for this conversation's replies. Subagent sessions keep their own totals.")
+                Text("Totals for this conversation’s replies. Subagent sessions keep their own totals.")
             }
         }
     }
@@ -177,12 +177,12 @@ struct OpenCodeSessionUsageSections: View {
             return String(localized: "Earlier messages were summarized to free the context window.")
         }
         if context.limit == nil {
-            return String(localized: "The server's model catalog doesn't list a context size for this model.")
+            return String(localized: "The server’s model catalog doesn’t list a context size for this model.")
         }
         if context.level != .normal {
             return String(localized: "OpenCode compacts the conversation automatically when the context is nearly full. You can also compact it yourself from the actions menu.")
         }
-        return String(localized: "The latest reply's input, output, reasoning and cached tokens, measured against the model's context window.")
+        return String(localized: "The latest reply’s input, output, reasoning and cached tokens, measured against the model’s context window.")
     }
 }
 

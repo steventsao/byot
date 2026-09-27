@@ -363,9 +363,14 @@ struct OpenCodeSessionComposerView: View {
             }
         } else if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 8) {
-                if !store.composerCatalog.agents.isEmpty { agentToggle }
-                if !store.availableVariants.isEmpty { variantMenu }
-                modelButton
+                // Stacked knobs and the slash list don't both fit above the
+                // keyboard at these sizes and were drawn over each other; the
+                // knobs come back once a command is picked.
+                if !isChoosingSlashCommand {
+                    if !store.composerCatalog.agents.isEmpty { agentToggle }
+                    if !store.availableVariants.isEmpty { variantMenu }
+                    modelButton
+                }
                 HStack(spacing: 8) {
                     attachmentButton
                     if store.supportsShell { shellToggle }
@@ -587,6 +592,9 @@ struct OpenCodeSessionComposerView: View {
         if !store.canSubmitPrompt {
             ProgressView()
                 .controlSize(.small)
+                // The field row aligns to the bottom; center the spinner on the
+                // 44pt buttons beside it instead of dropping it to the baseline.
+                .frame(height: 44)
                 .accessibilityLabel("Checking session status")
         }
     }
@@ -852,12 +860,16 @@ struct OpenCodeSessionComposerView: View {
         return actions + sessionActions
     }
 
+    /// A slash command is being picked: the draft is `/` plus a name, no arguments yet.
+    private var isChoosingSlashCommand: Bool {
+        !inShellMode && text.hasPrefix("/") && !text.dropFirst().contains(where: \.isWhitespace)
+    }
+
     @ViewBuilder
     private var slashSuggestions: some View {
         if text.hasPrefix("/") {
             let token = String(text.dropFirst().prefix(while: { !$0.isWhitespace }))
-            let isChoosing = !text.dropFirst().contains(where: \.isWhitespace)
-            if isChoosing {
+            if isChoosingSlashCommand {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(builtinActions.filter { token.isEmpty || $0.name.localizedCaseInsensitiveContains(token) }, id: \.name) { action in

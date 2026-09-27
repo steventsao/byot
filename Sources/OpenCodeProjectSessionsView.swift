@@ -251,6 +251,11 @@ struct OpenCodeSessionRow: View {
 struct OpenCodeStatusLabel: View {
     let status: OpenCodeSessionStatus
     let eventConnected: Bool?
+    // Scales with the label: a fixed 7pt dot beside accessibility-size text
+    // read as a stray “·” separator.
+    @ScaledMetric(relativeTo: .footnote) private var scaledIndicator = 12.0
+
+    private var indicator: CGFloat { min(scaledIndicator, 32) }
 
     var body: some View {
         HStack(spacing: 5) {
@@ -266,19 +271,19 @@ struct OpenCodeStatusLabel: View {
     @ViewBuilder
     private var statusIndicator: some View {
         if eventConnected == false {
-            BYOTActivityGlyph(phase: .reconnecting, size: 12, tint: .orange)
+            BYOTActivityGlyph(phase: .reconnecting, size: indicator, tint: .orange)
         } else {
             switch status {
             case .idle:
                 Circle()
                     .fill(Color.secondary)
-                    .frame(width: 7, height: 7)
-                    .frame(width: 12, height: 12)
+                    .frame(width: indicator * 0.58, height: indicator * 0.58)
+                    .frame(width: indicator, height: indicator)
                     .accessibilityHidden(true)
             case .busy:
-                BYOTActivityGlyph(phase: .working, size: 12)
+                BYOTActivityGlyph(phase: .working, size: indicator)
             case .retry:
-                BYOTActivityGlyph(phase: .retrying, size: 12)
+                BYOTActivityGlyph(phase: .retrying, size: indicator)
             }
         }
     }

@@ -68,6 +68,7 @@ struct OpenCodeSessionScreen: View {
     @State private var notificationError: String?
     @State private var isShowingRecoveryModelPicker = false
     @State private var isAtBottom = true
+    @State private var transcriptViewportHeight = CGFloat.infinity
     @State private var hasPositionedTranscript = false
     @State private var isShowingDetails = false
     @State private var isShowingTasks = false
@@ -333,10 +334,13 @@ struct OpenCodeSessionScreen: View {
             .onPreferenceChange(OpenCodeScrollMetricsKey.self) { metrics in
                 guard let bottomY = metrics.bottomY,
                       let height = metrics.viewportHeight else { return }
+                transcriptViewportHeight = height
                 isAtBottom = bottomY <= height + 32 && bottomY >= 0
             }
             .overlay(alignment: .bottom) {
-                if !isAtBottom && hasConversationContent {
+                // With the keyboard and slash suggestions up, the transcript can
+                // shrink to a sliver where the pill would sit clipped under the header.
+                if !isAtBottom && hasConversationContent && transcriptViewportHeight >= 160 {
                     Button {
                         scrollToBottom(proxy)
                     } label: {
@@ -458,7 +462,7 @@ struct OpenCodeSessionScreen: View {
                     Button("Message queue", systemImage: "list.bullet.rectangle") { isShowingQueue = true }
                         .accessibilityIdentifier("session-queue")
                     Button("Session details", systemImage: "info.circle") { isShowingDetails = true }
-                    Button("Context and usage", systemImage: "gauge.with.dots.needle.33percent") { isShowingUsage = true }
+                    Button("Context and usage", systemImage: "chart.pie") { isShowingUsage = true }
                         .accessibilityIdentifier("session-usage")
                     Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
                     if isReviewChangesVisible {

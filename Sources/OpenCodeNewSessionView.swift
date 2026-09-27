@@ -62,18 +62,18 @@ struct OpenCodeNewSessionView: View {
                             .font(.cleanTitleBold)
                             .multilineTextAlignment(.center)
                         VStack(alignment: .leading, spacing: 12) {
-                            Picker("Server", selection: $selectedServerID) {
+                            choiceMenu("Server", selection: $selectedServerID, value: serverName,
+                                       identifier: "new-session-server") {
                                 ForEach(profiles) { Text($0.name).tag($0.id) }
                             }
-                            .accessibilityIdentifier("new-session-server")
                             if isLoading {
                                 ProgressView("Loading projects")
                             } else {
-                                Picker("Project", selection: $directory) {
+                                choiceMenu("Project", selection: $directory, value: projectName,
+                                           identifier: "new-session-project") {
                                     ForEach(projects) { Text($0.displayName).tag($0.worktree) }
                                     Text("Other directory…").tag("")
                                 }
-                                .accessibilityIdentifier("new-session-project")
                                 if directory.isEmpty {
                                     TextField("Working directory", text: $customDirectory)
                                         .textInputAutocapitalization(.never)
@@ -94,7 +94,9 @@ struct OpenCodeNewSessionView: View {
                                 }
                             }
                         }
-                        .pickerStyle(.menu)
+                        // Full width, so the column stays put when the worktree
+                        // name field appears and the menus line up with their captions.
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .tint(BYOTBrand.chromeTint)
                         .disabled(isCreating)
                         if let error {
@@ -168,7 +170,8 @@ struct OpenCodeNewSessionView: View {
     /// Offered only for Git projects on servers with worktree routes.
     @ViewBuilder
     private var workspacePicker: some View {
-        Picker("Workspace", selection: $workspace) {
+        choiceMenu("Workspace", selection: $workspace, value: workspaceName,
+                   identifier: "new-session-workspace") {
             Label("Main checkout", systemImage: "folder").tag(OpenCodeNewSessionWorkspace.main)
             ForEach(worktrees.worktrees) { worktree in
                 Label(worktree.name, systemImage: "arrow.triangle.branch")
@@ -176,10 +179,6 @@ struct OpenCodeNewSessionView: View {
             }
             Label("New worktree", systemImage: "plus").tag(OpenCodeNewSessionWorkspace.new)
         }
-        // The collapsed picker crowds the icon against its title; show the
-        // title alone like the server and project pickers above it.
-        .labelStyle(.titleOnly)
-        .accessibilityIdentifier("new-session-workspace")
         if workspace == .new {
             TextField("Worktree name (optional)", text: $worktreeName)
                 .textInputAutocapitalization(.never)
@@ -200,6 +199,55 @@ struct OpenCodeNewSessionView: View {
                 workspaceHint
                 manageWorktreesButton
             }
+        }
+    }
+
+    /// A menu picker whose collapsed label is plain text. The system menu
+    /// picker insets its label, so it didn't line up with the captions below
+    /// it, and clipped a wrapped choice at accessibility text sizes.
+    private func choiceMenu<Value: Hashable, Options: View>(
+        _ title: LocalizedStringKey,
+        selection: Binding<Value>,
+        value: String,
+        identifier: String,
+        @ViewBuilder options: () -> Options
+    ) -> some View {
+        Menu {
+            Picker(title, selection: selection, content: options)
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(value)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.cleanCaptionBold)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(.primary)
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(Text(title))
+        .accessibilityValue(Text(value))
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var serverName: String {
+        profiles.first { $0.id == selectedServerID }?.name ?? ""
+    }
+
+    private var projectName: String {
+        if directory.isEmpty { return String(localized: "Other directory…") }
+        return projects.first { $0.worktree == directory }?.displayName ?? directory
+    }
+
+    private var workspaceName: String {
+        switch workspace {
+        case .main: String(localized: "Main checkout")
+        case .existing(let directory):
+            worktrees.worktrees.first { $0.directory == directory }?.name ?? String(localized: "Worktree")
+        case .new: String(localized: "New worktree")
         }
     }
 

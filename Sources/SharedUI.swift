@@ -23,17 +23,25 @@ struct ErrorBanner: View {
     var action: (() -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(message.agentDisplayErrorText)
+        // The glyph marks the banner as a problem; without it an error read
+        // like any other note in the list.
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
                 .font(.cleanCaptionBold)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
+                .foregroundStyle(.red)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(message.agentDisplayErrorText)
                     .font(.cleanCaptionBold)
-                    .buttonStyle(.bordered)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let actionTitle, let action {
+                    Button(actionTitle, action: action)
+                        .font(.cleanCaptionBold)
+                        .buttonStyle(.bordered)
+                }
             }
         }
             .frame(maxWidth: .infinity, alignment: .leading)

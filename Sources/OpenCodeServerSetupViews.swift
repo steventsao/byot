@@ -66,6 +66,9 @@ struct OpenCodePairingScannerView: View {
                     Task { @MainActor in handle(code, fromCamera: false) }
                 }
                 .labelStyle(.titleAndIcon)
+                // The system paste control is always filled; a capsule at least
+                // matches the app's other filled buttons instead of a hard square.
+                .buttonBorderShape(.capsule)
                 .accessibilityHint("Pastes a byot pairing link or server address")
             }
 
@@ -347,6 +350,11 @@ struct OpenCodeDiscoveryView: View {
                     Text("On a computer on this Wi-Fi network, start OpenCode with --mdns. byot keeps looking while this page is open. If nothing appears, check that Local Network is on for byot in Settings.")
                     Text(OpenCodeServerSetupCommand.nearby)
                         .font(.cleanMono)
+                        .foregroundStyle(.primary)
+                        // A wrapped command reads as one command only when it
+                        // starts at the left edge, like the pairing command.
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                         .padding(BYOTBrand.Space.sm)
                         .background(BYOTBrand.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
