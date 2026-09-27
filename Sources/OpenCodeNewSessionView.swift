@@ -6,6 +6,9 @@ struct OpenCodeNewSessionView: View {
     let profiles: [OpenCodeServerProfile]
     let makeClient: (OpenCodeServerProfile) -> OpenCodeClient
     private let share: BYOTShareContent?
+    /// On regular width the split view opens the new session in its detail
+    /// column and selects it in the sidebar, instead of showing it here.
+    private let onCreated: ((OpenCodeSessionSelection) -> Void)?
     @ObservedObject private var shares: BYOTShareCenter
     @State private var selectedServerID: UUID
     @State private var client: OpenCodeClient?
@@ -22,17 +25,19 @@ struct OpenCodeNewSessionView: View {
 
     init(profiles: [OpenCodeServerProfile], initialProfile: OpenCodeServerProfile,
          share: BYOTShareContent? = nil, shares: BYOTShareCenter = .shared,
+         onCreated: ((OpenCodeSessionSelection) -> Void)? = nil,
          makeClient: @escaping (OpenCodeServerProfile) -> OpenCodeClient) {
         self.profiles = profiles
         self.makeClient = makeClient
         self.share = share
+        self.onCreated = onCreated
         _shares = ObservedObject(wrappedValue: shares)
         _selectedServerID = State(initialValue: initialProfile.id)
     }
 
     var body: some View {
         Group {
-            if let createdSession, let client {
+            if let createdSession, let client, onCreated == nil {
                 OpenCodeSessionView(client: client, session: createdSession,
                                     directory: createdSession.directory, attention: attention,
                                     startsWithComposerFocused: true)
@@ -185,6 +190,8 @@ struct OpenCodeNewSessionView: View {
                 let session = try await client.createSession(directory: directory, title: nil)
                 if let share { deliver(share, to: session, serverID: client.profile.id) }
                 createdSession = session
+                onCreated?(OpenCodeSessionSelection(client: client, session: session, attention: attention,
+                                                    focusesComposer: true))
             } catch { self.error = error.localizedDescription }
         }
     }

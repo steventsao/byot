@@ -16,10 +16,15 @@ struct OpenCodeSessionView: View {
     @State private var isShowingTasks = false
     @State private var isShowingNewSession = false
     @State private var nextSession: OpenCodeSessionRoute?
+    @State private var visibility = UUID()
+    @Environment(\.openCodeVisibleSessions) private var visibleSessions
     private let client: OpenCodeClient
     private let serverName: String
     private let attention: OpenCodeSessionAttentionStore?
     private let startsWithComposerFocused: Bool
+    /// Closes the conversation when it is the split view's detail, where
+    /// there is nothing to pop back to once the session is deleted.
+    private let onDelete: (() -> Void)?
 
     private let bottomAnchorID = "opencode-session-bottom"
 
@@ -28,9 +33,11 @@ struct OpenCodeSessionView: View {
         session: OpenCodeSession,
         directory: String,
         attention: OpenCodeSessionAttentionStore? = nil,
-        startsWithComposerFocused: Bool = false
+        startsWithComposerFocused: Bool = false,
+        onDelete: (() -> Void)? = nil
     ) {
         self.client = client
+        self.onDelete = onDelete
         serverName = client.profile.name
         self.attention = attention
         self.startsWithComposerFocused = startsWithComposerFocused
@@ -309,7 +316,8 @@ struct OpenCodeSessionView: View {
                         run: { Task { await store.performSessionAction(action) } })
                 },
                 restoredMessage: store.restoredPrompt?.message,
-                onRestoreConsumed: { store.consumeRestoredPrompt() }
+                onRestoreConsumed: { store.consumeRestoredPrompt() },
+                keyboardCommandsEnabled: !isPresentingSheet
             )
         }
         .environment(\.openCodeRemoteFiles, store.remoteFiles)
@@ -374,7 +382,9 @@ struct OpenCodeSessionView: View {
             }
         }
         .onChange(of: store.didDeleteSession) { _, deleted in
-            if deleted { isShowingDetails = false; dismiss() }
+            guard deleted else { return }
+            isShowingDetails = false
+            if let onDelete { onDelete() } else { dismiss() }
         }
         .sheet(isPresented: $isShowingDiff) {
             OpenCodeDiffView(diffs: store.diffs, unavailableReason: store.diffPresentation.unavailableReason)
@@ -383,7 +393,10 @@ struct OpenCodeSessionView: View {
             OpenCodeModelPickerView(store: store)
                 .task { await store.reloadModels() }
         }
-        .onAppear { push.activeRoute = BYOTPushRoute(serverID: client.profile.id, sessionID: store.session.id, directory: store.session.directory, workspace: store.session.workspaceID) }
+        .onAppear {
+            push.activeRoute = BYOTPushRoute(serverID: client.profile.id, sessionID: store.session.id, directory: store.session.directory, workspace: store.session.workspaceID)
+            visibleSessions?.update(visibility, OpenCodeSessionSelection(client: client, session: store.session, attention: attention))
+        }
         .alert("Couldn’t update notifications", isPresented: Binding(get: { notificationError != nil }, set: { if !$0 { notificationError = nil } })) {
             Button("OK") { notificationError = nil }
         } message: { Text(notificationError ?? "") }
@@ -397,6 +410,7 @@ struct OpenCodeSessionView: View {
             if phase == .active { publishLiveTurn(liveTurn) }
         }
         .onDisappear {
+            visibleSessions?.update(visibility, nil)
             if push.activeRoute?.serverID == client.profile.id && push.activeRoute?.sessionID == store.session.id { push.activeRoute = nil }
             rememberAttention()
             BYOTLiveActivityController.shared.release(serverID: client.profile.id, sessionID: store.session.id)
@@ -465,6 +479,10 @@ struct OpenCodeSessionView: View {
     private var sessionStatus: some View {
         OpenCodeStatusLabel(status: store.status, eventConnected: store.isEventConnected)
             .fixedSize()
+    }
+
+    private var isPresentingSheet: Bool {
+        isShowingDiff || isShowingQueue || isShowingDetails || isShowingTasks || isShowingRecoveryModelPicker
     }
 
     private var hasConversationContent: Bool {

@@ -42,6 +42,22 @@ struct OpenCodeSessionBrowserHarness: View {
     }
 
     var body: some View {
+        // The shared test simulator is an iPhone; these lay the browser out
+        // as it is on iPad, always or only while the window is wide.
+        if ProcessInfo.processInfo.arguments.contains("--regular-width") {
+            root.environment(\.horizontalSizeClass, .regular)
+        } else if ProcessInfo.processInfo.arguments.contains("--regular-width-when-wide") {
+            GeometryReader { geometry in
+                root.environment(\.horizontalSizeClass,
+                                 geometry.size.width > geometry.size.height ? .regular : .compact)
+            }
+            .ignoresSafeArea()
+        } else {
+            root
+        }
+    }
+
+    private var root: some View {
         OpenCodeRootView(openAppNavigation: {}, profileStore: store, push: push) { profile, _ in
             let config = URLSessionConfiguration.ephemeral
             config.protocolClasses = [OpenCodeBrowserFixtureProtocol.self]
@@ -69,6 +85,8 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
     // archived sessions with time.archived set.
     private static let archiveLock = NSLock()
     nonisolated(unsafe) private static var archived: Set<String> = []
+    // Stopped during this launch, and idle from then on.
+    nonisolated(unsafe) private static var aborted: Set<String> = []
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -97,6 +115,12 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
             respond(url, body: sessions.first { $0["id"] as? String == id } ?? ["id": id], status: 200)
             return
         }
+        if request.httpMethod == "POST", url.path.hasSuffix("/abort") {
+            let id = url.deletingLastPathComponent().lastPathComponent
+            Self.archiveLock.withLock { _ = Self.aborted.insert(id) }
+            respond(url, body: true, status: 200)
+            return
+        }
         let body: Any
         switch url.path {
         case "/event":
@@ -119,7 +143,10 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
         case "/session":
             body = ProcessInfo.processInfo.arguments.contains("--empty-session-browser")
                 ? [] : sessions.filter { $0["directory"] as? String == directory }
-        case "/session/status": body = ["active": ["type": "busy"], "retry": ["type": "retry", "attempt": 1, "message": "Provider rate limit", "next": now + 10_000]]
+        case "/session/status":
+            let aborted = Self.archiveLock.withLock { Self.aborted }
+            body = ["active": ["type": "busy"], "retry": ["type": "retry", "attempt": 1, "message": "Provider rate limit", "next": now + 10_000]]
+                .filter { !aborted.contains($0.key) }
         case "/provider": body = ["all": [], "connected": [], "default": [:]] as [String: Any]
         case "/session/idle/message":
             body = [
@@ -139,7 +166,7 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
     private func respond(_ url: URL, body: Any, status: Int) {
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body))
+        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body, options: .fragmentsAllowed))
         client?.urlProtocolDidFinishLoading(self)
     }
 }

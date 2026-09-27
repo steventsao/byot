@@ -36,148 +36,224 @@ struct OpenCodeRootView: View {
     @State private var profileEditor: ProfileEditor?
     @State private var profilePendingRemoval: OpenCodeServerProfile?
     @State private var profileRemovalError: String?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The detail column on regular width. The iPhone layout uses `path`.
+    @State private var splitDetail: OpenCodeSplitDetail?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var listRequest: OpenCodeSessionListRequest?
+    /// Held without observing: only the shortcut buttons redraw for it.
+    @State private var keyboard = OpenCodeKeyboardRouter()
+    @State private var visibleSessions = OpenCodeVisibleSessions()
+
+    /// iPad (and large iPhones in landscape) show the sessions beside the
+    /// conversation. Without a server there is nothing to put beside it.
+    private var isSplit: Bool {
+        horizontalSizeClass == .regular && profileStore.activeProfile != nil
+    }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            VStack(spacing: 0) {
-                Group {
-                    if let profile = profileStore.activeProfile {
-                        OpenCodeConnectedView(
-                            client: makeClient(profile, profileStore.password(for: profile)),
-                            openNewSession: { path.append(OpenCodeNewSessionRoute()) }
-                        )
-                        .id("\(profileFingerprint(profile))|\(profileStore.connectionGeneration)")
-                    } else {
-                        ContentUnavailableView {
-                            Label("Connect your server", systemImage: "network")
-                        } description: {
-                            Text("Add the HTTPS address of your OpenCode server.")
-                        } actions: {
-                            Button("Add server", systemImage: "plus") {
-                                edit(nil)
+        presentations(
+            navigation
+                .environment(\.openCodeKeyboardRouter, keyboard)
+                .environment(\.openCodeVisibleSessions, visibleSessions)
+                .background {
+                    OpenCodeKeyboardShortcuts(app: appCommands, router: keyboard, isEnabled: !isPresentingSheet)
+                }
+                .onChange(of: isSplit) { _, isSplit in adaptNavigation(toSplit: isSplit) }
+        )
+    }
+
+    @ViewBuilder
+    private var navigation: some View {
+        if isSplit {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                sessionsColumn
+                    .navigationSplitViewColumnWidth(min: 300, ideal: BYOTBrand.sidebarWidth, max: 440)
+            } detail: {
+                // A new selection starts a fresh stack, so a fork or new
+                // session pushed inside the last conversation doesn't linger.
+                NavigationStack { detailColumn }
+                    .id(splitDetail?.id)
+            }
+            .navigationSplitViewStyle(.balanced)
+        } else {
+            NavigationStack(path: $path) {
+                sessionsColumn
+                    .navigationDestination(for: OpenCodeNewSessionRoute.self) { route in
+                        if let profile = profileStore.activeProfile {
+                            OpenCodeNewSessionView(profiles: profileStore.profiles,
+                                initialProfile: profile, share: route.share, shares: shares) { profile in
+                                makeClient(profile, profileStore.password(for: profile))
                             }
-                            .buttonStyle(.borderedProminent)
-                            .foregroundStyle(BYOTBrand.accentInk)
+                        }
+                    }
+                    .navigationDestination(for: BYOTPushSessionRoute.self) { destination in
+                        if let profile = profileStore.profiles.first(where: { $0.id == destination.serverID }) {
+                            OpenCodeSessionView(client: makeClient(profile, profileStore.password(for: profile)),
+                                session: destination.session, directory: destination.session.directory,
+                                startsWithComposerFocused: destination.focusesComposer)
+                                .id(destination.id)
+                        }
+                    }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var detailColumn: some View {
+        switch splitDetail {
+        case .session(let selection):
+            OpenCodeSessionView(client: selection.client, session: selection.session,
+                directory: selection.session.directory, attention: selection.attention,
+                startsWithComposerFocused: selection.focusesComposer,
+                onDelete: {
+                    splitDetail = nil
+                    listRequest = OpenCodeSessionListRequest(kind: .refresh)
+                })
+        case .newSession(let route, let serverID):
+            if let profile = profileStore.profiles.first(where: { $0.id == serverID }) {
+                OpenCodeNewSessionView(profiles: profileStore.profiles, initialProfile: profile,
+                    share: route.share, shares: shares, onCreated: openCreatedSession) { profile in
+                    makeClient(profile, profileStore.password(for: profile))
+                }
+            }
+        case nil:
+            OpenCodeSplitPlaceholderView(openNewSession: openNewSession)
+        }
+    }
+
+    private var sessionsColumn: some View {
+        VStack(spacing: 0) {
+            Group {
+                if let profile = profileStore.activeProfile {
+                    OpenCodeConnectedView(
+                        client: makeClient(profile, profileStore.password(for: profile)),
+                        openNewSession: openNewSession,
+                        selection: isSplit ? $splitDetail : nil,
+                        request: listRequest
+                    )
+                    .id("\(profileFingerprint(profile))|\(profileStore.connectionGeneration)")
+                } else {
+                    ContentUnavailableView {
+                        Label("Connect your server", systemImage: "network")
+                    } description: {
+                        Text("Add the HTTPS address of your OpenCode server.")
+                    } actions: {
+                        Button("Add server", systemImage: "plus") {
+                            edit(nil)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .foregroundStyle(BYOTBrand.accentInk)
+                    }
+                }
+            }
+        }
+        .background(BYOTBrand.canvas)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !profileStore.profiles.isEmpty {
+                OpenCodeServerBar(
+                    profiles: profileStore.profiles,
+                    selectedID: profileStore.activeProfileID,
+                    select: profileStore.select,
+                    add: { edit(nil) }
+                )
+                .background(BYOTBrand.canvas)
+            }
+        }
+        .navigationTitle(BYOTBrand.wordmark)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("About byot", systemImage: "info.circle", action: openAppNavigation)
+                    .labelStyle(.iconOnly)
+                    .tint(BYOTBrand.chromeTint)
+                    .accessibilityIdentifier("about-byot")
+            }
+            ToolbarItem(placement: .principal) { BYOTWordmark() }
+            if profileStore.activeProfile != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    profileMenu
+                        .tint(BYOTBrand.chromeTint)
+                }
+            }
+        }
+    }
+
+    /// Sheets, alerts and routing shared by both layouts.
+    private func presentations(_ content: some View) -> some View {
+        content
+            .task(id: push.pendingDestination?.id) { await openNotification() }
+            .sheet(item: $sharePicker) { content in
+                BYOTShareDestinationView(
+                    content: content, profiles: profileStore.profiles, activeProfileID: profileStore.activeProfileID,
+                    errorMessage: shares.deliveryError,
+                    loadSessions: { (try? await BYOTIntentService.live.recentSessions(limit: 15)) ?? [] },
+                    choose: { destination in await openShare(content, at: destination) },
+                    discard: { shares.discard(content) })
+            }
+            .task(id: shares.incoming?.id) { await presentSharePicker() }
+            .alert("Shared to byot", isPresented: Binding(get: { shares.notice != nil }, set: { if !$0 { shares.notice = nil } })) {
+                Button("OK") { shares.notice = nil }
+            } message: { Text(shares.notice ?? "") }
+            .sheet(item: $notificationProfile) { profile in BYOTPushSettingsView(profile: profile) }
+            .alert("Couldn’t open session", isPresented: Binding(get: { push.routingError != nil }, set: { if !$0 { push.routingError = nil } })) {
+                Button("OK") { push.routingError = nil }
+            } message: { Text(push.routingError ?? "") }
+            .onChange(of: profileStore.activeProfileID) { _, id in
+                if pathServerID != id { path = NavigationPath() }
+                pathServerID = id
+                splitDetail = splitDetail?.retained(forActiveServer: id)
+            }
+            .sheet(item: $profileEditor) { editor in
+                OpenCodeProfileEditorView(
+                    profile: editor.profile,
+                    existingPassword: editor.profile.map(profileStore.password(for:)) ?? ""
+                ) { profile, password in
+                    try profileStore.save(profile, password: password)
+                }
+            }
+            .confirmationDialog(
+                "Remove this server?",
+                isPresented: Binding(
+                    get: { profilePendingRemoval != nil },
+                    set: { if !$0 { profilePendingRemoval = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                if let profilePendingRemoval {
+                    Button("Remove \(profilePendingRemoval.name)", role: .destructive) {
+                        Task {
+                            do {
+                                try await push.remove(profilePendingRemoval.id)
+                                try profileStore.remove(profilePendingRemoval)
+                                BYOTWidgetSync.shared.removeServer(profilePendingRemoval.id)
+                                BYOTLiveActivityController.shared.endAll(serverID: profilePendingRemoval.id)
+                            } catch { profileRemovalError = error.localizedDescription }
+                            self.profilePendingRemoval = nil
                         }
                     }
                 }
-            }
-            .background(BYOTBrand.canvas)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if !profileStore.profiles.isEmpty {
-                    OpenCodeServerBar(
-                        profiles: profileStore.profiles,
-                        selectedID: profileStore.activeProfileID,
-                        select: profileStore.select,
-                        add: { edit(nil) }
-                    )
-                    .background(BYOTBrand.canvas)
+                Button("Cancel", role: .cancel) {
+                    profilePendingRemoval = nil
                 }
+            } message: {
+                Text("The saved password will also be deleted from this iPhone.")
             }
-            .navigationTitle(BYOTBrand.wordmark)
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: OpenCodeNewSessionRoute.self) { route in
-                if let profile = profileStore.activeProfile {
-                    OpenCodeNewSessionView(profiles: profileStore.profiles,
-                        initialProfile: profile, share: route.share, shares: shares) { profile in
-                        makeClient(profile, profileStore.password(for: profile))
-                    }
-                }
+            .alert(
+                "Couldn’t remove server",
+                isPresented: Binding(
+                    get: { profileRemovalError != nil },
+                    set: { if !$0 { profileRemovalError = nil } }
+                )
+            ) {
+                Button("OK") { profileRemovalError = nil }
+            } message: {
+                Text(
+                    profileRemovalError
+                        ?? "The server profile and password were left unchanged."
+                )
             }
-            .navigationDestination(for: BYOTPushSessionRoute.self) { destination in
-                if let profile = profileStore.profiles.first(where: { $0.id == destination.serverID }) {
-                    OpenCodeSessionView(client: makeClient(profile, profileStore.password(for: profile)),
-                        session: destination.session, directory: destination.session.directory,
-                        startsWithComposerFocused: destination.focusesComposer)
-                        .id(destination.id)
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("About byot", systemImage: "info.circle", action: openAppNavigation)
-                        .labelStyle(.iconOnly)
-                        .tint(BYOTBrand.chromeTint)
-                        .accessibilityIdentifier("about-byot")
-                }
-                ToolbarItem(placement: .principal) { BYOTWordmark() }
-                if profileStore.activeProfile != nil {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        profileMenu
-                            .tint(BYOTBrand.chromeTint)
-                    }
-                }
-            }
-        }
-        .task(id: push.pendingDestination?.id) { await openNotification() }
-        .sheet(item: $sharePicker) { content in
-            BYOTShareDestinationView(
-                content: content, profiles: profileStore.profiles, activeProfileID: profileStore.activeProfileID,
-                errorMessage: shares.deliveryError,
-                loadSessions: { (try? await BYOTIntentService.live.recentSessions(limit: 15)) ?? [] },
-                choose: { destination in await openShare(content, at: destination) },
-                discard: { shares.discard(content) })
-        }
-        .task(id: shares.incoming?.id) { await presentSharePicker() }
-        .alert("Shared to byot", isPresented: Binding(get: { shares.notice != nil }, set: { if !$0 { shares.notice = nil } })) {
-            Button("OK") { shares.notice = nil }
-        } message: { Text(shares.notice ?? "") }
-        .sheet(item: $notificationProfile) { profile in BYOTPushSettingsView(profile: profile) }
-        .alert("Couldn’t open session", isPresented: Binding(get: { push.routingError != nil }, set: { if !$0 { push.routingError = nil } })) {
-            Button("OK") { push.routingError = nil }
-        } message: { Text(push.routingError ?? "") }
-        .onChange(of: profileStore.activeProfileID) { _, id in
-            if pathServerID != id { path = NavigationPath() }
-            pathServerID = id
-        }
-        .sheet(item: $profileEditor) { editor in
-            OpenCodeProfileEditorView(
-                profile: editor.profile,
-                existingPassword: editor.profile.map(profileStore.password(for:)) ?? ""
-            ) { profile, password in
-                try profileStore.save(profile, password: password)
-            }
-        }
-        .confirmationDialog(
-            "Remove this server?",
-            isPresented: Binding(
-                get: { profilePendingRemoval != nil },
-                set: { if !$0 { profilePendingRemoval = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            if let profilePendingRemoval {
-                Button("Remove \(profilePendingRemoval.name)", role: .destructive) {
-                    Task {
-                        do {
-                            try await push.remove(profilePendingRemoval.id)
-                            try profileStore.remove(profilePendingRemoval)
-                            BYOTWidgetSync.shared.removeServer(profilePendingRemoval.id)
-                            BYOTLiveActivityController.shared.endAll(serverID: profilePendingRemoval.id)
-                        } catch { profileRemovalError = error.localizedDescription }
-                        self.profilePendingRemoval = nil
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                profilePendingRemoval = nil
-            }
-        } message: {
-            Text("The saved password will also be deleted from this iPhone.")
-        }
-        .alert(
-            "Couldn’t remove server",
-            isPresented: Binding(
-                get: { profileRemovalError != nil },
-                set: { if !$0 { profileRemovalError = nil } }
-            )
-        ) {
-            Button("OK") { profileRemovalError = nil }
-        } message: {
-            Text(
-                profileRemovalError
-                    ?? "The server profile and password were left unchanged."
-            )
-        }
     }
 
     private var profileMenu: some View {
@@ -241,7 +317,7 @@ struct OpenCodeRootView: View {
             try Task.checkCancellation()
             guard push.pendingDestination?.id == destination.id, profileStore.activeProfileID == profile.id else { return }
             guard details.session.id == route.sessionID else { throw BYOTPushError.invalidNotification }
-            path.append(BYOTPushSessionRoute(serverID: profile.id, session: details.session))
+            show(details.session, on: profile)
         } catch is CancellationError { }
         catch { push.routingError = "Couldn’t load this session. It may have been deleted, or the server may be offline. Open the server and try again." }
     }
@@ -301,7 +377,7 @@ struct OpenCodeRootView: View {
         pathServerID = profile.id
         profileStore.select(profile)
         guard let session else {
-            path.append(OpenCodeNewSessionRoute(share: content))
+            showNewSession(OpenCodeNewSessionRoute(share: content), on: profile)
             return
         }
         do {
@@ -313,7 +389,115 @@ struct OpenCodeRootView: View {
                 + "session or try again.")
             return
         }
-        path.append(BYOTPushSessionRoute(serverID: profile.id, session: session, focusesComposer: true))
+        show(session, on: profile, focusesComposer: true)
+    }
+
+    // MARK: Adaptive navigation
+
+    /// Opens a conversation reached from outside the session list: a
+    /// notification, a widget, Siri, or a share.
+    private func show(_ session: OpenCodeSession, on profile: OpenCodeServerProfile, focusesComposer: Bool = false) {
+        if isSplit {
+            splitDetail = .session(OpenCodeSessionSelection(
+                client: makeClient(profile, profileStore.password(for: profile)), session: session,
+                focusesComposer: focusesComposer))
+        } else {
+            path.append(BYOTPushSessionRoute(serverID: profile.id, session: session, focusesComposer: focusesComposer))
+        }
+    }
+
+    private func showNewSession(_ route: OpenCodeNewSessionRoute, on profile: OpenCodeServerProfile) {
+        if isSplit {
+            splitDetail = .newSession(route, serverID: profile.id)
+        } else {
+            path.append(route)
+        }
+    }
+
+    private func openNewSession() {
+        guard let profile = profileStore.activeProfile else { return }
+        // The form already open keeps what was chosen in it.
+        if isSplit, case .newSession(_, profile.id) = splitDetail { return }
+        showNewSession(OpenCodeNewSessionRoute(), on: profile)
+    }
+
+    /// ⌘N from anywhere: on iPhone the form replaces whatever was pushed,
+    /// instead of stacking on top of a conversation.
+    private func openNewSessionFromKeyboard() {
+        if !isSplit { path = NavigationPath() }
+        openNewSession()
+    }
+
+    /// Selects a session made in the detail column's form, switching the
+    /// sidebar to its server if another one was chosen there.
+    private func openCreatedSession(_ selection: OpenCodeSessionSelection) {
+        let profile = selection.client.profile
+        if profileStore.activeProfileID != profile.id,
+           let saved = profileStore.profiles.first(where: { $0.id == profile.id }) {
+            pathServerID = saved.id
+            profileStore.select(saved)
+        }
+        splitDetail = .session(selection)
+        listRequest = OpenCodeSessionListRequest(kind: .refresh)
+    }
+
+    /// Carries the open conversation across a size change: an iPad window
+    /// resized in Split View or Stage Manager, or a large iPhone rotated.
+    private func adaptNavigation(toSplit isSplit: Bool) {
+        if isSplit {
+            // The conversation on screen, however deep in the stack, opens
+            // beside the list; the screens it was pushed over are dropped.
+            splitDetail = visibleSessions.top.flatMap {
+                OpenCodeSplitDetail.session($0).retained(forActiveServer: profileStore.activeProfileID)
+            }
+            path = NavigationPath()
+            columnVisibility = .all
+            return
+        }
+        var carried = NavigationPath()
+        switch splitDetail?.retained(forActiveServer: profileStore.activeProfileID) {
+        case .session(let selection):
+            carried.append(OpenCodeSessionRoute(session: selection.session))
+        case .newSession(let route, _):
+            carried.append(route)
+        case nil:
+            break
+        }
+        splitDetail = nil
+        path = carried
+    }
+
+    private var isPresentingSheet: Bool {
+        profileEditor != nil || notificationProfile != nil || sharePicker != nil || profilePendingRemoval != nil
+    }
+
+    private var appCommands: OpenCodeAppCommandActions {
+        let availability = OpenCodeAppCommandActions.Availability(
+            hasServer: profileStore.activeProfile != nil, isSplit: isSplit, isPresentingSheet: isPresentingSheet)
+        var actions = OpenCodeAppCommandActions()
+        if availability.newSession { actions.newSession = { openNewSessionFromKeyboard() } }
+        if availability.searchSessions { actions.searchSessions = { searchSessions() } }
+        if availability.switchSessions {
+            actions.previousSession = { step(.previous) }
+            actions.nextSession = { step(.next) }
+        }
+        return actions
+    }
+
+    /// ⌘K brings the session list forward and puts the cursor in its search.
+    private func searchSessions() {
+        if isSplit {
+            if columnVisibility == .detailOnly {
+                withAnimation(reduceMotion ? nil : .default) { columnVisibility = .all }
+            }
+        } else {
+            path = NavigationPath()
+        }
+        listRequest = OpenCodeSessionListRequest(kind: .focusSearch)
+    }
+
+    private func step(_ step: OpenCodeSessionStep) {
+        listRequest = OpenCodeSessionListRequest(kind: .step(step))
     }
 
     private func edit(_ profile: OpenCodeServerProfile?) {

@@ -10,6 +10,7 @@ struct OpenCodeSessionComposerView: View {
     private let restoredMessage: OpenCodeMessageEnvelope?
     private let onRestoreConsumed: (() -> Void)?
     private let screenshotAttachment: OpenCodePromptAttachment?
+    private let keyboardCommandsEnabled: Bool
     @State private var text = ""
     @State private var didLoadDraft = false
     @State private var draftErrorMessage: String?
@@ -25,6 +26,9 @@ struct OpenCodeSessionComposerView: View {
     @State private var isShowingModelPicker = false
     @State private var previewAttachment: OpenCodePromptAttachment?
     @State private var didRequestInitialFocus = false
+    @State private var isOnScreen = false
+    @State private var keyboardRegistration = UUID()
+    @Environment(\.openCodeKeyboardRouter) private var keyboardRouter
     @FocusState private var isFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -35,7 +39,8 @@ struct OpenCodeSessionComposerView: View {
         onNewSession: (() -> Void)? = nil,
         sessionActions: [OpenCodeComposerAction] = [],
         restoredMessage: OpenCodeMessageEnvelope? = nil,
-        onRestoreConsumed: (() -> Void)? = nil
+        onRestoreConsumed: (() -> Void)? = nil,
+        keyboardCommandsEnabled: Bool = true
     ) {
         self.store = store
         self.startsFocused = startsFocused
@@ -44,6 +49,7 @@ struct OpenCodeSessionComposerView: View {
         self.sessionActions = sessionActions
         self.restoredMessage = restoredMessage
         self.onRestoreConsumed = onRestoreConsumed
+        self.keyboardCommandsEnabled = keyboardCommandsEnabled
     }
 
     var body: some View {
@@ -96,6 +102,14 @@ struct OpenCodeSessionComposerView: View {
                     .accessibilityLabel("Message")
                     .submitLabel(.send)
                     .onSubmit(send)
+                    // The message field may take Return for itself before the
+                    // ⌘↩ shortcut sees it. Sending twice is harmless: the
+                    // first send empties the draft.
+                    .onKeyPress(.return, phases: .down) { press in
+                        guard press.modifiers.contains(.command) else { return .ignored }
+                        keyboardCommands?.send?()
+                        return .handled
+                    }
                 if !isExpanded {
                     sessionProgress
                     submitButton
@@ -115,7 +129,17 @@ struct OpenCodeSessionComposerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(BYOTBrand.canvas)
-        .onAppear(perform: loadDraft)
+        .onAppear {
+            loadDraft()
+            isOnScreen = true
+        }
+        .onDisappear {
+            isOnScreen = false
+            keyboardRouter?.update(keyboardRegistration, nil)
+        }
+        .onChange(of: keyboardCommands?.state, initial: true) { _, _ in
+            keyboardRouter?.update(keyboardRegistration, keyboardCommands)
+        }
         .onChange(of: text) { _, _ in saveDraft() }
         .onChange(of: remoteReferences) { _, _ in saveDraft() }
         .onChange(of: attachments) { _, _ in saveDraftAttachments() }
@@ -428,6 +452,41 @@ struct OpenCodeSessionComposerView: View {
     // blocked by the stop affordance.
     nonisolated static func showsStopControl(canStop: Bool, text: String, hasAttachments: Bool = false) -> Bool {
         canStop && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasAttachments
+    }
+
+    /// ⌘↩ and ⌘. for the conversation on screen. A conversation covered by
+    /// another, or by one of its sheets, offers neither.
+    private var keyboardCommands: OpenCodeComposerCommandActions? {
+        guard isOnScreen, keyboardCommandsEnabled, !isPresentingSheet else { return nil }
+        let canSend = Self.sendsFromKeyboard(
+            text: text, hasAttachments: !attachments.isEmpty || !remoteReferences.isEmpty,
+            canSubmit: store.canSubmitPrompt, isImporting: isImportingAttachment)
+        var actions = OpenCodeComposerCommandActions()
+        if canSend { actions.send = { sendFromKeyboard() } }
+        if store.canStopTurn { actions.stop = { stopTurn() } }
+        if store.willQueueNextPrompt { actions.sendTitle = "Queue Message" }
+        return actions
+    }
+
+    private var isPresentingSheet: Bool {
+        previewAttachment != nil || isShowingModelPicker || isShowingAgentPicker || isShowingRemoteFiles
+            || isShowingPhotoPicker || isShowingFileImporter
+    }
+
+    // ⌘↩ sends whenever the send button would: a draft with text,
+    // attachments or server files, queued while a turn runs.
+    nonisolated static func sendsFromKeyboard(text: String, hasAttachments: Bool,
+                                              canSubmit: Bool, isImporting: Bool) -> Bool {
+        canSubmit && !isImporting
+            && (hasAttachments || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    /// A hardware keyboard stays in the message field for the next prompt;
+    /// there is no on-screen keyboard to put away.
+    private func sendFromKeyboard() {
+        let wasFocused = isFocused
+        send()
+        if wasFocused { isFocused = true }
     }
 
     private func showModelPicker() {
