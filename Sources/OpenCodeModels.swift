@@ -712,7 +712,8 @@ struct OpenCodeEvent: Codable, Equatable, Sendable {
             location = directory.flatMap { $0 == "global" ? nil : Location(directory: $0) }
             return
         }
-        id = try container.decode(String.self, forKey: .id)
+        // Servers before per-event IDs send bare `{type, properties}` records.
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
         type = try container.decode(String.self, forKey: .type)
         created = try container.decodeIfPresent(Double.self, forKey: .created)
         isV2 = container.contains(.data)

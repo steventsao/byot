@@ -176,6 +176,9 @@ struct OpenCodeNewSessionView: View {
             }
             Label("New worktree", systemImage: "plus").tag(OpenCodeNewSessionWorkspace.new)
         }
+        // The collapsed picker crowds the icon against its title; show the
+        // title alone like the server and project pickers above it.
+        .labelStyle(.titleOnly)
         .accessibilityIdentifier("new-session-workspace")
         if workspace == .new {
             TextField("Worktree name (optional)", text: $worktreeName)

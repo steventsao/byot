@@ -281,10 +281,12 @@ final class OpenCodeTerminalContainerView: UIView {
         } else {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
+            // A small gutter in the terminal's own background keeps the first
+            // column off the screen edge; the container shares that color.
             NSLayoutConstraint.activate([
-                view.leadingAnchor.constraint(equalTo: leadingAnchor),
-                view.trailingAnchor.constraint(equalTo: trailingAnchor),
-                view.topAnchor.constraint(equalTo: topAnchor),
+                view.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+                view.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+                view.topAnchor.constraint(equalTo: topAnchor, constant: 6),
                 view.bottomAnchor.constraint(equalTo: bottomAnchor),
             ])
         }

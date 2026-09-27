@@ -3,6 +3,8 @@ import SwiftUI
 struct OpenCodeModelPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Grows with the indicator so large text never runs into it.
+    @ScaledMetric(relativeTo: .callout) private var indicatorWidth = 24.0
     @ObservedObject var store: OpenCodeSessionStore
     @State private var searchText = ""
 
@@ -132,7 +134,7 @@ struct OpenCodeModelPickerView: View {
         Image(systemName: selected ? "checkmark.circle.fill" : "circle")
             .font(.cleanBody)
             .foregroundStyle(selected ? BYOTBrand.accent : .secondary)
-            .frame(width: 24)
+            .frame(width: indicatorWidth)
             .accessibilityHidden(true)
     }
 

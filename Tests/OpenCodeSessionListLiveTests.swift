@@ -26,6 +26,16 @@ struct OpenCodeSessionListLiveTests {
         #expect(try JSONDecoder().decode(OpenCodeEvent.self, from: JSONEncoder().encode(event)) == event)
     }
 
+    @Test("Bare v1 events without an ID decode instead of dropping the stream")
+    func bareEventWithoutID() throws {
+        let event = try JSONDecoder().decode(OpenCodeEvent.self, from: Data("""
+        {"type":"server.connected","properties":{}}
+        """.utf8))
+        #expect(event.id.isEmpty)
+        #expect(event.type == "server.connected")
+        #expect(!event.isV2)
+    }
+
     @Test("Payloads without an ID decode, and sync duplicates are ignored")
     func globalEnvelopeEdges() throws {
         let connected = try JSONDecoder().decode(OpenCodeEvent.self, from: Data("""

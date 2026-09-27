@@ -377,7 +377,7 @@ struct OpenCodeSessionComposerView: View {
             }
         } else {
             HStack(spacing: 4) {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal) {
                     HStack(spacing: 4) {
                         attachmentButton
                         if store.supportsShell { shellToggle }
@@ -387,6 +387,10 @@ struct OpenCodeSessionComposerView: View {
                     }
                 }
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                // A long model name pushes the last knobs past the edge; flash the
+                // indicator when the row opens so they read as a scroll away.
+                .scrollIndicators(.automatic, axes: .horizontal)
+                .scrollIndicatorsFlash(onAppear: true)
                 .fixedSize(horizontal: false, vertical: true)
                 if showsDictation { dictationButton }
                 sessionProgress
@@ -461,6 +465,8 @@ struct OpenCodeSessionComposerView: View {
             .foregroundStyle(.secondary)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
             .truncationMode(.middle)
+            // With the keyboard up the composer is squeezed; wrap rather than cut mid-word.
+            .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
     }
 
     private var shellLocation: String {
@@ -886,7 +892,11 @@ struct OpenCodeSessionComposerView: View {
                         }
                     }
                 }
-                .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? 180 : 220)
+                .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? 150 : 220)
+                // Hold the list's height when the keyboard is up; at accessibility
+                // sizes it was squeezed to a single clipped row. 150 leaves the
+                // send row above the keyboard with a second command peeking in.
+                .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("opencode-slash-suggestions")
             } else if let invocation = OpenCodeCommandInvocation.parse(text, catalog: store.composerCatalog.commands) {
                 Text(invocation.kind == .command

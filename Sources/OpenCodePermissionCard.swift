@@ -44,20 +44,22 @@ struct OpenCodePermissionCard: View {
 
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) {
-                    rejectButton
+                    rejectButton()
                     Spacer()
-                    allowOnceButton
+                    allowOnceButton()
                     if !request.always.isEmpty {
-                        alwaysAllowButton
+                        alwaysAllowButton()
                     }
                 }
+                // Stacked, the choices fill the card so none reads as a stray pill.
                 VStack(spacing: 10) {
-                    allowOnceButton.frame(maxWidth: .infinity)
+                    allowOnceButton(fillsWidth: true)
                     if !request.always.isEmpty {
-                        alwaysAllowButton.frame(maxWidth: .infinity)
+                        alwaysAllowButton(fillsWidth: true)
                     }
-                    rejectButton.frame(maxWidth: .infinity)
+                    rejectButton(fillsWidth: true)
                 }
+                .controlSize(.large)
             }
             .disabled(isWorking)
         }
@@ -70,24 +72,30 @@ struct OpenCodePermissionCard: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var rejectButton: some View {
-        Button("Reject", systemImage: "xmark", role: .destructive) {
+    private func rejectButton(fillsWidth: Bool = false) -> some View {
+        Button(role: .destructive) {
             Task { await respond(.reject) }
+        } label: {
+            Label("Reject", systemImage: "xmark").frame(maxWidth: fillsWidth ? .infinity : nil)
         }
         .buttonStyle(.bordered)
+        // The app-wide tint otherwise paints the destructive choice blue.
+        .tint(.red)
         .frame(minHeight: 44)
     }
 
-    private var allowOnceButton: some View {
-        Button("Allow once", systemImage: "checkmark") {
+    private func allowOnceButton(fillsWidth: Bool = false) -> some View {
+        Button {
             Task { await respond(.once) }
+        } label: {
+            Label("Allow once", systemImage: "checkmark").frame(maxWidth: fillsWidth ? .infinity : nil)
         }
         .buttonStyle(.bordered)
         .frame(minHeight: 44)
     }
 
-    private var alwaysAllowButton: some View {
-        OpenCodeAlwaysAllowButton(request: request, isWorking: isWorking) {
+    private func alwaysAllowButton(fillsWidth: Bool = false) -> some View {
+        OpenCodeAlwaysAllowButton(request: request, isWorking: isWorking, fillsWidth: fillsWidth) {
             await respond(.always)
         }
     }

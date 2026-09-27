@@ -669,6 +669,10 @@ struct OpenCodeConnectedView: View {
 
     private func projectName(for session: OpenCodeSession) -> String {
         projects.first { $0.worktree == session.directory }?.displayName
+            // A worktree session belongs to its project; its folder name is already the worktree badge.
+            ?? projects.first { project in
+                project.sandboxes.contains { OpenCodeWorktree.key($0) == OpenCodeWorktree.key(session.directory) }
+            }?.displayName
             ?? projects.first { $0.id == session.projectID }?.displayName
             ?? URL(fileURLWithPath: session.directory).lastPathComponent
     }

@@ -7,7 +7,7 @@ enum OpenCodeSessionAction: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .undo: String(localized: "Undo last turn")
         case .redo: String(localized: "Redo turn")
-        case .compact: String(localized: "Compact conversation")
+        case .compact: String(localized: "Compact session")
         case .fork: String(localized: "Fork conversation")
         }
     }

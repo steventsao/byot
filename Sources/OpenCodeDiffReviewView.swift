@@ -222,9 +222,9 @@ private struct OpenCodeDiffFileRow: View {
             : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
         layout {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: file.status.symbol)
-                    .foregroundStyle(BYOTBrand.diffInk(file.status))
-                    .accessibilityHidden(true)
+                // At accessibility sizes the icon moves beside the counts so the
+                // name keeps the row's full width instead of breaking mid-word.
+                if !dynamicTypeSize.isAccessibilitySize { statusIcon }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(file.name)
                         .font(.cleanBodySemibold)
@@ -240,10 +240,19 @@ private struct OpenCodeDiffFileRow: View {
                 }
             }
             if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
-            OpenCodeDiffCounts(additions: file.additions, deletions: file.deletions, showsBar: true)
-                .font(.cleanCaptionBold)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if dynamicTypeSize.isAccessibilitySize { statusIcon }
+                OpenCodeDiffCounts(additions: file.additions, deletions: file.deletions, showsBar: true)
+                    .font(.cleanCaptionBold)
+            }
         }
         .frame(minHeight: 44)
+    }
+
+    private var statusIcon: some View {
+        Image(systemName: file.status.symbol)
+            .foregroundStyle(BYOTBrand.diffInk(file.status))
+            .accessibilityHidden(true)
     }
 }
 
@@ -292,6 +301,7 @@ private enum OpenCodeDiffMetrics {
 
 struct OpenCodeDiffFileView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorSchemeContrast) private var contrast
     @ObservedObject var store: OpenCodeDiffReviewStore
     @State private var fileID: String
@@ -363,6 +373,8 @@ struct OpenCodeDiffFileView: View {
                         .font(.cleanCaption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
+                        // The bar would otherwise cut it to "1…" at accessibility sizes.
+                        .fixedSize()
                         .accessibilityLabel("File \(index + 1) of \(store.files.count)")
                 }
                 Spacer()
@@ -376,20 +388,27 @@ struct OpenCodeDiffFileView: View {
     }
 
     private func header(_ file: OpenCodeDiffFile) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Label(file.status.title, systemImage: file.status.symbol)
-                .labelStyle(.iconOnly)
-                .foregroundStyle(BYOTBrand.diffInk(file.status))
-            Text(file.path)
-                .font(.cleanCaption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-            Spacer(minLength: 8)
+        // At accessibility sizes the path takes its own lines above the counts.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+        return layout {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label(file.status.title, systemImage: file.status.symbol)
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(BYOTBrand.diffInk(file.status))
+                Text(file.path)
+                    .font(.cleanCaption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
             OpenCodeDiffCounts(additions: file.additions, deletions: file.deletions)
                 .font(.cleanCaptionBold)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .accessibilityElement(children: .combine)

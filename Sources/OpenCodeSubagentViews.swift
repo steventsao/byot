@@ -223,7 +223,7 @@ struct OpenCodeSubagentBar: View {
                 HStack(spacing: BYOTBrand.Space.sm) {
                     identity
                     Spacer(minLength: BYOTBrand.Space.sm)
-                    controls
+                    controls.layoutPriority(1)
                 }
                 VStack(alignment: .leading, spacing: BYOTBrand.Space.xs) {
                     identity
@@ -279,6 +279,8 @@ struct OpenCodeSubagentBar: View {
                 Button(action: stop) {
                     Label("Stop", systemImage: "stop.fill")
                         .font(.cleanCaptionBold)
+                        // Never wrap mid-word beside the agent name; the bar stacks instead.
+                        .fixedSize()
                         .padding(.horizontal, 12)
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())

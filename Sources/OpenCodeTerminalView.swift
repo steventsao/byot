@@ -564,6 +564,10 @@ struct OpenCodeTerminalKeyRow: View {
             .foregroundStyle(BYOTBrand.chromeTint)
             .accessibilityLabel(isKeyboardVisible ? "Hide keyboard" : "Show keyboard")
             .accessibilityIdentifier("terminal-keyboard")
+            // Divides the pinned button from keys scrolled beneath it.
+            .overlay(alignment: .leading) {
+                Rectangle().fill(BYOTBrand.hairline).frame(width: 1).padding(.vertical, 10)
+            }
             .padding(.trailing, 4)
         }
         .background(BYOTBrand.surface)

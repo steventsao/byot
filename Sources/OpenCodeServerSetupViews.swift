@@ -171,7 +171,9 @@ struct OpenCodePairingScannerView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .background(BYOTBrand.surface, in: RoundedRectangle(cornerRadius: BYOTBrand.panelRadius, style: .continuous))
+        // The form's own row color: `surface` matches the grouped canvas in light mode.
+        .background(Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: BYOTBrand.panelRadius, style: .continuous))
     }
 
     private func readPhoto(_ item: PhotosPickerItem) {

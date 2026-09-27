@@ -2541,12 +2541,12 @@
         }
       }
     },
-    "Compact conversation" : {
+    "Compact session" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "压缩对话"
+            "value" : "压缩会话"
           }
         }
       }

@@ -4,6 +4,8 @@ struct BYOTWordmark: View {
     var body: some View {
         Text(BYOTBrand.wordmark)
             .font(.custom("OpenRunde-Bold", size: 23, relativeTo: .headline))
+            // A crowded toolbar at accessibility sizes cut it to "b…"; the mark stays whole.
+            .fixedSize()
             .accessibilityLabel(BYOTBrand.wordmark)
     }
 }
