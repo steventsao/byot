@@ -184,6 +184,70 @@ struct OpenCodeSessionUsageTests {
         #expect(v2Usage.isCompacted)
     }
 
+    @Test("A v1 compaction counts only once its summary finishes, and keeps its retained tail in context")
+    func v1CompactionRules() throws {
+        let models = [model("sonnet", limit: 100_000)]
+        let marker = try JSONDecoder().decode(OpenCodePart.self, from: Data(
+            #"{"id":"c","sessionID":"s","messageID":"u3","type":"compaction","auto":true,"tail_start_id":"u2"}"#.utf8))
+        #expect(marker.tailStartID == "u2")
+        func summary(finish: String?, error: OpenCodeMessageError? = nil) -> OpenCodeMessageEnvelope {
+            var info = OpenCodeMessageInfo(id: "sum", sessionID: "s", role: "assistant",
+                                           time: OpenCodeMessageTime(created: 2, completed: nil), agent: "compaction",
+                                           modelID: "sonnet", providerID: "anthropic", finish: finish, error: error)
+            info.summary = true
+            return OpenCodeMessageEnvelope(info: info, parts: [])
+        }
+        let history = [
+            user("u1"),
+            assistant("a1", model: "sonnet", parts: [step("s1", cost: 0.1, tokens: OpenCodeTokenUsage(input: 40_000, output: 1_000))]),
+            user("u2"),
+            assistant("a2", model: "sonnet", parts: [step("s2", cost: 0.1, tokens: OpenCodeTokenUsage(input: 80_000, output: 1_000))]),
+            OpenCodeMessageEnvelope(info: user("u3").info, parts: [marker]),
+        ]
+
+        // Still summarizing, or the summary failed: the old context stands.
+        for pending in [summary(finish: nil), summary(finish: "error", error: OpenCodeMessageError(name: "APIError", data: nil))] {
+            let usage = OpenCodeSessionUsage(messages: history + [pending], models: models)
+            #expect(!usage.isCompacted)
+            #expect(usage.context?.messageID == "a2")
+            #expect(usage.activeMessages == 5)
+        }
+
+        // Done: the summary replaces everything before the retained tail (u2, a2).
+        let done = OpenCodeSessionUsage(messages: history + [summary(finish: "stop"), user("u4")], models: models)
+        #expect(done.isCompacted)
+        #expect(done.activeMessages == 3)
+    }
+
+    @Test("The server's stored session totals cover history older than the loaded transcript")
+    func storedSessionTotals() throws {
+        let v1 = try JSONDecoder().decode(OpenCodeSession.self, from: Data(
+            #"{"id":"s","slug":"s","projectID":"p","directory":"/r","title":"T","version":"1","time":{"created":1,"updated":2},"cost":4.5,"tokens":{"input":900000,"output":20000,"reasoning":0,"cache":{"read":0,"write":0}}}"#.utf8))
+        #expect(v1.cost == 4.5)
+        #expect(v1.tokens?.total == 920_000)
+        let odd = try JSONDecoder().decode(OpenCodeSession.self, from: Data(
+            #"{"id":"s","slug":"s","projectID":"p","directory":"/r","title":"T","version":"1","time":{"created":1,"updated":2},"cost":"n/a","tokens":3}"#.utf8))
+        #expect(odd.cost == nil)
+        #expect(odd.tokens == nil)
+        let v2 = try #require(OpenCodeV2Normalization.session(try json(
+            #"{"id":"s","title":"T","cost":1.5,"tokens":{"input":10,"output":5,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1,"updated":2}}"#)))
+        #expect(v2.cost == 1.5)
+        #expect(v2.tokens?.total == 15)
+
+        // The loaded page shows one reply; the stored totals include older ones.
+        let page = [assistant("a9", model: "sonnet", parts: [step("s9", cost: 0.5, tokens: OpenCodeTokenUsage(input: 10_000, output: 500))])]
+        let long = OpenCodeSessionUsage(messages: page, models: [], session: v1)
+        #expect(long.cost == 4.5)
+        #expect(long.tokens.total == 920_000)
+        // A reply streamed since the session was stored runs ahead of it.
+        var stale = v1
+        stale.cost = 0.2
+        stale.tokens = OpenCodeTokenUsage(input: 100, output: 0)
+        let live = OpenCodeSessionUsage(messages: page, models: [], session: stale)
+        #expect(live.cost == 0.5)
+        #expect(live.tokens.total == 10_500)
+    }
+
     @Test("The server's active context replaces the local message count")
     func reconciledCount() {
         let usage = OpenCodeSessionUsage(messages: [user("u1"), user("u2"), user("u3")], models: [])

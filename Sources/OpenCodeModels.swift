@@ -100,6 +100,31 @@ struct OpenCodeSession: Codable, Identifiable, Equatable, Sendable {
     let time: OpenCodeSessionTime
     // Fork lineage differs from a subagent's parentID. Forks remain roots.
     var forkSourceID: String? = nil
+    // The server's running spend for the session, summed over every step it
+    // has stored, including history older than the transcript page loaded.
+    var cost: Double? = nil
+    var tokens: OpenCodeTokenUsage? = nil
+}
+
+extension OpenCodeSession {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        slug = try c.decode(String.self, forKey: .slug)
+        projectID = try c.decode(String.self, forKey: .projectID)
+        workspaceID = try c.decodeIfPresent(String.self, forKey: .workspaceID)
+        directory = try c.decode(String.self, forKey: .directory)
+        parentID = try c.decodeIfPresent(String.self, forKey: .parentID)
+        summary = try c.decodeIfPresent(OpenCodeSessionSummary.self, forKey: .summary)
+        title = try c.decode(String.self, forKey: .title)
+        agent = try c.decodeIfPresent(String.self, forKey: .agent)
+        version = try c.decode(String.self, forKey: .version)
+        time = try c.decode(OpenCodeSessionTime.self, forKey: .time)
+        forkSourceID = try c.decodeIfPresent(String.self, forKey: .forkSourceID)
+        // Older servers omit usage; an unexpected shape must not drop the session.
+        cost = try? c.decodeIfPresent(Double.self, forKey: .cost)
+        tokens = try? c.decodeIfPresent(OpenCodeTokenUsage.self, forKey: .tokens)
+    }
 }
 
 struct OpenCodeSessionSummary: Codable, Equatable, Sendable {
@@ -197,6 +222,9 @@ struct OpenCodePart: Codable, Identifiable, Equatable, Sendable {
     var hash: String? = nil
     var synthetic: Bool? = nil
     var ignored: Bool? = nil
+    /// A v1 compaction's retained tail: the first message the model still
+    /// reads verbatim after the summary.
+    var tailStartID: String? = nil
 
     /// Text the user actually wrote, as upstream clients restore and resend
     /// it: synthetic context (attached file contents, MCP resources,
@@ -235,7 +263,14 @@ extension OpenCodePart {
         hash = try? c.decodeIfPresent(String.self, forKey: .hash)
         synthetic = try? c.decodeIfPresent(Bool.self, forKey: .synthetic)
         ignored = try? c.decodeIfPresent(Bool.self, forKey: .ignored)
+        if type == "compaction" {
+            let wire = try? decoder.container(keyedBy: WireKeys.self)
+            tailStartID = (try? wire?.decodeIfPresent(String.self, forKey: .tailStartID))
+                ?? (try? c.decodeIfPresent(String.self, forKey: .tailStartID))
+        }
     }
+
+    private enum WireKeys: String, CodingKey { case tailStartID = "tail_start_id" }
 }
 
 /// Token accounting for one model step. v1 step-finish parts and v2

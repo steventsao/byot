@@ -1419,7 +1419,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func updateUsage() {
-        var next = OpenCodeSessionUsage(messages: messages, models: catalogModels)
+        var next = OpenCodeSessionUsage(messages: messages, models: catalogModels, session: session)
         if let window = serverContextWindow, window.anchor == messages.last?.id {
             next = next.reconciled(activeContext: window.messages)
         }

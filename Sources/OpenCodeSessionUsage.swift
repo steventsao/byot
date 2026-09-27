@@ -91,8 +91,11 @@ struct OpenCodeSessionUsage: Equatable, Sendable {
 
     init() {}
 
-    init(messages: [OpenCodeMessageEnvelope], models: [OpenCodeModelOption]) {
-        let boundary = messages.lastIndex { message in message.parts.contains { $0.type == "compaction" } }
+    /// `session` supplies the server's stored totals, which also cover history
+    /// older than the loaded transcript page; the larger figure wins, since
+    /// the transcript runs ahead of the stored session while a turn streams.
+    init(messages: [OpenCodeMessageEnvelope], models: [OpenCodeModelOption], session: OpenCodeSession? = nil) {
+        let compaction = Self.lastCompaction(in: messages)
         var latest: (index: Int, message: OpenCodeMessageEnvelope, tokens: OpenCodeTokenUsage)?
         for (index, message) in messages.enumerated() {
             guard let usage = OpenCodeReplyUsage(message) else { continue }
@@ -105,9 +108,16 @@ struct OpenCodeSessionUsage: Equatable, Sendable {
                 latest = (index, message, context)
             }
         }
-        activeMessages = messages[(boundary.map { $0 + 1 } ?? 0)...].filter(Self.isConversationMessage).count
+        if let stored = session?.cost, stored > cost { cost = stored }
+        if let stored = session?.tokens, stored.total > tokens.total { tokens = stored }
+        var active = messages[((compaction?.index).map { $0 + 1 } ?? 0)...].filter(Self.isConversationMessage)
+        if let compaction, let tail = compaction.tailStartID,
+           let start = messages.firstIndex(where: { $0.info.id == tail }), start < compaction.index {
+            active += messages[start..<compaction.index].filter(Self.isConversationMessage)
+        }
+        activeMessages = active.count
         guard let latest else { return }
-        if let boundary, boundary > latest.index {
+        if let compaction, compaction.index > latest.index {
             isCompacted = true
             return
         }
@@ -116,6 +126,23 @@ struct OpenCodeSessionUsage: Equatable, Sendable {
         context = OpenCodeContextUsage(
             messageID: info.id, tokens: latest.tokens, providerID: info.providerID, modelID: info.modelID,
             modelName: model?.modelName, limit: model?.contextLimit)
+    }
+
+    /// The latest compaction that took effect. v2 writes its compaction
+    /// message once the summary has ended. v1 marks a user message first, and
+    /// OpenCode only honors it once the summary reply after it finishes
+    /// without error (filterCompacted); a v1 compaction may also keep a tail
+    /// of recent messages in context.
+    private static func lastCompaction(in messages: [OpenCodeMessageEnvelope]) -> (index: Int, tailStartID: String?)? {
+        for index in messages.indices.reversed() {
+            guard let part = messages[index].parts.last(where: { $0.type == "compaction" }) else { continue }
+            if messages[index].info.role == "user" {
+                let summary = messages[(index + 1)...].first { $0.info.role == "assistant" && $0.info.summary == true }
+                guard let summary, summary.info.finish != nil, summary.info.error == nil else { continue }
+            }
+            return (index, part.tailStartID)
+        }
+        return nil
     }
 
     /// Adopts the message count of the server's own view of the active context.

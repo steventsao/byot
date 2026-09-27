@@ -52,7 +52,9 @@ enum OpenCodeV2Normalization {
                 compacting: time?["compacting"]?.numberValue,
                 archived: time?["archived"]?.numberValue
             ),
-            forkSourceID: object["fork"]?.objectValue?["sessionID"]?.stringValue
+            forkSourceID: object["fork"]?.objectValue?["sessionID"]?.stringValue,
+            cost: object["cost"]?.numberValue,
+            tokens: OpenCodeTokenUsage(object["tokens"])
         )
     }
 
