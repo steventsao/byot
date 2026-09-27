@@ -65,7 +65,8 @@ struct OpenCodeDiscoveredServer: Equatable, Identifiable, Sendable {
 enum OpenCodeLocalEndpointPolicy {
     /// True only for a parsed numeric loopback, link-local, or private
     /// (RFC 1918 / unique-local) address. Hostnames, including `.local`
-    /// names, never qualify.
+    /// names, never qualify, and neither do zone-scoped IPv6 addresses
+    /// (`fe80::1%en0`), which URLSession can't reach from a URL host.
     static func isLocalHost(_ rawHost: String) -> Bool {
         var host = rawHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         while host.hasSuffix(".") { host.removeLast() }
@@ -73,9 +74,7 @@ enum OpenCodeLocalEndpointPolicy {
             host.removeFirst()
             host.removeLast()
         }
-        if let zone = host.firstIndex(of: "%") {
-            host = String(host[..<zone])
-        }
+        guard !host.contains("%") else { return false }
         return isLocalIPv4(host) || isLocalIPv6(host)
     }
 
@@ -114,7 +113,7 @@ enum OpenCodeBonjourAddressResolver {
     /// URLSession cannot carry a zone in a URL host.
     static func localHost(from addresses: [Data]) -> String? {
         let hosts = addresses.compactMap(numericHost)
-            .filter { !$0.contains("%") && OpenCodeLocalEndpointPolicy.isLocalHost($0) }
+            .filter(OpenCodeLocalEndpointPolicy.isLocalHost)
         return hosts.first { !$0.contains(":") } ?? hosts.first
     }
 

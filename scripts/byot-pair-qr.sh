@@ -71,6 +71,7 @@ lan_address() {
 is_local_ip() {
   local host="$1"
   case "$host" in
+    *%*) return 1 ;; # zone-scoped IPv6 (fe80::1%en0) can't be used in a URL on iOS
     \[::1\]|\[[Ff][CcDd]*\]|\[[Ff][Ee][89AaBb]*\]) return 0 ;; # IPv6 loopback, unique-local, link-local
     \[*\]) return 1 ;;
   esac

@@ -48,7 +48,8 @@ and the phone keeps the password only in the Keychain after Save.
 
 If the code's address (scheme, host, port, path) matches a saved server, the
 form edits that server instead of adding a duplicate, so scanning a new code
-after changing the password updates it. A saved password or directory is only
+after changing the password updates it. Scanning a different code
+afterwards in the same form goes back to adding a new server. A saved password or directory is only
 reused for the same address, never sent to a different one.
 
 ## Helper script
@@ -102,7 +103,7 @@ host `opencode.local` (`--mdns-domain` changes it), with the real port and TXT
   `allowsLocalHTTP`. Only those may use HTTP, and only to a parsed numeric
   loopback, link-local, or private address (10/8, 172.16/12, 192.168/16,
   169.254/16, 127/8, `::1`, `fe80::/10`, `fc00::/7`). Hostnames, including
-  `.local`, never qualify. Older saved profiles decode as HTTPS-only.
+  `.local`, and zone-scoped IPv6 (`fe80::1%en0`) never qualify. Older saved profiles decode as HTTPS-only.
 - The form shows "Local network, not encrypted" for such a profile, because
   Basic-auth credentials and session content cross the network in clear text.
 - Redirects keep credentials only for the exact original scheme, host, and

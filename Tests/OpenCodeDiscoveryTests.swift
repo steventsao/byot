@@ -74,7 +74,8 @@ struct OpenCodeDiscoveryTests {
         }
         for host in ["example.com", "opencode.local", "localhost", "fd.example.com", "fe80.example.com",
                      "fc-not-an-address", "8.8.8.8", "172.32.0.1", "2001:4860:4860::8888",
-                     "+10.0.0.1", "10.0.0", "10.0.0.1.5", "", "100.64.0.1"] {
+                     "+10.0.0.1", "10.0.0", "10.0.0.1.5", "", "100.64.0.1",
+                     "fe80::1%en0", "[fe80::1%25en0]"] {
             #expect(!OpenCodeLocalEndpointPolicy.isLocalHost(host), "Expected public host: \(host)")
         }
     }

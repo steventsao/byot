@@ -295,7 +295,7 @@ private struct OpenCodeProfileEditorView: View {
     @State private var password: String
     @State private var directory: String
     @State private var allowsLocalHTTP: Bool
-    @State private var isEditingSavedProfile: Bool
+    private let isEditingSavedProfile: Bool
     @State private var setupPath: [OpenCodeServerSetupRoute]
     @State private var pendingPairing: OpenCodePairingPayload?
     @State private var isFromLink: Bool
@@ -328,7 +328,7 @@ private struct OpenCodeProfileEditorView: View {
         _password = State(initialValue: existingPassword)
         _directory = State(initialValue: profile?.directory ?? "")
         _allowsLocalHTTP = State(initialValue: profile?.allowsLocalHTTP ?? false)
-        _isEditingSavedProfile = State(initialValue: profile != nil)
+        isEditingSavedProfile = profile != nil
         _setupPath = State(initialValue: start.map { [$0] } ?? [])
         _pendingPairing = State(initialValue: pairing)
         _isFromLink = State(initialValue: pairing != nil)
@@ -543,7 +543,7 @@ private struct OpenCodeProfileEditorView: View {
         allowsLocalHTTP = draft.profile.allowsLocalHTTP
         compatibilitySummary = nil
         probedFingerprint = nil
-        isEditingSavedProfile = savedProfiles.contains { $0.id == draft.profile.id }
+        isFromLink = source == .link
         setupPath = []
         Task { @MainActor in
             // Let the pop and the field updates settle before focusing or testing.

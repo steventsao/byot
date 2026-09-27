@@ -172,6 +172,9 @@ enum OpenCodePairing {
 
         var profile = saved ?? current.profile
         if saved == nil, !isEditingSavedProfile {
+            // An earlier code in this form may have matched a saved server;
+            // a different address is a new server, not an edit of that one.
+            if savedProfiles.contains(where: { $0.id == profile.id }) { profile.id = UUID() }
             profile.name = payload.name ?? (currentMatches ? current.profile.name : suggestedName(for: payload.baseURL))
         }
         let reused: OpenCodeServerDraft? = saved.map { OpenCodeServerDraft(profile: $0, password: savedPassword($0)) }

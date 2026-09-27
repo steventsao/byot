@@ -79,6 +79,7 @@ struct OpenCodeServerPairingTests {
             "http://opencode.local:4096",
             "http://8.8.8.8:4096",
             "byot://pair?url=http://172.32.0.1",
+            "http://[fe80::1%25en0]:4096",
         ] {
             #expect(throws: OpenCodePairingError.insecureServerURL, "\(code)") {
                 try OpenCodePairingPayload(code: code)
@@ -181,6 +182,24 @@ struct OpenCodeServerPairingTests {
             isEditingSavedProfile: false, savedProfiles: [Self.saved], savedPassword: { _ in "old" }
         )
         #expect(withoutPassword.password == "old", "Same address keeps the saved password")
+    }
+
+    @Test("After a code matches a saved server, a different code in the same form adds a new server")
+    func rescanAfterMatchAddsNewServer() throws {
+        let matched = OpenCodePairing.draft(
+            applying: try OpenCodePairingPayload(code: "https://studio.example.test"), to: Self.blank(),
+            isEditingSavedProfile: false, savedProfiles: [Self.saved], savedPassword: { _ in "old" }
+        )
+        #expect(matched.profile.id == Self.saved.id)
+
+        let rescanned = OpenCodePairing.draft(
+            applying: try OpenCodePairingPayload(code: "byot://pair?url=https://laptop.example.test&name=Laptop"),
+            to: matched, isEditingSavedProfile: false, savedProfiles: [Self.saved], savedPassword: { _ in "old" }
+        )
+        #expect(rescanned.profile.id != Self.saved.id, "The saved server isn't overwritten")
+        #expect(rescanned.profile.name == "Laptop")
+        #expect(rescanned.password.isEmpty)
+        #expect(rescanned.profile.directory.isEmpty)
     }
 
     @Test("A saved password is never carried to a different address")
