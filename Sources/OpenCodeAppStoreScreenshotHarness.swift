@@ -2,7 +2,7 @@
 import SwiftUI
 
 /// Deterministic OpenCode v1 server for the App Store and README screenshots.
-/// Launch with `--app-store-screenshots -BYOTStorePhase <live|question|permission|done>`;
+/// Launch with `--app-store-screenshots -BYOTStorePhase <live|question|permission|done|shell>`;
 /// AppStoreScreenshotUITests walks one session through every phase.
 struct OpenCodeAppStoreScreenshotHarness: View {
     @StateObject private var store: OpenCodeProfileStore
@@ -21,10 +21,12 @@ struct OpenCodeAppStoreScreenshotHarness: View {
         standard.set("local/coder-32b", forKey: "byot.opencode.model.default.\(server)")
         standard.set("build", forKey: "byot.opencode.agent.default.\(server)")
         standard.set("high", forKey: "byot.opencode.variant.default.\(server).local/coder-32b")
+        // Long diff lines wrap, so the phone frame shows each change whole.
+        standard.set(true, forKey: "byot.diff.wrap-lines")
         let defaults = UserDefaults(suiteName: "byot.app-store-fixture")!
         let profiles = [
-            OpenCodeServerProfile(id: AppStoreFixture.macMiniID, name: "Mac mini", baseURL: "https://mac-mini.tail2c9e.ts.net"),
-            OpenCodeServerProfile(id: AppStoreFixture.studioID, name: "Studio", baseURL: "https://studio.tail2c9e.ts.net")
+            OpenCodeServerProfile(id: AppStoreFixture.macMiniID, name: "Mac mini", baseURL: "https://mac-mini.example.ts.net"),
+            OpenCodeServerProfile(id: AppStoreFixture.studioID, name: "Studio", baseURL: "https://studio.example.ts.net")
         ]
         defaults.set(try! JSONEncoder().encode(profiles), forKey: "byot.opencode.profiles.v1")
         defaults.set(profiles[0].id.uuidString, forKey: "byot.opencode.active-profile.v1")
@@ -41,12 +43,12 @@ struct OpenCodeAppStoreScreenshotHarness: View {
 }
 
 private enum AppStoreFixture {
-    enum Phase: String { case live, question, permission, done }
+    enum Phase: String { case live, question, permission, done, shell }
 
     static let macMiniID = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
     static let studioID = UUID(uuidString: "44444444-4444-4444-4444-444444444444")!
-    static let api = "/Users/me/code/acme-api"
-    static let web = "/Users/me/code/acme-web"
+    static let api = "/srv/acme-api"
+    static let web = "/srv/acme-web"
     static let sessionID = "ses_upload"
     static let now = Date().timeIntervalSince1970 * 1_000
 
@@ -78,12 +80,13 @@ private enum AppStoreFixture {
 
     static var statuses: [String: Any] {
         var statuses: [String: Any] = ["ses_checkout": ["type": "busy"]]
-        if phase != .done { statuses[sessionID] = ["type": "busy"] }
+        if phase != .done && phase != .shell { statuses[sessionID] = ["type": "busy"] }
         return statuses
     }
 
     static var providers: [String: Any] {
-        let model: [String: Any] = ["id": "coder-32b", "name": "Coder 32B", "variants": ["high": [String: Any](), "max": [String: Any]()]]
+        let model: [String: Any] = ["id": "coder-32b", "name": "Coder 32B", "variants": ["high": [String: Any](), "max": [String: Any]()],
+                                    "limit": ["context": 131_072, "output": 16_384]]
         return ["all": [["id": "local", "name": "Local", "models": ["coder-32b": model]]],
                 "connected": ["local"], "default": ["local": "coder-32b"]]
     }
@@ -126,27 +129,35 @@ private enum AppStoreFixture {
             part("prt_reasoning", ["type": "reasoning", "text": "Uploads are handled in `src/routes/upload.ts`. An in-memory limiter keyed by client IP avoids a new dependency, and it has to run before the multipart parser so rejected requests never buffer a file."]),
             tool("grep", "grep", "completed", ["pattern": "upload.single", "path": "src"],
                  output: "src/routes/upload.ts:9: router.post(\"/upload\", upload.single(\"file\"), handleUpload);"),
-            tool("read", "read", "completed", ["filePath": api + "/src/routes/upload.ts"])
+            tool("read", "read", "completed", ["filePath": "src/routes/upload.ts"])
         ]
         if phase == .question {
             parts.append(tool("question", "question", "running", ["questions": question["questions"] ?? []]))
         } else {
             parts += [
-                text("prt_choice", "Going with a token bucket: short bursts stay fast, sustained floods get a `429` with `Retry-After`."),
-                tool("write_limiter", "write", "completed", ["filePath": api + "/src/middleware/rateLimit.ts"]),
-                tool("edit_route", "edit", phase == .live ? "running" : "completed", ["filePath": api + "/src/routes/upload.ts"])
+                text("prt_choice", """
+                    Going with a token bucket. It runs before the parser, so a rejected upload never buffers:
+
+                    ```ts
+                    router.post("/upload",
+                      rateLimit({ limit: 10 }),
+                      upload.single("file"), handleUpload);
+                    ```
+                    """),
+                tool("write_limiter", "write", "completed", ["filePath": "src/middleware/rateLimit.ts"]),
+                tool("edit_route", "edit", phase == .live ? "running" : "completed", ["filePath": "src/routes/upload.ts"])
             ]
         }
-        if phase == .permission || phase == .done {
+        if phase == .permission || phase == .done || phase == .shell {
             parts += [
-                tool("write_tests", "write", "completed", ["filePath": api + "/tests/upload.test.ts"]),
+                tool("write_tests", "write", "completed", ["filePath": "tests/upload.test.ts"]),
                 part("prt_patch", ["type": "patch", "files": diffs.compactMap { $0["file"] }]),
-                tool("bash", "bash", phase == .done ? "completed" : "running",
+                tool("bash", "bash", phase == .permission ? "running" : "completed",
                      ["command": "npm test -- upload", "description": "Run the upload tests"],
-                     output: phase == .done ? testOutput : nil)
+                     output: phase == .permission ? nil : testOutput)
             ]
         }
-        if phase == .done {
+        if phase == .done || phase == .shell {
             parts.append(text("prt_summary", """
                 All 4 upload tests pass.
 
@@ -157,11 +168,38 @@ private enum AppStoreFixture {
         }
         var info: [String: Any] = ["id": "msg_agent", "sessionID": sessionID, "role": "assistant", "agent": "build", "parentID": "msg_user",
                                    "providerID": "local", "modelID": "coder-32b", "time": ["created": now - 230_000]]
-        if phase == .done {
+        // What the context meter reads: the reply's footprint against the model's window.
+        info["tokens"] = ["input": phase == .live ? 38_400 : 51_200, "output": 2_860, "reasoning": 640,
+                          "cache": ["read": 24_576, "write": 0]]
+        info["cost"] = phase == .live ? 0.31 : 0.42
+        if phase == .done || phase == .shell {
             info["time"] = ["created": now - 230_000, "completed": now - 20_000]
             info["finish"] = "stop"
         }
-        return [prompt, ["info": info, "parts": parts]]
+        let reply: [String: Any] = ["info": info, "parts": parts]
+        return phase == .shell ? [prompt, reply] + shellRun : [prompt, reply]
+    }
+
+    /// A `!git status --short` the user ran from the composer, recorded the
+    /// way OpenCode v1 stores shell runs.
+    static var shellRun: [[String: Any]] {
+        let output = """
+             M src/routes/upload.ts
+            ?? src/middleware/rateLimit.ts
+            ?? tests/upload.test.ts
+            """
+        return [
+            ["info": ["id": "msg_shell_user", "sessionID": sessionID, "role": "user", "agent": "build", "time": ["created": now - 15_000]],
+             "parts": [part("prt_shell_marker", message: "msg_shell_user",
+                            ["type": "text", "text": "The following tool was executed by the user", "synthetic": true])]],
+            ["info": ["id": "msg_shell_reply", "sessionID": sessionID, "role": "assistant", "agent": "build",
+                      "time": ["created": now - 14_800, "completed": now - 14_000]],
+             "parts": [part("prt_shell_tool", message: "msg_shell_reply",
+                            ["type": "tool", "callID": "call_shell", "tool": "bash",
+                             "state": ["status": "completed", "input": ["command": "git status --short"], "title": "",
+                                       "output": output, "metadata": ["output": output],
+                                       "time": ["start": now - 14_800, "end": now - 14_000]]])]]
+        ]
     }
 
     static let testOutput = """
@@ -177,7 +215,7 @@ private enum AppStoreFixture {
     static var todos: [[String: Any]] {
         let steps = ["Find the upload route", "Choose a rate limit strategy",
                      "Add the limiter ahead of the multipart parser", "Run the upload tests"]
-        let finished = switch phase { case .question: 1; case .live: 2; case .permission: 3; case .done: 4 }
+        let finished = switch phase { case .question: 1; case .live: 2; case .permission: 3; case .done, .shell: 4 }
         return steps.enumerated().map { index, step in
             let status = index < finished ? "completed" : index == finished ? "in_progress" : "pending"
             return ["content": step, "status": status, "priority": "high"]
@@ -219,7 +257,7 @@ private enum AppStoreFixture {
         switch phase {
         case .question: return []
         case .live: return [limiterDiff]
-        case .permission, .done: return [limiterDiff, routeDiff, testsDiff]
+        case .permission, .done, .shell: return [limiterDiff, routeDiff, testsDiff]
         }
     }
 
