@@ -23,12 +23,18 @@ run_asc() {
   fi
 }
 
-BYOT_VERSION="${BYOT_VERSION:-1.0.31}"
+# Defaults to MARKETING_VERSION in project.yml, so a release bump is one edit.
+BYOT_VERSION="${BYOT_VERSION:-$(sed -n 's/^ *MARKETING_VERSION: *//p' project.yml | head -n 1)}"
+if [[ -z "$BYOT_VERSION" ]]; then
+  echo "Set BYOT_VERSION or MARKETING_VERSION in project.yml." >&2
+  exit 1
+fi
 # 14-digit YYYYMMDDHHMMSS: monotonically increasing and always larger than the
 # 20260624152336 build that poisoned the sequence. A 12-digit %Y%m%d%H%M number is
 # numerically smaller than that one, so iOS/TestFlight treats such builds as
 # downgrades (CFBundleVersion is compared numerically) and offers no update.
-BYOT_BUILD="${BYOT_BUILD:-$(date +%Y%m%d%H%M%S)}"
+# UTC, so builds from CI runners and from a Mac in any time zone stay in order.
+BYOT_BUILD="${BYOT_BUILD:-$(date -u +%Y%m%d%H%M%S)}"
 BYOT_BUNDLE_ID="${BYOT_BUNDLE_ID:-com.steventsao.byot}"
 # Archive the BYOT OpenCode client.
 BYOT_SCHEME="${BYOT_SCHEME:-BYOT}"
@@ -63,14 +69,23 @@ export_flags=()
 validate_args=()
 
 # A distribution-only keychain cannot satisfy Xcode's automatic development
-# signature during archive. Allow an explicit identity/profile pair for CI.
+# signature during archive. Allow an explicit identity and per-target App Store
+# profiles for CI. project.yml maps BYOT_PROFILE_APP, _WIDGETS and _SHARE to
+# each target's PROVISIONING_PROFILE_SPECIFIER; a PROVISIONING_PROFILE_SPECIFIER
+# given here would apply to every target, extensions included.
 if [[ -n "${BYOT_CODE_SIGN_IDENTITY:-}" ]]; then
   archive_flags+=(--xcodebuild-flag="CODE_SIGN_IDENTITY=$BYOT_CODE_SIGN_IDENTITY")
 fi
 if [[ -n "${BYOT_PROVISIONING_PROFILE_SPECIFIER:-}" ]]; then
+  echo "BYOT_PROVISIONING_PROFILE_SPECIFIER is replaced by BYOT_PROFILE_APP, BYOT_PROFILE_WIDGETS and BYOT_PROFILE_SHARE." >&2
+  exit 1
+fi
+if [[ -n "${BYOT_PROFILE_APP:-}" ]]; then
   archive_flags+=(
     --xcodebuild-flag=CODE_SIGN_STYLE=Manual
-    --xcodebuild-flag="PROVISIONING_PROFILE_SPECIFIER=$BYOT_PROVISIONING_PROFILE_SPECIFIER"
+    --xcodebuild-flag="BYOT_PROFILE_APP=$BYOT_PROFILE_APP"
+    --xcodebuild-flag="BYOT_PROFILE_WIDGETS=${BYOT_PROFILE_WIDGETS:-}"
+    --xcodebuild-flag="BYOT_PROFILE_SHARE=${BYOT_PROFILE_SHARE:-}"
   )
 fi
 
