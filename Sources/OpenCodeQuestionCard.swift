@@ -39,8 +39,16 @@ struct OpenCodeQuestionCard: View {
                             text: customAnswerBinding(at: index, question: question),
                             axis: .vertical
                         )
-                        .textFieldStyle(.roundedBorder)
                         .lineLimit(1...4)
+                        // The rounded-border style fills with black in dark mode,
+                        // a hole in the card; an outline reads as a field in both.
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 44)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(BYOTBrand.strongHairline, lineWidth: 1)
+                        }
                     }
                 }
                 }

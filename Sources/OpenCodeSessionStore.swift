@@ -19,9 +19,6 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var questions: [OpenCodeQuestionRequest] = []
     @Published private(set) var diffs: [OpenCodeDiff] = []
     @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
-    var diffPresentation: OpenCodeSessionDiffPresentation {
-        OpenCodeSessionDiffPresentation(diffs: diffs, support: protocolCapabilities?.sessionDiff)
-    }
     @Published private(set) var status: OpenCodeSessionStatus = .idle
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false
@@ -31,7 +28,20 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var actionErrorMessage: String?
     @Published private(set) var actionInFlightID: String?
     @Published private(set) var transcriptRevision = 0
-    @Published private(set) var providerModels: [OpenCodeProviderModels] = []
+    @Published private(set) var providerModels: [OpenCodeProviderModels] = [] {
+        didSet {
+            catalogModels = providerModels.flatMap(\.models)
+            modelContextLimits = Dictionary(
+                catalogModels.compactMap { model in model.contextLimit.map { (model.qualifiedID, $0) } },
+                uniquingKeysWith: { first, _ in first })
+            updateUsage()
+        }
+    }
+    /// Context and spend, recomputed as the transcript and model catalog change.
+    @Published private(set) var usage = OpenCodeSessionUsage()
+    /// Context windows by `provider/model`, for per-step context shares.
+    private(set) var modelContextLimits: [String: Int] = [:]
+    private var catalogModels: [OpenCodeModelOption] = []
     @Published private(set) var selectedModel: OpenCodeModelOption?
     @Published private(set) var composerCatalog = OpenCodeComposerCatalog()
     @Published private(set) var selectedAgentID: String?
@@ -54,25 +64,66 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var forkedSession: OpenCodeSession?
     @Published private(set) var childSessions: [OpenCodeSession] = []
     @Published private(set) var parentSession: OpenCodeSession?
+    /// Children of this session's parent, including this one, when this is a
+    /// subagent session.
+    @Published private(set) var siblingSessions: [OpenCodeSession] = []
+    /// Live status of the subagent sessions this conversation started.
+    @Published private(set) var subagents = OpenCodeSubagentTracker()
+    @Published private(set) var openingSubagentID: String?
     @Published private(set) var sessionDetailsError: String?
     @Published private(set) var isPerformingSessionAction = false
     @Published private(set) var isLoadingRelatedSessions = false
     @Published private(set) var didDeleteSession = false
+    /// The latest `vcs.branch.updated` event; `nil` until the server reports a switch.
+    @Published private(set) var reportedBranch: OpenCodeReportedBranch?
+    /// Set while `messages` shows the transcript saved on this device, before the
+    /// server's transcript arrives.
+    @Published private(set) var offlineTranscript: OpenCodeOfflineTranscriptInfo?
+    /// The shell command sent from this device, until the transcript shows it.
+    @Published private(set) var localShell: OpenCodeLocalShell?
+    /// A command OpenCode did not run, for the composer to take back.
+    @Published private(set) var restoredShellCommand: String?
+    @Published private(set) var didLoadSessionFeatures = false
+    /// The server's `share` config; nil until read, and after a failed read.
+    @Published private(set) var sharePolicy: OpenCodeSessionSharePolicy?
+    @Published private(set) var isUpdatingShare = false
+    @Published private(set) var shareErrorMessage: String?
     private let featureService: (any OpenCodeSessionFeatureServicing)?
+    private let shellService: (any OpenCodeShellServicing)?
+    private var shellTask: Task<Void, Never>?
     private var featureRefreshGeneration = 0
     private var featureMutationGeneration = 0
     private var todoMutationGeneration = 0
     private var revertedUserMessages: [OpenCodeMessageEnvelope] = []
+    // The server's active context and the newest message when it was read;
+    // a transcript that has moved on makes it stale.
+    private var serverContextWindow: (anchor: String?, messages: [OpenCodeMessageEnvelope])?
     let directory: String
     let remoteFiles: OpenCodeRemoteFileStore?
     let serverID: UUID
     private let workspace: String?
+    let durableQueue: BYOTDurableQueue?
+    private let offlineCache: OpenCodeOfflineCacheScope?
+    private var cachedMessages: [OpenCodeMessageEnvelope]?
+    /// The reducer holds a transcript loaded from the server, not only streamed parts.
+    private var hasServerTranscript = false
+    private var savedMessages: [OpenCodeMessageEnvelope]?
+    private var offlineRestoreTask: Task<Void, Never>?
+    private var offlineSaveTask: Task<Void, Never>?
+    private var offlineSavePendingSince: ContinuousClock.Instant?
+    private var queueObservation: AnyCancellable?
     private let service: any OpenCodeSessionServicing
     private let defaults: UserDefaults
     private let modelSelectionKey: String
     private let serverDefaultModelKey: String
     private let agentSelectionKey: String
     private let serverDefaultAgentKey: String
+    /// False while `selectedAgentID` only carries the server-wide preference
+    /// seeded for a session without its own pick; the session's own agent
+    /// history then outranks it.
+    private var isAgentSelectionExplicit: Bool
+    /// The completed `plan_exit` call this store already followed.
+    private var followedPlanExitPartID: String?
     private var submittedPrompts: [String: OpenCodeQueuedPrompt] = [:]
     private var persistedModelID: String?
     private var transcript = OpenCodeTranscriptReducer()
@@ -80,6 +131,7 @@ final class OpenCodeSessionStore: ObservableObject {
     private var eventTask: Task<Void, Never>?
     private var reconciliationTask: Task<Void, Never>?
     private var messageRefreshTask: Task<Void, Never>?
+    private var turnSettlementTask: Task<Void, Never>?
     private var actionRefreshTask: Task<Void, Never>?
     private var modelTask: Task<Void, Never>?
     private var promptDispatchTask: Task<Void, Never>?
@@ -110,32 +162,44 @@ final class OpenCodeSessionStore: ObservableObject {
         session: OpenCodeSession,
         directory: String,
         defaults: UserDefaults = .standard,
-        remoteFiles: OpenCodeRemoteFileStore? = nil
+        offlineCache: OpenCodeOfflineCacheScope? = nil,
+        remoteFiles: OpenCodeRemoteFileStore? = nil,
+        durableQueue: BYOTDurableQueue? = nil
     ) {
+        self.durableQueue = durableQueue
+        self.offlineCache = offlineCache
         self.service = service
         self.serverID = serverID
         featureService = service as? any OpenCodeSessionFeatureServicing
+        shellService = service as? any OpenCodeShellServicing
         self.session = session
         self.directory = directory
         self.defaults = defaults
         self.remoteFiles = remoteFiles
         modelSelectionKey = "byot.opencode.model.\(serverID.uuidString).\(session.id)"
-        serverDefaultModelKey = "byot.opencode.model.default.\(serverID.uuidString)"
+        serverDefaultModelKey = Self.serverDefaultModelKey(serverID)
         persistedModelID = defaults.string(forKey: modelSelectionKey)
         workspace = session.workspaceID
         agentSelectionKey = "byot.opencode.agent.\(serverID.uuidString).\(session.id)"
-        serverDefaultAgentKey = "byot.opencode.agent.default.\(serverID.uuidString)"
-        selectedAgentID = defaults.string(forKey: agentSelectionKey)?.trimmedNonEmpty
+        serverDefaultAgentKey = Self.serverDefaultAgentKey(serverID)
+        let savedAgentID = defaults.string(forKey: agentSelectionKey)?.trimmedNonEmpty
+        selectedAgentID = savedAgentID
+        isAgentSelectionExplicit = savedAgentID != nil
+        queueObservation = durableQueue?.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
     deinit {
         eventTask?.cancel()
         reconciliationTask?.cancel()
         messageRefreshTask?.cancel()
+        turnSettlementTask?.cancel()
         actionRefreshTask?.cancel()
         modelTask?.cancel()
         promptDispatchTask?.cancel()
         queueRecoveryTask?.cancel()
+        offlineRestoreTask?.cancel()
+        offlineSaveTask?.cancel()
+        shellTask?.cancel()
     }
 
     var pendingActionCount: Int {
@@ -143,12 +207,34 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     var willQueueNextPrompt: Bool {
-        if revertMessageID != nil, !status.isActive, !isSending { return false }
-        return status.isActive || isSending || promptQueue.shouldQueueNextPrompt
+        if durableQueue?.enabled == true { return true }
+        if revertMessageID != nil, !status.isActive, !isSending, !isShellSending { return false }
+        return status.isActive || isSending || isShellSending || promptQueue.shouldQueueNextPrompt
+    }
+
+    var isShellSending: Bool { localShell?.isSending == true }
+
+    /// Hidden, not an error, when the server lacks a shell operation.
+    var supportsShell: Bool { shellService != nil && sessionFeatures.shell }
+
+    /// False until the server's session features load, so a draft saved in
+    /// shell mode can wait for them instead of being read as a message.
+    var isShellSupportKnown: Bool { shellService == nil || featureService == nil || didLoadSessionFeatures }
+
+    /// Why shell mode can't run a command right now. The command stays in the
+    /// composer; shell runs are never queued behind a turn, as in OpenCode.
+    var shellUnavailableReason: String? {
+        guard supportsShell else { return OpenCodeShellError.unsupported.localizedDescription }
+        if !canSubmitPrompt { return String(localized: "Wait for the session to connect.") }
+        if isShellSending { return String(localized: "Wait for the current command to finish.") }
+        if status.isActive || isSending || promptQueue.isTurnActive {
+            return String(localized: "Shell commands run while OpenCode is idle. Stop the turn or wait for it to finish.")
+        }
+        return nil
     }
 
     var canSubmitPrompt: Bool {
-        isRunning && isStatusReady && isStoppingTurn == false && !isPerformingSessionAction && !didDeleteSession
+        isRunning && (isStatusReady || durableQueue?.enabled == true) && isStoppingTurn == false && !isPerformingSessionAction && !didDeleteSession
     }
 
     var modelFailure: OpenCodeMessageError? {
@@ -168,7 +254,7 @@ final class OpenCodeSessionStore: ObservableObject {
         // or tool calls. A partially executed turn can still select a new model.
         guard messages.suffix(from: userIndex + 1).allSatisfy({ message in
             message.parts.allSatisfy { part in
-                part.type != "tool" && (part.text?.trimmedNonEmpty == nil)
+                part.type != "tool" && (part.synthetic == true || part.text?.trimmedNonEmpty == nil)
             }
         }) else { return nil }
         return recoverablePrompt(in: [messages[userIndex]])
@@ -224,22 +310,38 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     func start() async {
+        durableQueue?.start()
         lifecycleGeneration &+= 1
         let generation = lifecycleGeneration
         isRunning = true
         isStatusReady = false
         didStatusProbeFailWithFreshTranscript = false
         recoveryIdleUserMessageID = nil
+        restoreOfflineTranscript()
         connectEvents()
         modelTask?.cancel()
         modelTask = Task { [weak self] in
             await self?.reloadModels()
         }
         await refresh(showLoading: true)
+        if generation == lifecycleGeneration, isRunning,
+           session.parentID != nil || OpenCodeSubagentTask.containsTask(in: transcript.messages) {
+            await loadRelatedSessions()
+        }
         if Task.isCancelled, generation == lifecycleGeneration { stop() }
     }
 
+    func refreshAfterForeground() {
+        guard isRunning else { return }
+        // Reconcile missed events without interrupting an in-flight submission.
+        scheduleReconciliation()
+    }
+
     func stop() {
+        durableQueue?.stop()
+        offlineRestoreTask?.cancel()
+        offlineRestoreTask = nil
+        saveOfflineTranscriptNow()
         lifecycleGeneration &+= 1
         featureRefreshGeneration &+= 1
         isRunning = false
@@ -255,6 +357,7 @@ final class OpenCodeSessionStore: ObservableObject {
         reconciliationTask = nil
         messageRefreshTask?.cancel()
         messageRefreshTask = nil
+        cancelTurnSettlement()
         actionRefreshTask?.cancel()
         actionRefreshTask = nil
         modelTask?.cancel()
@@ -271,6 +374,10 @@ final class OpenCodeSessionStore: ObservableObject {
         queueRecoveryTask?.cancel()
         queueRecoveryTask = nil
         queueRecoveryID = nil
+        // Leaving does not stop a server-side command; reopening shows its record.
+        shellTask?.cancel()
+        shellTask = nil
+        localShell = nil
         publishPromptQueue()
         messageRefreshPending = false
         actionRefreshPending = false
@@ -360,6 +467,7 @@ final class OpenCodeSessionStore: ObservableObject {
                 if messageGeneration == messageRequestGeneration,
                    transcriptBaseline == transcriptMutationGeneration {
                     transcript.replace(with: messages)
+                    didLoadServerTranscript()
                     publishTranscript()
                     didApplyFreshMessages = true
                 }
@@ -380,6 +488,7 @@ final class OpenCodeSessionStore: ObservableObject {
                     didStatusProbeFailWithFreshTranscript = false
                     applyReconciledStatus(statuses[session.id] ?? .idle)
                 }
+                applySubagentStatuses(statuses)
             case .failure(let error):
                 if statusBaseline == statusMutationGeneration {
                     didStatusProbeFailWithFreshTranscript = didApplyFreshMessages
@@ -422,6 +531,7 @@ final class OpenCodeSessionStore: ObservableObject {
             try Task.checkCancellation()
             guard generation == featureRefreshGeneration else { return }
             sessionFeatures = support
+            didLoadSessionFeatures = true
             let sessionID = session.id, directory = directory, workspace = workspace
             async let detailsResult = Self.capture { () -> OpenCodeSessionDetails? in
                 guard support.details else { return nil }
@@ -430,9 +540,17 @@ final class OpenCodeSessionStore: ObservableObject {
             async let todosResult = Self.capture {
                 try await featureService.sessionTodos(sessionID: sessionID, directory: directory, workspace: workspace)
             }
-            let (details, todos) = await (detailsResult, todosResult)
+            // Config rarely changes, so read it once; a failed read leaves
+            // publishing offered and is retried on the next refresh.
+            let needsSharePolicy = support.share && sharePolicy == nil
+            async let sharePolicyResult = Self.capture { () -> OpenCodeSessionSharePolicy? in
+                guard needsSharePolicy else { return nil }
+                return try await featureService.sessionSharePolicy(directory: directory, workspace: workspace)
+            }
+            let (details, todos, policy) = await (detailsResult, todosResult, sharePolicyResult)
             try Task.checkCancellation()
             guard generation == featureRefreshGeneration else { return }
+            if case .success(let policy?) = policy { sharePolicy = policy }
             if mutation == featureMutationGeneration {
                 switch details {
                 case .success(let details):
@@ -467,6 +585,8 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private func handleSessionFeatureEvent(_ event: OpenCodeEvent) -> Bool {
+        // Current v2 servers publish revert events as session.next.revert.*.
+        let type = OpenCodeV2EventReducer.canonicalType(event.type)
         if event.type == "todo.updated", event.sessionID == session.id {
             if let todos: [OpenCodeTodo] = decode(event.properties["todos"]) {
                 todoMutationGeneration &+= 1
@@ -474,7 +594,7 @@ final class OpenCodeSessionStore: ObservableObject {
             }
             return true
         }
-        if event.type == "session.revert.staged", event.sessionID == session.id {
+        if type == "session.revert.staged", event.sessionID == session.id {
             featureMutationGeneration &+= 1
             revertMessageID = event.properties["revert"]?.objectValue?["messageID"]?.stringValue
             promptQueue.pausePendingPrompts()
@@ -482,14 +602,14 @@ final class OpenCodeSessionStore: ObservableObject {
             publishTranscript()
             return true
         }
-        if event.type == "session.revert.committed", event.sessionID == session.id {
-            if let boundary = event.properties["to"]?.stringValue ?? revertMessageID {
+        if type == "session.revert.committed", event.sessionID == session.id {
+            if let boundary = event.properties["to"]?.stringValue ?? event.properties["messageID"]?.stringValue ?? revertMessageID {
                 commitHistoryLocally(before: boundary)
             }
             scheduleReconciliation()
             return true
         }
-        if event.type == "session.revert.cleared", event.sessionID == session.id {
+        if type == "session.revert.cleared", event.sessionID == session.id {
             featureMutationGeneration &+= 1
             revertMessageID = nil
             publishTranscript()
@@ -503,6 +623,12 @@ final class OpenCodeSessionStore: ObservableObject {
             revertMessageID = info.objectValue?["revert"]?.objectValue?["messageID"]?.stringValue
             if revertMessageID != nil { promptQueue.pausePendingPrompts(); publishPromptQueue() }
             publishTranscript()
+            return true
+        }
+        // Another client (TUI, web, `plan_exit`) switched this v2 session's agent.
+        if event.type == "session.agent.switched" || event.type == "session.next.agent.switched",
+           event.sessionID == session.id, let agent = event.properties["agent"]?.stringValue {
+            composerCatalog.inheritedAgent = agent
             return true
         }
         if event.type == "session.renamed", event.sessionID == session.id {
@@ -520,14 +646,14 @@ final class OpenCodeSessionStore: ObservableObject {
         case .compact: supported = sessionFeatures.compact
         case .fork: supported = sessionFeatures.fork
         }
-        if !supported { return "This server does not support this action." }
-        if !isRunning || !isStatusReady { return "Wait for the session to connect." }
-        if isPerformingSessionAction || isSending || isStoppingTurn { return "Wait for the current request to finish." }
-        if status.isActive { return "Stop the current turn before changing its history." }
-        if action == .undo && !messages.contains(where: { $0.info.role == "user" }) { return "No turn to undo." }
-        if action == .redo && revertMessageID == nil { return "No undone turn to restore." }
-        if action == .compact && sessionFeatures.compactRequiresModel && selectedModel == nil { return "Choose a model before compacting." }
-        if action == .compact && revertMessageID != nil { return "Redo or send your revised prompt before compacting." }
+        if !supported { return String(localized: "This server does not support this action.") }
+        if !isRunning || !isStatusReady { return String(localized: "Wait for the session to connect.") }
+        if isPerformingSessionAction || isSending || isStoppingTurn { return String(localized: "Wait for the current request to finish.") }
+        if status.isActive || durableQueue?.pending.contains(where: { ["claimed", "submitted"].contains($0.state) }) == true { return String(localized: "Stop the current turn before changing its history.") }
+        if action == .undo && !messages.contains(where: { $0.info.role == "user" }) { return String(localized: "No turn to undo.") }
+        if action == .redo && revertMessageID == nil { return String(localized: "No undone turn to restore.") }
+        if action == .compact && sessionFeatures.compactRequiresModel && selectedModel == nil { return String(localized: "Choose a model before compacting.") }
+        if action == .compact && revertMessageID != nil { return String(localized: "Redo or send your revised prompt before compacting.") }
         return nil
     }
 
@@ -547,6 +673,13 @@ final class OpenCodeSessionStore: ObservableObject {
         cancelQueueRecovery()
         defer { isPerformingSessionAction = false }
         do {
+            if let queue = durableQueue, queue.enabled {
+                try await queue.setPaused(true)
+                try await queue.refresh()
+                guard !queue.pending.contains(where: { ["claimed", "submitted"].contains($0.state) }) else {
+                    throw BYOTQueueError.message(String(localized: "A queued message has started. Stop that turn before changing session history."))
+                }
+            }
             switch action {
             case .undo:
                 // A refresh already in flight may publish the old unreverted
@@ -605,15 +738,111 @@ final class OpenCodeSessionStore: ObservableObject {
         guard let featureService, !isLoadingRelatedSessions else { return }
         isLoadingRelatedSessions = true
         defer { isLoadingRelatedSessions = false }
-        do {
-            if sessionFeatures.children {
-                childSessions = try await featureService.childSessions(sessionID: session.id, directory: directory, workspace: workspace)
-            }
-            if let parentID = session.parentID ?? session.forkSourceID, sessionFeatures.details {
+        let sessionID = session.id, directory = directory, workspace = workspace
+        var errors: [Error] = []
+        if sessionFeatures.children {
+            do {
+                childSessions = OpenCodeSubagentFamily.ordered(
+                    try await featureService.childSessions(sessionID: sessionID, directory: directory, workspace: workspace))
+                trackSubagents(childSessions.map(\.id))
+            } catch { errors.append(error) }
+        }
+        if let parentID = session.parentID ?? session.forkSourceID, sessionFeatures.details {
+            do {
                 parentSession = try await featureService.sessionDetails(sessionID: parentID, directory: directory, workspace: workspace).session
-            }
-            sessionDetailsError = nil
-        } catch { sessionDetailsError = error.localizedDescription }
+            } catch { errors.append(error) }
+        }
+        // A subagent steps between its siblings: the parent's other children.
+        if let parentID = session.parentID, sessionFeatures.children {
+            do {
+                siblingSessions = try await featureService.childSessions(sessionID: parentID, directory: directory, workspace: workspace)
+            } catch { errors.append(error) }
+        }
+        sessionDetailsError = errors.first?.localizedDescription
+        // Children found here may have started before this screen opened.
+        if !subagents.activity.isEmpty,
+           let statuses = try? await service.sessionStatuses(directory: directory, workspace: workspace) {
+            applySubagentStatuses(statuses)
+        }
+    }
+
+    /// The session behind a subagent link: a known relative, or the server's
+    /// record of it. nil, with an explanation, when neither is available.
+    func relatedSession(_ sessionID: String) async -> OpenCodeSession? {
+        let known = childSessions + siblingSessions + [parentSession].compactMap { $0 }
+        if let session = known.first(where: { $0.id == sessionID }) { return session }
+        guard let featureService, sessionFeatures.details else {
+            actionErrorMessage = String(localized: "This server can’t open subagent sessions.")
+            return nil
+        }
+        guard openingSubagentID == nil else { return nil }
+        openingSubagentID = sessionID
+        defer { openingSubagentID = nil }
+        do {
+            return try await featureService.sessionDetails(sessionID: sessionID, directory: directory, workspace: workspace).session
+        } catch is CancellationError {
+            return nil
+        } catch {
+            actionErrorMessage = String(localized: "Couldn’t open the subagent session: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// This session among its siblings, when it is a subagent.
+    var subagentFamily: OpenCodeSubagentFamily? {
+        OpenCodeSubagentFamily(session: session, parent: parentSession, siblings: siblingSessions)
+    }
+
+    private func trackSubagents<IDs: Sequence>(_ ids: IDs) where IDs.Element == String {
+        let new = ids.filter { !subagents.isTracking($0) }
+        guard !new.isEmpty else { return }
+        subagents.track(new)
+    }
+
+    private func applySubagentStatuses(_ statuses: [String: OpenCodeSessionStatus]) {
+        var next = subagents
+        next.applyStatuses(statuses)
+        if next != subagents { subagents = next }
+    }
+
+    /// Events about other sessions: this one's subagents, its siblings, and
+    /// its parent. Returns true when the event belongs to another session.
+    private func handleRelatedSessionEvent(_ event: OpenCodeEvent) -> Bool {
+        if ["session.created", "session.updated", "session.deleted"].contains(event.type),
+           let info: OpenCodeSession = decode(event.properties["info"]) {
+            guard info.id != session.id else { return false }
+            applyRelatedSession(info, removed: event.type == "session.deleted")
+            return true
+        }
+        let properties = event.properties
+        guard let sessionID = event.sessionID ?? properties["part"]?.objectValue?["sessionID"]?.stringValue,
+              sessionID != session.id else { return false }
+        if subagents.isTracking(sessionID) {
+            var next = subagents
+            if next.apply(event) { subagents = next }
+        }
+        return true
+    }
+
+    private func applyRelatedSession(_ info: OpenCodeSession, removed: Bool) {
+        let gone = removed || info.time.archived != nil
+        if info.parentID == session.id {
+            let next = Self.upsert(info, into: childSessions, removing: gone)
+            if next != childSessions { childSessions = next }
+            if !gone { trackSubagents([info.id]) }
+        }
+        guard let parentID = session.parentID else { return }
+        if info.parentID == parentID {
+            let next = Self.upsert(info, into: siblingSessions, removing: gone)
+            if next != siblingSessions { siblingSessions = next }
+        }
+        if info.id == parentID, !removed, info != parentSession { parentSession = info }
+    }
+
+    nonisolated static func upsert(_ session: OpenCodeSession, into sessions: [OpenCodeSession], removing: Bool) -> [OpenCodeSession] {
+        var next = sessions.filter { $0.id != session.id }
+        if !removing { next.append(session) }
+        return OpenCodeSubagentFamily.ordered(next)
     }
 
     func renameSession(_ title: String) async -> Bool {
@@ -631,6 +860,81 @@ final class OpenCodeSessionStore: ObservableObject {
         } catch { sessionDetailsError = error.localizedDescription; return false }
     }
 
+    var sharePresentation: OpenCodeSessionSharePresentation {
+        OpenCodeSessionSharePresentation(
+            link: session.share?.link,
+            isSupported: featureService != nil && sessionFeatures.share,
+            policy: sharePolicy,
+            isUpdating: isUpdatingShare
+        )
+    }
+
+    /// Publishes a read-only web copy of this conversation. Only an explicit
+    /// user action calls this; the link shown is always the server's own.
+    func publishShareLink() async -> Bool {
+        guard let featureService, sharePresentation.canPublish else { return false }
+        let published = await updateShare {
+            try await featureService.shareSession(sessionID: $0, directory: $1, workspace: $2)
+        }
+        guard published else {
+            await recheckSharePolicy(after: featureService)
+            return false
+        }
+        guard session.share?.link != nil else {
+            shareErrorMessage = String(localized: "OpenCode didn’t return a link for this session. Sharing may be turned off on the server.")
+            return false
+        }
+        return true
+    }
+
+    func unpublishShareLink() async -> Bool {
+        guard let featureService, sharePresentation.canUnpublish else { return false }
+        return await updateShare {
+            try await featureService.unshareSession(sessionID: $0, directory: $1, workspace: $2)
+        }
+    }
+
+    func clearShareError() { shareErrorMessage = nil }
+
+    /// OpenCode rejects a publish on a server whose config says `share:
+    /// "disabled"` with an opaque server error. The config may have changed
+    /// since it was read, so read it again and explain rather than repeat it.
+    private func recheckSharePolicy(after featureService: any OpenCodeSessionFeatureServicing) async {
+        guard shareErrorMessage != nil,
+              let policy = try? await featureService.sessionSharePolicy(directory: directory, workspace: workspace)
+        else { return }
+        sharePolicy = policy
+        if policy == .disabled {
+            shareErrorMessage = String(localized: "Sharing is turned off in this server’s OpenCode config.")
+        }
+    }
+
+    /// Sharing never touches history, so it leaves the composer and session
+    /// actions available and only guards itself against a second request.
+    private func updateShare(
+        _ request: (String, String, String?) async throws -> OpenCodeSession
+    ) async -> Bool {
+        guard !isUpdatingShare else { return false }
+        isUpdatingShare = true
+        shareErrorMessage = nil
+        featureMutationGeneration &+= 1
+        defer { isUpdatingShare = false }
+        let sessionID = session.id
+        do {
+            let updated = try await request(sessionID, directory, workspace)
+            guard updated.id == session.id else { return false }
+            session = updated
+            // Reject a details snapshot requested before the server confirmed.
+            featureMutationGeneration &+= 1
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            shareErrorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func deleteSession() async -> Bool {
         guard let featureService, sessionFeatures.delete, !isPerformingSessionAction, !status.isActive, !isSending else { return false }
         isPerformingSessionAction = true
@@ -640,6 +944,7 @@ final class OpenCodeSessionStore: ObservableObject {
         do {
             try await featureService.deleteSession(sessionID: session.id, directory: directory, workspace: workspace)
             didDeleteSession = true
+            offlineCache?.removeTranscript(sessionID: session.id, directory: directory, workspace: workspace)
             stop()
             return true
         } catch { sessionDetailsError = error.localizedDescription; return false }
@@ -654,7 +959,7 @@ final class OpenCodeSessionStore: ObservableObject {
         guard (!trimmed.isEmpty || !attachments.isEmpty || !remoteReferences.isEmpty), canSubmitPrompt else { return false }
         guard remoteReferences.allSatisfy({ $0.matches(serverID: serverID, projectID: session.projectID,
             directory: directory, workspaceID: workspace) }) else {
-            errorMessage = "File context belongs to a different project. Select the file again."
+            errorMessage = String(localized: "File context belongs to a different project. Select the file again.")
             return false
         }
         do {
@@ -663,10 +968,22 @@ final class OpenCodeSessionStore: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+        if let queue = durableQueue, queue.enabled {
+            guard revertMessageID == nil else { errorMessage = String(localized: "Redo the conversation before adding work to the computer queue."); return false }
+            guard queuedPrompts.isEmpty else { errorMessage = String(localized: "Send or remove the existing local queued messages first."); return false }
+            do {
+                try queue.enqueue(OpenCodeQueuedPrompt(text: trimmed, model: selectedModel, attachments: attachments,
+                    agent: effectiveAgentID, variant: selectedVariant,
+                    command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands), remoteReferences: remoteReferences))
+                queueAnnouncementRevision &+= 1
+                return true
+            } catch { errorMessage = error.localizedDescription; return false }
+        }
         didStatusProbeFailWithFreshTranscript = false
         recoveryIdleUserMessageID = nil
         dismissUnansweredPromptRecovery()
-        if revertMessageID != nil, !status.isActive, !isSending,
+        if localShell?.isSending == false { localShell = nil }
+        if revertMessageID != nil, !status.isActive, !isSending, !isShellSending,
            let prompt = promptQueue.beginExplicitDispatch(text: trimmed, model: selectedModel, attachments: attachments,
                agent: effectiveAgentID, variant: selectedVariant,
                command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands),
@@ -682,7 +999,7 @@ final class OpenCodeSessionStore: ObservableObject {
             agent: effectiveAgentID, variant: selectedVariant,
             command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands),
             remoteReferences: remoteReferences,
-            serverIsActive: status.isActive || isSending
+            serverIsActive: status.isActive || isSending || isShellSending
         )
         publishPromptQueue()
         switch submission {
@@ -694,6 +1011,71 @@ final class OpenCodeSessionStore: ObservableObject {
             schedulePromptDispatch(prompt)
             return true
         }
+    }
+
+    /// Runs `text` as a shell command in this session's directory. Returns
+    /// false, leaving the command with the caller, when it can't be sent now.
+    @discardableResult
+    func runShell(_ text: String) -> Bool {
+        let command = OpenCodeShellInput.normalized(text)
+        guard !command.isEmpty, shellUnavailableReason == nil, let shellService else { return false }
+        let shell = OpenCodeShellCommand(command: command, agent: currentAgentID, model: selectedModel)
+        let local = OpenCodeLocalShell(id: UUID(), command: command, baselineMessageIDs: Set(transcript.messages.map(\.id)))
+        localShell = local
+        restoredShellCommand = nil
+        errorMessage = nil
+        dismissUnansweredPromptRecovery()
+        let generation = lifecycleGeneration
+        shellTask = Task { [weak self] in
+            await self?.performShell(shell, local: local, service: shellService, generation: generation)
+        }
+        return true
+    }
+
+    func dismissShellFailure() {
+        guard localShell?.isSending == false else { return }
+        localShell = nil
+    }
+
+    func consumeRestoredShellCommand() { restoredShellCommand = nil }
+
+    /// The command behind a v1 shell turn, so undoing that turn restores it in
+    /// shell mode instead of the server's bookkeeping text.
+    /// Redo past the last turn restores a partless message to clear the
+    /// composer, so only a message that still carries its parts is a run.
+    func shellCommand(restoring message: OpenCodeMessageEnvelope) -> String? {
+        guard !message.parts.isEmpty else { return nil }
+        return OpenCodeShellTranscript.command(forMarker: message.id, in: transcript.messages)
+    }
+
+    private func performShell(_ shell: OpenCodeShellCommand, local: OpenCodeLocalShell,
+                              service: any OpenCodeShellServicing, generation: Int) async {
+        var failure: Error?
+        do {
+            try await prepareHistoryForPromptDispatch()
+            try Task.checkCancellation()
+            try await service.runShell(sessionID: session.id, directory: directory, workspace: workspace, shell: shell)
+        } catch is CancellationError {
+            return
+        } catch { failure = error }
+        guard generation == lifecycleGeneration, isRunning, localShell?.id == local.id else { return }
+        shellTask = nil
+        if let failure {
+            let message = OpenCodeShellError.failureMessage(for: failure)
+            localShell?.phase = OpenCodeShellError.certainlyDidNotRun(failure) ? .failed(message) : .unconfirmed(message)
+            restoredShellCommand = local.command
+        } else {
+            localShell = nil
+        }
+        // Prompts sent during the run waited behind it. A v1 run reports its
+        // own busy/idle status; release them here when no turn is running.
+        if !status.isActive, promptDispatchTask == nil, let next = promptQueue.reconciledServerIdle() {
+            publishPromptQueue()
+            schedulePromptDispatch(next)
+        }
+        scheduleMessageRefresh()
+        // v1 clears an undone boundary when it accepts the run.
+        if revertMessageID != nil { await refreshSessionFeatures() }
     }
 
     func removeQueuedPrompt(_ id: UUID) {
@@ -724,6 +1106,7 @@ final class OpenCodeSessionStore: ObservableObject {
         }
 
         do {
+            if let queue = durableQueue, queue.enabled { try await queue.setPaused(true) }
             let didAbort = try await service.abort(
                 sessionID: session.id,
                 directory: directory,
@@ -732,7 +1115,7 @@ final class OpenCodeSessionStore: ObservableObject {
             try Task.checkCancellation()
             guard generation == lifecycleGeneration, isRunning else { return false }
             guard didAbort else {
-                errorMessage = "OpenCode did not confirm that the stalled turn was stopped."
+                errorMessage = String(localized: "OpenCode did not confirm that the stalled turn was stopped.")
                 return false
             }
 
@@ -791,7 +1174,7 @@ final class OpenCodeSessionStore: ObservableObject {
             try Task.checkCancellation()
             guard generation == lifecycleGeneration, isRunning else { return }
             guard didAbort else {
-                errorMessage = "OpenCode did not confirm that the turn was stopped."
+                errorMessage = String(localized: "OpenCode did not confirm that the turn was stopped.")
                 return
             }
 
@@ -835,7 +1218,7 @@ final class OpenCodeSessionStore: ObservableObject {
         do {
             guard prompt.remoteReferences.allSatisfy({ $0.matches(serverID: serverID,
                 projectID: session.projectID, directory: directory, workspaceID: workspace) }) else {
-                throw OpenCodeConnectionError.server("File context belongs to a different project. Remove this queued prompt and select the file again.")
+                throw OpenCodeConnectionError.server(String(localized: "File context belongs to a different project. Remove this queued prompt and select the file again."))
             }
             try await prepareHistoryForPromptDispatch()
             try Task.checkCancellation()
@@ -875,7 +1258,7 @@ final class OpenCodeSessionStore: ObservableObject {
                 clearOptimisticBusy()
             }
             errorMessage = prompt.command?.kind == .command
-                ? "The command may have run before the connection failed. Review the session before choosing Run again. " + error.localizedDescription
+                ? String(localized: "The command may have run before the connection failed. Review the session before choosing Run again. \(error.localizedDescription)")
                 : error.localizedDescription
         }
     }
@@ -944,12 +1327,16 @@ final class OpenCodeSessionStore: ObservableObject {
             if catalog.unavailableReason == nil, let selectedAgentID,
                !catalog.agents.contains(where: { $0.id == selectedAgentID }) {
                 self.selectedAgentID = nil
+                isAgentSelectionExplicit = false
                 defaults.removeObject(forKey: agentSelectionKey)
             }
             if selectedAgentID == nil, defaults.object(forKey: agentSelectionKey) == nil,
                catalog.inheritedAgent == nil, session.agent == nil,
                let preferred = defaults.string(forKey: serverDefaultAgentKey),
-               catalog.agents.contains(where: { $0.id == preferred }) { selectedAgentID = preferred }
+               catalog.agents.contains(where: { $0.id == preferred }) {
+                selectedAgentID = preferred
+                isAgentSelectionExplicit = false
+            }
             // Commands and agent pickers can refresh this catalog directly.
             // An inherited model change must also reconcile its variant, using
             // the new model's saved preference or explicit Default.
@@ -958,29 +1345,80 @@ final class OpenCodeSessionStore: ObservableObject {
         catch { composerErrorMessage = error.localizedDescription }
     }
 
-    var effectiveAgentID: String? { selectedAgentID ?? composerCatalog.inheritedAgent ?? session.agent }
+    /// The agent sent with the next prompt. Without an explicit pick the
+    /// session keeps the agent it last ran, as the TUI does on entering a
+    /// session and after `plan_exit`; `nil` lets the server choose its default.
+    var effectiveAgentID: String? {
+        if isAgentSelectionExplicit, let selectedAgentID { return selectedAgentID }
+        return composerCatalog.inheritedAgent ?? session.agent ?? transcriptAgentID ?? selectedAgentID
+    }
 
-    var selectedAgentName: String {
-        if let selectedAgentID {
-            return composerCatalog.agents.first { $0.id == selectedAgentID }?.name ?? selectedAgentID
-        }
-        let inherited = composerCatalog.inheritedAgent ?? session.agent
-        return inherited.map { "Default (\($0))" } ?? "Default agent"
+    /// The agent this session's composer shows and cycles from.
+    var currentAgentID: String? { effectiveAgentID ?? composerCatalog.defaultAgentID }
+
+    /// This session's pick, excluding the server-wide preference seeded into it.
+    var explicitAgentID: String? { isAgentSelectionExplicit ? selectedAgentID : nil }
+
+    var currentAgent: OpenCodeAgentOption? {
+        composerCatalog.agents.first { $0.id == currentAgentID }
+    }
+
+    var currentAgentName: String {
+        if let currentAgent { return currentAgent.displayName }
+        return currentAgentID.map { OpenCodeAgentOption(id: $0, name: $0, description: nil).displayName } ?? String(localized: "Default agent")
+    }
+
+    /// Where the next cycle lands, for the toggle's VoiceOver hint.
+    var nextAgentInCycle: OpenCodeAgentOption? {
+        guard composerCatalog.agents.count > 1 else { return nil }
+        return OpenCodeAgentCycle.next(after: currentAgentID, in: composerCatalog.agents)
+    }
+
+    // The latest user turn names the primary agent that last ran. Subagent
+    // names are ignored, matching the TUI's session sync.
+    private var transcriptAgentID: String? {
+        messages.last { message in
+            message.info.role == "user" && composerCatalog.agents.contains { $0.id == message.info.agent }
+        }?.info.agent
     }
 
     func selectAgent(_ id: String?) {
         guard id == nil || composerCatalog.agents.contains(where: { $0.id == id }) else { return }
         selectedAgentID = id
+        isAgentSelectionExplicit = id != nil
         defaults.set(id ?? "", forKey: agentSelectionKey)
         if let id { defaults.set(id, forKey: serverDefaultAgentKey) }
         else { defaults.removeObject(forKey: serverDefaultAgentKey) }
+    }
+
+    /// The TUI switches to build when `plan_exit` completes. An earlier pick on
+    /// this device yields, so the chip and the next prompt follow the approved
+    /// plan's build turn instead of sending the plan agent back.
+    private func followCompletedPlanExit(_ event: OpenCodeEvent) {
+        guard event.type == "message.part.updated", let part = event.properties["part"]?.objectValue,
+              part["sessionID"]?.stringValue == session.id, part["tool"]?.stringValue == "plan_exit",
+              part["state"]?.objectValue?["status"]?.stringValue == "completed",
+              let id = part["id"]?.stringValue, id != followedPlanExitPartID else { return }
+        followedPlanExitPartID = id
+        guard isAgentSelectionExplicit, selectedAgentID != "build" else { return }
+        selectedAgentID = nil
+        isAgentSelectionExplicit = false
+        defaults.set("", forKey: agentSelectionKey)
+    }
+
+    /// One-tap build/plan toggle: Tab-style cycling through primary agents.
+    func cycleAgent(_ direction: OpenCodeAgentCycle.Direction = .forward) {
+        guard composerCatalog.agents.count > 1,
+              let next = OpenCodeAgentCycle.next(after: currentAgentID, in: composerCatalog.agents,
+                                                 direction: direction) else { return }
+        selectAgent(next.id)
     }
 
     var availableVariants: [String] { selectedModel?.variants ?? [] }
 
     var variantLabel: String {
         if let selectedVariant { return selectedVariant }
-        return "Default"
+        return String(localized: "Default")
     }
 
     private var variantSelectionKey: String? {
@@ -988,7 +1426,21 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     private var defaultVariantKey: String? {
-        selectedModel.map { "byot.opencode.variant.default.\(serverID.uuidString).\($0.qualifiedID)" }
+        selectedModel.map { Self.serverDefaultVariantKey(serverID, model: $0) }
+    }
+
+    /// The last model, agent and variant picked anywhere on a server. New
+    /// sessions, including ones started from Siri and Shortcuts, inherit them.
+    nonisolated static func serverDefaultModelKey(_ serverID: UUID) -> String {
+        "byot.opencode.model.default.\(serverID.uuidString)"
+    }
+
+    nonisolated static func serverDefaultAgentKey(_ serverID: UUID) -> String {
+        "byot.opencode.agent.default.\(serverID.uuidString)"
+    }
+
+    nonisolated static func serverDefaultVariantKey(_ serverID: UUID, model: OpenCodeModelOption) -> String {
+        "byot.opencode.variant.default.\(serverID.uuidString).\(model.qualifiedID)"
     }
 
     func selectVariant(_ variant: String?) {
@@ -1092,7 +1544,7 @@ final class OpenCodeSessionStore: ObservableObject {
                         self?.isEventConnected = false
                         self?.markTasksStale()
                         self?.eventErrorMessage =
-                            "Live updates ended. Reconnecting automatically."
+                            String(localized: "Live updates ended. Reconnecting automatically.")
                         self?.scheduleQueueRecoveryIfNeeded()
                     }
                 } catch is CancellationError {
@@ -1118,7 +1570,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     nonisolated static func eventConnectionMessage(for error: Error) -> String {
-        "Live updates disconnected: \(error.localizedDescription) Reconnecting automatically."
+        String(localized: "Live updates disconnected: \(error.localizedDescription) Reconnecting automatically.")
     }
 
     nonisolated static func capture<Value: Sendable>(
@@ -1147,11 +1599,11 @@ final class OpenCodeSessionStore: ObservableObject {
     ) -> String {
         switch error {
         case .eventBufferOverflow:
-            "Live updates fell behind. Reconnecting and reconciling with OpenCode."
+            String(localized: "Live updates fell behind. Reconnecting and reconciling with OpenCode.")
         case .eventLineTooLong, .eventRecordTooLarge:
-            "Live updates exceeded the safe event size. Reconnecting and reconciling with OpenCode."
+            String(localized: "Live updates exceeded the safe event size. Reconnecting and reconciling with OpenCode.")
         default:
-            "Live updates disconnected. Reconnecting and reconciling with OpenCode."
+            String(localized: "Live updates disconnected. Reconnecting and reconciling with OpenCode.")
         }
     }
 
@@ -1203,6 +1655,7 @@ final class OpenCodeSessionStore: ObservableObject {
     }
 
     func handle(_ event: OpenCodeEvent) {
+        if handleRelatedSessionEvent(event) { return }
         if let eventSessionID = event.sessionID, eventSessionID != session.id {
             return
         }
@@ -1216,11 +1669,18 @@ final class OpenCodeSessionStore: ObservableObject {
             scheduleReconciliation()
         case "message.updated", "message.removed", "message.part.updated",
              "message.part.removed", "message.part.delta":
+            followCompletedPlanExit(event)
             if transcript.apply(event) {
                 transcriptMutationGeneration &+= 1
                 publishTranscript()
             } else {
                 scheduleMessageRefresh()
+            }
+        case "vcs.branch.updated":
+            // v1 streams only this location's events; v2's `/api/event` streams every project's.
+            if !event.isV2 || event.location == .init(directory: directory, workspaceID: workspace) {
+                reportedBranch = OpenCodeReportedBranch(
+                    name: event.properties["branch"]?.stringValue?.trimmedNonEmpty, eventID: event.id)
             }
         case "session.diff":
             if let value: [OpenCodeDiff] = decode(event.properties["diff"]) {
@@ -1264,35 +1724,220 @@ final class OpenCodeSessionStore: ObservableObject {
             scheduleMessageRefresh()
         case "session.execution.failed", "session.execution.interrupted":
             if event.type == "session.execution.failed" {
-                errorMessage = OpenCodeFailure(message: "The turn failed.", details: event.properties["error"]?.objectValue).message
+                errorMessage = OpenCodeFailure(message: String(localized: "The turn failed."), details: event.properties["error"]?.objectValue).message
             }
             settleTurnLocally(dismissingUnansweredPrompt: false)
             scheduleMessageRefresh()
-        case "session.retry.scheduled":
+        case "session.retry.scheduled", "session.next.retried":
             statusMutationGeneration &+= 1
             applyEventStatus(.retry(attempt: Int(event.properties["attempt"]?.numberValue ?? 1),
-                message: event.properties["error"]?.objectValue?["message"]?.stringValue ?? "Retrying", next: event.properties["at"]?.numberValue ?? 0))
+                message: event.properties["error"]?.objectValue?["message"]?.stringValue ?? String(localized: "Retrying"), next: event.properties["at"]?.numberValue ?? 0))
+        case "session.next.step.started":
+            // Current v2 has no execution events on /api/event; a step is the
+            // first sign of work and a new step supersedes any pending settle.
+            // Apply it even over an optimistic busy so the prompt queue records
+            // server activity and dispatches its follow-up when the turn ends.
+            cancelTurnSettlement()
+            statusMutationGeneration &+= 1
+            applyEventStatus(.busy)
+            applyV2Transcript(event)
+        case "session.next.step.ended", "session.next.step.failed":
+            applyV2Transcript(event)
+            // Any step can be the last one: tool calls stop continuing after a
+            // provider error or the agent's step limit. The next step.started
+            // cancels the probe while the server still owns the drain.
+            scheduleTurnSettlement(afterFailure: event.type == "session.next.step.failed")
         default:
-            if transcript.apply(event) {
-                transcriptMutationGeneration &+= 1
-                publishTranscript()
-            } else {
-                // Unrecognized or out-of-order beta events reconcile from projection.
-                scheduleMessageRefresh()
+            applyV2Transcript(event)
+        }
+    }
+
+    private func applyV2Transcript(_ event: OpenCodeEvent) {
+        switch transcript.applyV2(event) {
+        case .changed:
+            transcriptMutationGeneration &+= 1
+            publishTranscript()
+        case .unchanged:
+            break
+        case .unresolved:
+            // Unrecognized or out-of-order events reconcile from projection.
+            scheduleMessageRefresh()
+        }
+    }
+
+    /// Current v2 servers report no idle event, so after each step the store
+    /// asks the authoritative active-session list with a short backoff, then
+    /// keeps checking at the last interval until the drain ends. A failed
+    /// final step settles like session.error so queued prompts stay paused.
+    private func scheduleTurnSettlement(afterFailure: Bool) {
+        cancelTurnSettlement()
+        let baseline = statusMutationGeneration
+        turnSettlementTask = Task { [weak self] in
+            var attempt = 0
+            while true {
+                let delays = Self.turnSettlementDelays
+                try? await Task.sleep(for: delays[min(attempt, delays.count - 1)])
+                attempt += 1
+                guard !Task.isCancelled, let store = self, store.isRunning else { return }
+                // Another path (reconciliation, Stop) already settled the turn.
+                guard store.status.isActive, baseline == store.statusMutationGeneration else {
+                    store.turnSettlementTask = nil
+                    return
+                }
+                guard let statuses = try? await store.service.sessionStatuses(
+                    directory: store.directory, workspace: store.workspace
+                ) else { continue }
+                guard !Task.isCancelled, baseline == store.statusMutationGeneration else { return }
+                guard statuses[store.session.id]?.isActive != true else { continue }
+                store.turnSettlementTask = nil
+                if afterFailure {
+                    store.settleTurnLocally(dismissingUnansweredPrompt: false)
+                } else {
+                    store.statusMutationGeneration &+= 1
+                    store.applyEventStatus(.idle)
+                }
+                store.scheduleMessageRefresh()
+                return
             }
         }
     }
 
+    private func cancelTurnSettlement() {
+        turnSettlementTask?.cancel()
+        turnSettlementTask = nil
+    }
+
+    nonisolated static let turnSettlementDelays: [Duration] = [
+        .milliseconds(150), .milliseconds(400), .seconds(1), .seconds(2), .seconds(4),
+    ]
+
     private func publishTranscript() {
         if revertMessageID == nil { revertedUserMessages = [] }
-        if let revertMessageID, let boundary = transcript.messages.firstIndex(where: { $0.id == revertMessageID }) {
-            messages = Array(transcript.messages.prefix(boundary))
+        // The saved transcript stands in until the server's arrives. Events streamed
+        // before then update it rather than replace it, so history stays in view.
+        let source = cachedMessages.map { Self.overlay(transcript.messages, on: $0) } ?? transcript.messages
+        if let revertMessageID, let boundary = source.firstIndex(where: { $0.id == revertMessageID }) {
+            messages = Array(source.prefix(boundary))
         } else {
-            messages = transcript.messages
+            messages = source
         }
         updateCurrentTurnActivityTracking()
         updateUnansweredPromptRecovery()
+        updateUsage()
+        trackSubagents(OpenCodeSubagentTask.sessionIDs(in: transcript.messages))
         transcriptRevision &+= 1
+        if hasServerTranscript { scheduleOfflineTranscriptSave() }
+    }
+
+    // MARK: Offline transcript
+
+    /// Shows the saved transcript while the server's loads. It never enters the
+    /// reducer, so streamed events and the server's snapshot reconcile exactly as
+    /// they would without it.
+    private func restoreOfflineTranscript() {
+        guard let offlineCache, !hasServerTranscript, cachedMessages == nil else { return }
+        let sessionID = session.id, directory = self.directory, workspace = self.workspace
+        offlineRestoreTask?.cancel()
+        offlineRestoreTask = Task { [weak self] in
+            let saved = await offlineCache.transcript(sessionID: sessionID, directory: directory, workspace: workspace)
+            guard let self, !Task.isCancelled, let saved, !saved.messages.isEmpty, isRunning,
+                  !hasServerTranscript else { return }
+            cachedMessages = saved.messages
+            savedMessages = saved.messages
+            offlineTranscript = OpenCodeOfflineTranscriptInfo(savedAt: saved.savedAt, isTruncated: saved.isTruncated)
+            publishTranscript()
+        }
+    }
+
+    private func didLoadServerTranscript() {
+        hasServerTranscript = true
+        discardOfflineTranscript()
+    }
+
+    private func discardOfflineTranscript() {
+        offlineRestoreTask?.cancel()
+        offlineRestoreTask = nil
+        cachedMessages = nil
+        if offlineTranscript != nil { offlineTranscript = nil }
+    }
+
+    /// Streamed messages, applied over the saved ones: a message both hold keeps its
+    /// saved parts and takes the streamed ones, and a new message joins in order.
+    nonisolated static func overlay(
+        _ live: [OpenCodeMessageEnvelope], on saved: [OpenCodeMessageEnvelope]
+    ) -> [OpenCodeMessageEnvelope] {
+        guard !live.isEmpty else { return saved }
+        var merged = saved
+        for message in live {
+            guard let index = merged.firstIndex(where: { $0.id == message.id }) else {
+                merged.append(message)
+                continue
+            }
+            var parts = merged[index].parts
+            for part in message.parts {
+                if let partIndex = parts.firstIndex(where: { $0.id == part.id }) {
+                    parts[partIndex] = part
+                } else {
+                    parts.append(part)
+                }
+            }
+            merged[index] = OpenCodeMessageEnvelope(info: message.info, parts: parts)
+        }
+        return merged.sorted { ($0.info.time.created, $0.id) < ($1.info.time.created, $1.id) }
+    }
+
+    /// Streaming updates the transcript many times a second. Save once it has been
+    /// quiet for 2 seconds, and at least every 30 seconds while a long reply streams.
+    private func scheduleOfflineTranscriptSave() {
+        guard offlineCache != nil else { return }
+        let now = ContinuousClock.now
+        let pendingSince = offlineSavePendingSince ?? now
+        offlineSavePendingSince = pendingSince
+        let delay = max(.zero, min(.seconds(2), pendingSince + .seconds(30) - now))
+        offlineSaveTask?.cancel()
+        offlineSaveTask = Task { [weak self] in
+            do { try await Task.sleep(for: delay) } catch { return }
+            self?.saveOfflineTranscriptNow()
+        }
+    }
+
+    /// Saves pending transcript changes right away, for example before the app
+    /// leaves the foreground.
+    func saveOfflineTranscriptNow() {
+        offlineSaveTask?.cancel()
+        offlineSaveTask = nil
+        offlineSavePendingSince = nil
+        guard let offlineCache, hasServerTranscript, !didDeleteSession, transcript.messages != savedMessages else { return }
+        savedMessages = transcript.messages
+        if transcript.messages.isEmpty {
+            // Nothing to show offline; an older copy would only mislead.
+            offlineCache.removeTranscript(sessionID: session.id, directory: directory, workspace: workspace)
+        } else {
+            offlineCache.saveTranscript(transcript.messages, sessionID: session.id, directory: directory, workspace: workspace)
+        }
+    }
+
+    private func updateUsage() {
+        var next = OpenCodeSessionUsage(messages: messages, models: catalogModels, session: session)
+        if let window = serverContextWindow, window.anchor == messages.last?.id {
+            next = next.reconciled(activeContext: window.messages)
+        }
+        // Streaming republishes the transcript per token; only real changes publish.
+        if next != usage { usage = next }
+    }
+
+    /// Reads the server's own active context where it offers one. Failure is
+    /// quiet: the transcript's last compaction already answers the question.
+    func refreshContextWindow() async {
+        guard let featureService, sessionFeatures.contextWindow else { return }
+        let anchor = messages.last?.id
+        do {
+            guard let window = try await featureService.sessionContextMessages(
+                sessionID: session.id, directory: directory, workspace: workspace),
+                anchor == messages.last?.id else { return }
+            serverContextWindow = (anchor, window)
+            updateUsage()
+        } catch {}
     }
 
     private func applyReconciledStatus(_ value: OpenCodeSessionStatus) {
@@ -1433,7 +2078,7 @@ final class OpenCodeSessionStore: ObservableObject {
             from: messages.index(after: latestUserIndex)
         )
         let hasAssistantEnvelope = messagesAfterUser.contains { message in
-            message.info.role.lowercased() == "assistant"
+            message.info.role.lowercased() == "assistant" && !message.isSyntheticContext
         }
         guard hasAssistantEnvelope == false else { return nil }
 
@@ -1461,7 +2106,7 @@ final class OpenCodeSessionStore: ObservableObject {
         guard (try? OpenCodePromptAttachment.validate(attachments)) != nil
         else { return nil }
         let text = userMessage.parts
-            .filter { $0.type.lowercased() == "text" }
+            .filter(\.isAuthoredText)
             .compactMap(\.text)
             .joined(separator: "\n\n")
         guard text.trimmedNonEmpty != nil || !attachments.isEmpty || !remoteReferences.isEmpty else { return nil }
@@ -1506,7 +2151,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let hasAssistantEnvelope = messages.suffix(
             from: messages.index(after: latestUserIndex)
         ).contains { message in
-            message.info.role.lowercased() == "assistant"
+            message.info.role.lowercased() == "assistant" && !message.isSyntheticContext
         }
         return hasAssistantEnvelope ? nil : messages[latestUserIndex].id
     }
@@ -1564,7 +2209,9 @@ final class OpenCodeSessionStore: ObservableObject {
             let isVisible: Bool
             switch part.type.lowercased() {
             case "text", "reasoning":
-                isVisible = part.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                // Context OpenCode injects for the model is not a reply.
+                isVisible = part.synthetic != true
+                    && part.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             case "tool":
                 isVisible = part.state != nil
             default:
@@ -1663,7 +2310,7 @@ final class OpenCodeSessionStore: ObservableObject {
                     publishPromptQueue()
                     if hadQueuedFollowUps {
                         errorMessage =
-                            "Live session activity could not be confirmed. Your queued message is paused to avoid sending it twice."
+                            String(localized: "Live session activity could not be confirmed. Your queued message is paused to avoid sending it twice.")
                     }
                     await refreshMessages()
                     guard isCurrentQueueRecovery(recoveryID), status.isActive == false
@@ -1689,7 +2336,7 @@ final class OpenCodeSessionStore: ObservableObject {
             } catch {
                 guard isCurrentQueueRecovery(recoveryID) else { return }
                 eventErrorMessage =
-                    "Queued message is waiting for session status: \(error.localizedDescription)"
+                    String(localized: "Queued message is waiting for session status: \(error.localizedDescription)")
                 delay = min(delay * 2, .seconds(15))
             }
         }
@@ -1725,6 +2372,7 @@ final class OpenCodeSessionStore: ObservableObject {
                   mutationBaseline == transcriptMutationGeneration
             else { return }
             transcript.replace(with: messages)
+            didLoadServerTranscript()
             publishTranscript()
         } catch is CancellationError {
             return
@@ -1808,6 +2456,16 @@ final class OpenCodeSessionStore: ObservableObject {
             from: v2QuestionResult,
             fallback: questions.filter { $0.resolvedAPIVersion == .v2 }
         )
+        // The legacy lists cover the whole directory, so they also say which
+        // subagents are waiting on the user. v2 lists are per session; for
+        // those, the tracker follows asked and replied events instead.
+        if !subagents.activity.isEmpty, case .success(let legacyPermissions) = permissionResult,
+           case .success(let legacyQuestions) = questionResult {
+            var next = subagents
+            next.applyPendingRequests(legacyPermissions.map { ($0.sessionID, $0.id) }
+                + legacyQuestions.map { ($0.sessionID, $0.id) })
+            if next != subagents { subagents = next }
+        }
         errors.append(contentsOf: [
             legacyPermissionOutcome.error,
             v2PermissionOutcome.error,
@@ -1826,7 +2484,7 @@ final class OpenCodeSessionStore: ObservableObject {
         )
         if let firstError = errors.first {
             actionErrorMessage =
-                "Some OpenCode actions could not be refreshed: \(firstError.localizedDescription)"
+                String(localized: "Some OpenCode actions could not be refreshed: \(firstError.localizedDescription)")
         } else {
             actionErrorMessage = nil
         }

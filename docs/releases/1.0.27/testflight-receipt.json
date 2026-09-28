@@ -1,0 +1,17 @@
+{
+  "verifiedAt": "2026-09-20T07:36:58.159918+00:00",
+  "appID": "6782403920",
+  "buildID": "661774e8-eabe-4382-b1a8-6cd520bc0685",
+  "version": "1.0.27",
+  "buildNumber": "20260920003100",
+  "uploadedDate": "2026-09-20T00:34:45-07:00",
+  "processingState": "VALID",
+  "internalBuildState": "IN_BETA_TESTING",
+  "group": {
+    "id": "a2c29c92-ddfd-4c22-9368-8563d9b756ea",
+    "name": "Internal Testers",
+    "isInternalGroup": true
+  },
+  "testNotesMatch": true,
+  "sourceCommit": "56b619bf2aa4d61420546d7510c0b92c29ae899f"
+}

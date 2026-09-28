@@ -4,6 +4,25 @@ import Testing
 
 @Suite("OpenCode session recovery")
 struct OpenCodeSessionRecoveryTests {
+    @Test("Returning to foreground reconciles status without aborting or sending a prompt")
+    @MainActor
+    func foregroundRefresh() async throws {
+        let harness = OpenCodeRecoveryStub.register(messages: Self.answeredMessages,
+            statusCode: 200, statusBody: "{}")
+        defer { harness.unregister() }
+        let store = makeStore(client: harness.client, sessionID: harness.sessionID)
+        await store.start()
+        defer { store.stop() }
+        // Allow initial event reconciliation to settle before simulating a missed update.
+        try await Task.sleep(for: .milliseconds(200))
+        harness.updateStatus(code: 200, body: #"{"ses-recovery":{"type":"busy"}}"#)
+        store.refreshAfterForeground()
+        for _ in 0..<100 where !store.status.isActive { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(store.status.isActive)
+        #expect(harness.abortCount == 0)
+        #expect(harness.promptBodies.isEmpty)
+    }
+
     @Test("A retired automatic model can retry the original text and attachment with an explicit model")
     @MainActor
     func retiredModelRecoveryPreservesPrompt() async throws {
@@ -140,6 +159,39 @@ struct OpenCodeSessionRecoveryTests {
         #expect(store.canSubmitPrompt)
         #expect(store.hasRecoverableUnansweredPrompt == false)
         #expect(store.canRetryUnansweredPrompt == false)
+    }
+
+    @Test("Context OpenCode adds after a prompt does not count as an answer, and synthetic prompt text is not resent")
+    @MainActor
+    func syntheticContextKeepsRecovery() async throws {
+        var messages = try #require(JSONSerialization.jsonObject(with: Data(Self.userOnlyMessages.utf8)) as? [[String: Any]])
+        var parts = try #require(messages[0]["parts"] as? [[String: Any]])
+        parts.append(["id": "part-read", "sessionID": "ses-recovery", "messageID": "msg-user", "type": "text",
+                      "synthetic": true, "text": "Called the Read tool with the following input"])
+        messages[0]["parts"] = parts
+        messages.append(["info": ["id": "msg-context", "sessionID": "ses-recovery", "role": "assistant", "time": ["created": 2]],
+                         "parts": [["id": "part-context", "sessionID": "ses-recovery", "messageID": "msg-context",
+                                    "type": "text", "synthetic": true, "text": "Date changed."]]])
+        let harness = OpenCodeRecoveryStub.register(
+            messages: String(decoding: try JSONSerialization.data(withJSONObject: messages), as: UTF8.self),
+            statusCode: 200,
+            statusBody: "{}"
+        )
+        defer { harness.unregister() }
+        let store = makeStore(client: harness.client, sessionID: harness.sessionID)
+
+        await store.start()
+        defer { store.stop() }
+
+        #expect(store.hasRecoverableUnansweredPrompt)
+        #expect(await store.retryUnansweredPrompt())
+        for _ in 0..<50 where harness.promptBodies.isEmpty {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        let body = try #require(harness.promptBodies.first)
+        let prompt = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let texts = (prompt["parts"] as? [[String: Any]] ?? []).compactMap { $0["text"] as? String }
+        #expect(texts == ["Find accessible PDF labeling tools"])
     }
 
     @Test(

@@ -31,40 +31,21 @@ struct OpenCodeProtocolCapabilities: Equatable, Sendable {
 
     static let v2 = Self(
         sessionDiff: .unavailable(
-            reason: "This server does not provide changes for an individual session."
+            reason: String(localized: "This server does not provide changes for an individual session.")
         ),
         symbolSearch: .unavailable(
-            reason: "OpenCode v2 file search does not expose workspace symbols yet."
+            reason: String(localized: "OpenCode v2 file search does not expose workspace symbols yet.")
         ),
         providerConnectionState: .unavailable(
-            reason: "OpenCode v2 does not report whether a provider is connected."
+            reason: String(localized: "OpenCode v2 does not report whether a provider is connected.")
         ),
         modelReasoningMetadata: .unavailable(
-            reason: "OpenCode v2 does not report the model reasoning capability."
+            reason: String(localized: "OpenCode v2 does not report the model reasoning capability.")
         ),
         modelTemperatureMetadata: .unavailable(
-            reason: "OpenCode v2 does not report the model temperature capability."
+            reason: String(localized: "OpenCode v2 does not report the model temperature capability.")
         )
     )
-}
-
-struct OpenCodeSessionDiffPresentation: Equatable, Sendable {
-    let diffs: [OpenCodeDiff]
-    private let support: OpenCodeFeatureSupport?
-
-    init(diffs: [OpenCodeDiff], support: OpenCodeFeatureSupport?) {
-        self.diffs = diffs
-        self.support = support
-    }
-
-    var canPresent: Bool {
-        !diffs.isEmpty || unavailableReason != nil
-    }
-
-    var unavailableReason: String? {
-        guard diffs.isEmpty else { return nil }
-        return support?.unavailableReason
-    }
 }
 
 enum OpenCodeSessionDiffReconciliation {

@@ -5,10 +5,10 @@ enum BYOTPushKind: String, Codable, CaseIterable, Sendable {
     case permission, question, complete, error
     var title: String {
         switch self {
-        case .permission: "Approval requests"
-        case .question: "Questions"
-        case .complete: "Finished turns"
-        case .error: "Errors"
+        case .permission: String(localized: "Approval requests")
+        case .question: String(localized: "Questions")
+        case .complete: String(localized: "Finished turns")
+        case .error: String(localized: "Errors")
         }
     }
 }
@@ -18,11 +18,20 @@ struct BYOTPushRoute: Codable, Equatable, Sendable {
     let sessionID: String
     let directory: String
     let workspace: String?
+    /// The pending permission or question this alert was sent for. Companions
+    /// older than 1.0.31 omit it, so their alerts can only open the session.
+    var requestID: String? = nil
 
     var isValid: Bool {
-        sessionID.utf8.count <= 200 && (sessionID.isEmpty || sessionID.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") })
+        Self.isIdentifier(sessionID, allowsEmpty: true)
         && directory.utf8.count <= 1_024 && !directory.contains("\0")
         && (workspace?.utf8.count ?? 0) <= 200
+        && requestID.map { Self.isIdentifier($0, allowsEmpty: false) } ?? true
+    }
+
+    private static func isIdentifier(_ value: String, allowsEmpty: Bool) -> Bool {
+        value.utf8.count <= 200 && (allowsEmpty || !value.isEmpty)
+            && value.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }
     }
 
     func encrypted(key: String) throws -> String {
@@ -67,20 +76,45 @@ struct BYOTPushPreferences: Codable, Equatable, Sendable {
     var mutedThreads: [String] = []
     var paired = false
     var lastSeen: Double?
+    var queueVersion: Int?
 }
 
 struct BYOTPushDestination: Identifiable, Equatable, Sendable {
+    enum Origin: Sendable {
+        /// An authenticated notification envelope from a paired relay.
+        case notification
+        /// A home-screen widget or Live Activity tap on this iPhone.
+        case widget
+        /// Siri or the Shortcuts app ran Open Session on this iPhone.
+        case shortcut
+    }
+
     let id = UUID()
     let route: BYOTPushRoute
+    var origin: Origin = .notification
+
+    /// A widget link opens a session on a saved server; it needs no pairing.
+    init?(widgetURL url: URL) {
+        guard let link = BYOTWidgetLink(url: url) else { return nil }
+        let route = BYOTPushRoute(serverID: link.serverID, sessionID: link.sessionID,
+                                  directory: link.directory, workspace: link.workspace)
+        guard route.isValid else { return nil }
+        self.init(route: route, origin: .widget)
+    }
+
+    init(route: BYOTPushRoute, origin: Origin = .notification) {
+        self.route = route
+        self.origin = origin
+    }
 }
 
 enum BYOTPushError: LocalizedError {
     case invalidNotification, denied, registering, unavailable(String)
     var errorDescription: String? {
         switch self {
-        case .invalidNotification: "This notification can’t be opened. Open the session from your server instead."
-        case .denied: "Notifications are disabled for byot. Enable them in iOS Settings, then try again."
-        case .registering: "Waiting for Apple to register this device. Try again in a moment."
+        case .invalidNotification: String(localized: "This notification can’t be opened. Open the session from your server instead.")
+        case .denied: String(localized: "Notifications are disabled for byot. Enable them in iOS Settings, then try again.")
+        case .registering: String(localized: "Waiting for Apple to register this device. Try again in a moment.")
         case .unavailable(let message): message
         }
     }

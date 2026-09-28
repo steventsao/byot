@@ -8,7 +8,7 @@ struct OpenCodeFailure: Equatable, Sendable {
     init(message raw: String, details: [String: OpenCodeJSONValue]? = nil) {
         let object = details.map { OpenCodeJSONValue.object($0) }
         let detail = object.flatMap { Self.readable($0, depth: 0) }
-        let readable = detail ?? Self.readable(.string(raw), depth: 0) ?? "The request failed."
+        let readable = detail ?? Self.readable(.string(raw), depth: 0) ?? String(localized: "The request failed.")
         let description = (raw + " " + readable).lowercased()
         // Current v2 deliberately drops the provider response body. Its
         // provider.invalid-request + status:410 still identifies a gone model.
@@ -21,7 +21,7 @@ struct OpenCodeFailure: Equatable, Sendable {
                 "retired", "unavailable", "not available", "decommissioned"
             ].contains(where: description.contains))
         message = providerGone && !readable.lowercased().contains("model")
-            ? "The selected model is no longer available."
+            ? String(localized: "The selected model is no longer available.")
             : String(readable.prefix(1_000))
     }
 

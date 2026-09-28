@@ -26,7 +26,7 @@ struct OpenCodeCompatibilitySummary: Codable, Equatable, Sendable {
             self.isVerifiedBaseline = isVerifiedBaseline
             detail = isVerifiedBaseline
                 ? nil
-                : "OpenCode \(health.version) is newer than the verified \(OpenCodeCompatibilityEvaluator.verifiedBaseline) baseline."
+                : String(localized: "OpenCode \(health.version) is newer than the verified \(OpenCodeCompatibilityEvaluator.verifiedBaseline.description) baseline.")
         case .degraded(let reason):
             state = .degraded
             isVerifiedBaseline = false
@@ -49,33 +49,33 @@ struct OpenCodeCompatibilitySummary: Codable, Equatable, Sendable {
     var stateTitle: String {
         switch state {
         case .compatible:
-            isVerifiedBaseline ? "Compatible (verified baseline)" : "Compatible (newer, unverified)"
+            isVerifiedBaseline ? String(localized: "Compatible (verified baseline)") : String(localized: "Compatible (newer, unverified)")
         case .degraded:
-            "Degraded (usable with limits)"
+            String(localized: "Degraded (usable with limits)")
         case .unsupported:
-            "Unsupported"
+            String(localized: "Unsupported")
         }
     }
 
     var redactedSummary: String {
-        var parts = ["OpenCode \(serverVersion ?? "unknown version")", stateTitle]
+        var parts = ["OpenCode \(serverVersion ?? String(localized: "unknown version"))", stateTitle]
         if let detail, !detail.isEmpty {
             parts.append(detail)
         }
         if capabilitiesAvailable {
             if advertisedCapabilities.isEmpty {
-                parts.append("capabilities: advertised")
+                parts.append(String(localized: "capabilities: advertised"))
             } else {
                 let shown = advertisedCapabilities.prefix(6).joined(separator: ", ")
                 let remaining = advertisedCapabilities.count - 6
                 parts.append(
                     remaining > 0
-                        ? "capabilities: \(shown), +\(remaining) more"
-                        : "capabilities: \(shown)"
+                        ? String(localized: "capabilities: \(shown), +\(remaining) more")
+                        : String(localized: "capabilities: \(shown)")
                 )
             }
         } else {
-            parts.append("capabilities: unavailable")
+            parts.append(String(localized: "capabilities: unavailable"))
         }
         return parts.joined(separator: " · ")
     }

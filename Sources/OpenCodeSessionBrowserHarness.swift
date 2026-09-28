@@ -26,6 +26,15 @@ struct OpenCodeSessionBrowserHarness: View {
         return push
     }
 
+    /// A cache of its own, so offline launches can be tested without touching real data.
+    private static let offlineCache: OpenCodeOfflineCache? = {
+        guard ProcessInfo.processInfo.arguments.contains("--offline-cache-fixture") else { return nil }
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appending(path: "OfflineCacheUIFixture")
+        if ProcessInfo.processInfo.arguments.contains("--reset-browser") { try? FileManager.default.removeItem(at: root) }
+        return OpenCodeOfflineCache(root: root)
+    }()
+
     private static func makeStore() -> OpenCodeProfileStore {
         let defaults = UserDefaults(suiteName: "byot.browser-ui-fixture")!
         defaults.set(try! JSONEncoder().encode(profiles), forKey: "byot.opencode.profiles.v1")
@@ -38,14 +47,31 @@ struct OpenCodeSessionBrowserHarness: View {
                 UserDefaults.standard.removeObject(forKey: "byot.opencode.attention.\(profile.id.uuidString)")
             }
         }
-        return OpenCodeProfileStore(defaults: defaults)
+        return OpenCodeProfileStore(defaults: defaults, offlineCache: offlineCache)
     }
 
     var body: some View {
+        // The shared test simulator is an iPhone; these lay the browser out
+        // as it is on iPad, always or only while the window is wide.
+        if ProcessInfo.processInfo.arguments.contains("--regular-width") {
+            root.environment(\.horizontalSizeClass, .regular)
+        } else if ProcessInfo.processInfo.arguments.contains("--regular-width-when-wide") {
+            GeometryReader { geometry in
+                root.environment(\.horizontalSizeClass,
+                                 geometry.size.width > geometry.size.height ? .regular : .compact)
+            }
+            .ignoresSafeArea()
+        } else {
+            root
+        }
+    }
+
+    private var root: some View {
         OpenCodeRootView(openAppNavigation: {}, profileStore: store, push: push) { profile, _ in
             let config = URLSessionConfiguration.ephemeral
             config.protocolClasses = [OpenCodeBrowserFixtureProtocol.self]
-            return OpenCodeClient(profile: profile, password: "fixture", session: URLSession(configuration: config), serverProtocol: .v1)
+            return OpenCodeClient(profile: profile, password: "fixture", session: URLSession(configuration: config),
+                                  serverProtocol: .v1, offlineCache: Self.offlineCache)
         }
         .overlay(alignment: .bottomTrailing) {
             if ProcessInfo.processInfo.arguments.contains("--push-route-fixture") {
@@ -69,13 +95,31 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
     // archived sessions with time.archived set.
     private static let archiveLock = NSLock()
     nonisolated(unsafe) private static var archived: Set<String> = []
+    // Worktrees created during this launch, reported ready on the global stream after a
+    // short checkout, as OpenCode 1.18 does.
+    private static let worktreeLock = NSLock()
+    nonisolated(unsafe) private static var createdWorktrees: [String] = []
+    private let stateLock = NSLock()
+    private var isStopped = false
+    // With --live-session-list, the server-wide stream reports a session
+    // started elsewhere and a permission request; later snapshots agree.
+    nonisolated(unsafe) private static var liveStreamOpened = false
+    private static var isLive: Bool { ProcessInfo.processInfo.arguments.contains("--live-session-list") }
+    // Stopped during this launch, and idle from then on.
+    nonisolated(unsafe) private static var aborted: Set<String> = []
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    override func stopLoading() { }
+    override func stopLoading() { stateLock.withLock { isStopped = true } }
 
     override func startLoading() {
         guard let url = request.url else { return }
+        if ProcessInfo.processInfo.arguments.contains("--server-offline") {
+            // Worded as URLSession words it on a device.
+            client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet, userInfo: [
+                NSLocalizedDescriptionKey: "The Internet connection appears to be offline."]))
+            return
+        }
         let directory = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "directory" }?.value ?? "/repo/byot"
         let windows = url.host == "windows.example.test"
         let base = windows ? "C:/work" : "/repo"
@@ -86,19 +130,53 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
             return ["id": id, "slug": id, "projectID": directory, "directory": directory,
                     "title": title, "version": "1.18.10", "time": time]
         }
-        let sessions = [
+        let worktreeRoot = base + "/worktrees"
+        let worktrees = [worktreeRoot + "/login-flow"] + Self.worktreeLock.withLock { Self.createdWorktrees }
+        var sessions = [
             session("active", windows ? "Windows build" : "Fix checkout", base + "/byot", 2),
             session("retry", "Review billing", base + "/byot", 8),
-            session("idle", "Update documentation", base + "/docs", 25)
+            session("idle", "Update documentation", base + "/docs", 25),
+            session("worktree", "Polish sign-in", worktreeRoot + "/login-flow", 40)
         ]
+        let live = session("live", "Started from the terminal", base + "/byot", 0)
+        let permission: [String: Any] = ["id": "per_live", "sessionID": "active", "permission": "bash",
+                                         "patterns": ["git push"], "metadata": [:], "always": []]
+        if Self.isLive, Self.archiveLock.withLock({ Self.liveStreamOpened }) { sessions.insert(live, at: 0) }
         if request.httpMethod == "PATCH", url.path.hasPrefix("/session/") {
             let id = url.lastPathComponent
             Self.archiveLock.withLock { _ = Self.archived.insert(id) }
             respond(url, body: sessions.first { $0["id"] as? String == id } ?? ["id": id], status: 200)
             return
         }
+        if request.httpMethod == "POST", url.path.hasSuffix("/abort") {
+            let id = url.deletingLastPathComponent().lastPathComponent
+            Self.archiveLock.withLock { _ = Self.aborted.insert(id) }
+            respond(url, body: true, status: 200)
+            return
+        }
         let body: Any
         switch url.path {
+        case "/global/event" where Self.isLive:
+            Self.archiveLock.withLock { Self.liveStreamOpened = true }
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "text/event-stream"])!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            let events: [[String: Any]] = [
+                ["payload": ["id": "evt_connected", "type": "server.connected", "properties": [:]]],
+                ["directory": base + "/byot", "payload": ["id": "evt_created", "type": "session.created",
+                    "properties": ["sessionID": "live", "info": live]]],
+                ["directory": base + "/byot", "payload": ["id": "evt_permission", "type": "permission.asked",
+                    "properties": permission]],
+            ]
+            for event in events {
+                let data = try! JSONSerialization.data(withJSONObject: event)
+                client?.urlProtocol(self, didLoad: Data("data: ".utf8) + data + Data("\n\n".utf8))
+            }
+            // Keep the stream open until the list cancels it.
+            return
+        case "/permission" where Self.isLive:
+            let opened = Self.archiveLock.withLock { Self.liveStreamOpened }
+            body = opened && directory == base + "/byot" ? [permission] : []
         case "/event":
             let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
                 headerFields: ["Content-Type": "text/event-stream"])!
@@ -106,18 +184,40 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
             client?.urlProtocol(self, didLoad: Data("data: {\"type\":\"server.connected\",\"properties\":{}}\n\n".utf8))
             // Keep this fixture stream open until the conversation cancels it.
             return
+        case "/global/event":
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "text/event-stream"])!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data("data: {\"payload\":{\"type\":\"server.connected\",\"properties\":{}}}\n\n".utf8))
+            announceReadyWorktrees(after: Self.worktreeLock.withLock { Self.createdWorktrees.count })
+            return
+        case "/experimental/worktree" where request.httpMethod == "POST":
+            let input = (try? JSONSerialization.jsonObject(with: requestBody())) as? [String: Any]
+            let slug = OpenCodeWorktreeNaming.slug(input?["name"] as? String ?? "")
+            let name = slug.isEmpty ? "calm-river" : slug
+            let created = worktreeRoot + "/" + name
+            Self.worktreeLock.withLock { Self.createdWorktrees.append(created) }
+            body = ["name": name, "branch": "opencode/" + name, "directory": created]
+        case "/experimental/worktree":
+            body = directory == base + "/byot" ? worktrees : []
         case let endpoint where endpoint.hasPrefix("/api/"):
             respond(url, body: ["message": "Unavailable"], status: 404); return
         case "/global/health": body = ["healthy": true, "version": "1.18.10"]
         case "/project": body = ["byot", "docs"].map { name in
             ["id": base + "/" + name, "worktree": base + "/" + name, "name": name,
-             "vcs": "git", "sandboxes": [], "time": ["created": now - 100_000, "updated": now]] as [String: Any]
+             "vcs": "git", "sandboxes": name == "byot" ? worktrees : [],
+             "time": ["created": now - 100_000, "updated": now]] as [String: Any]
         }
         case "/session" where request.httpMethod == "POST": body = session("created", "New session", directory, 0)
         case let endpoint where endpoint == "/session/active" || endpoint == "/session/retry" || endpoint == "/session/idle":
             body = sessions.first { $0["id"] as? String == url.lastPathComponent }!
-        case "/session": body = sessions.filter { $0["directory"] as? String == directory }
-        case "/session/status": body = ["active": ["type": "busy"], "retry": ["type": "retry", "attempt": 1, "message": "Provider rate limit", "next": now + 10_000]]
+        case "/session":
+            body = ProcessInfo.processInfo.arguments.contains("--empty-session-browser")
+                ? [] : sessions.filter { $0["directory"] as? String == directory }
+        case "/session/status":
+            let aborted = Self.archiveLock.withLock { Self.aborted }
+            body = ["active": ["type": "busy"], "retry": ["type": "retry", "attempt": 1, "message": "Provider rate limit", "next": now + 10_000]]
+                .filter { !aborted.contains($0.key) }
         case "/provider": body = ["all": [], "connected": [], "default": [:]] as [String: Any]
         case "/session/idle/message":
             body = [
@@ -134,10 +234,41 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
         respond(url, body: body, status: 200)
     }
 
+    private func requestBody() -> Data {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1_024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data
+    }
+
+    /// Reports each worktree created after the stream opened as ready, a moment after its create.
+    private func announceReadyWorktrees(after announced: Int) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.8) { [self] in
+            guard !stateLock.withLock({ isStopped }) else { return }
+            let created = Self.worktreeLock.withLock { Self.createdWorktrees }
+            for directory in created.dropFirst(announced) {
+                let event: [String: Any] = ["directory": directory, "payload": [
+                    "id": "evt_\(UUID().uuidString)", "type": "worktree.ready",
+                    "properties": ["name": OpenCodeWorktree.name(of: directory)]]]
+                let json = String(decoding: try! JSONSerialization.data(withJSONObject: event), as: UTF8.self)
+                client?.urlProtocol(self, didLoad: Data("data: \(json)\n\n".utf8))
+            }
+            announceReadyWorktrees(after: max(announced, created.count))
+        }
+    }
+
     private func respond(_ url: URL, body: Any, status: Int) {
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body))
+        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body, options: .fragmentsAllowed))
         client?.urlProtocolDidFinishLoading(self)
     }
 }

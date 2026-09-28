@@ -27,6 +27,13 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
         )
     }
 
+    func session(
+        id: String,
+        directory: String?
+    ) async throws -> OpenCodeSession {
+        try await transport.get(["session", id], query: instanceQuery(directory: directory))
+    }
+
     func createSession(
         directory: String,
         title: String?
@@ -161,6 +168,12 @@ struct OpenCodeV1Adapter: OpenCodeProtocolAdapting {
             path: ["event"],
             query: instanceQuery(directory: directory, workspace: workspace)
         )
+    }
+
+    // `/event` is scoped to one instance directory; `/global/event` wraps every
+    // instance's events with their directory, so one stream serves all projects.
+    var sessionListEventRoute: OpenCodeEventRoute {
+        OpenCodeEventRoute(path: ["global", "event"], query: [])
     }
 
     private struct OpenCodeV1PromptTextPart: Encodable {

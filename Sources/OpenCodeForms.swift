@@ -18,8 +18,8 @@ struct OpenCodeForm: Codable, Equatable, Sendable {
                     description: value["description"]?.stringValue ?? "", wireValue: key)
             }
             if type == "boolean" {
-                options = [OpenCodeQuestionOption(label: "Yes", description: "", wireValue: "true"),
-                           OpenCodeQuestionOption(label: "No", description: "", wireValue: "false")]
+                options = [OpenCodeQuestionOption(label: String(localized: "Yes"), description: "", wireValue: "true"),
+                           OpenCodeQuestionOption(label: String(localized: "No"), description: "", wireValue: "false")]
             }
             return OpenCodeQuestion(question: field["description"]?.stringValue ?? field["title"]?.stringValue ?? title,
                 header: field["title"]?.stringValue ?? field["key"]?.stringValue ?? title,
@@ -39,17 +39,17 @@ struct OpenCodeForm: Codable, Equatable, Sendable {
             case "multiselect": values[key] = .array(strings.map(OpenCodeJSONValue.string))
             case "boolean":
                 guard let bool = Bool(strings[0]) else {
-                    if validating { throw invalid(field, "Choose Yes or No.") }; continue
+                    if validating { throw invalid(field, String(localized: "Choose Yes or No.")) }; continue
                 }
                 values[key] = .bool(bool)
             case "number", "integer":
                 guard let number = Double(strings[0]), number.isFinite,
                       field["type"] != .string("integer") || number.rounded() == number else {
-                    if validating { throw invalid(field, "Enter a valid number.") }; continue
+                    if validating { throw invalid(field, String(localized: "Enter a valid number.")) }; continue
                 }
                 values[key] = .number(number)
             case "external": continue
-            default: throw invalid(field, "This field requires a newer byot version.")
+            default: throw invalid(field, String(localized: "This field requires a newer byot version."))
             }
         }
         return values
@@ -72,20 +72,20 @@ struct OpenCodeForm: Codable, Equatable, Sendable {
         for (index, field) in fields.enumerated() where isVisible(index, answers: answers) {
             guard let key = field["key"]?.stringValue, field["type"] != .string("external") else { continue }
             guard let value = values[key] else {
-                if field["required"] == .bool(true) { throw invalid(field, "An answer is required.") }
+                if field["required"] == .bool(true) { throw invalid(field, String(localized: "An answer is required.")) }
                 continue
             }
             if let number = value.numberValue {
-                if let min = field["minimum"]?.numberValue, number < min { throw invalid(field, "The number is below the minimum.") }
-                if let max = field["maximum"]?.numberValue, number > max { throw invalid(field, "The number exceeds the maximum.") }
+                if let min = field["minimum"]?.numberValue, number < min { throw invalid(field, String(localized: "The number is below the minimum.")) }
+                if let max = field["maximum"]?.numberValue, number > max { throw invalid(field, String(localized: "The number exceeds the maximum.")) }
             }
             if let text = value.stringValue {
-                if let min = field["minLength"]?.numberValue, Double(text.count) < min { throw invalid(field, "The answer is too short.") }
-                if let max = field["maxLength"]?.numberValue, Double(text.count) > max { throw invalid(field, "The answer is too long.") }
+                if let min = field["minLength"]?.numberValue, Double(text.count) < min { throw invalid(field, String(localized: "The answer is too short.")) }
+                if let max = field["maxLength"]?.numberValue, Double(text.count) > max { throw invalid(field, String(localized: "The answer is too long.")) }
             }
             if let items = value.arrayValue {
-                if let min = field["minItems"]?.numberValue, Double(items.count) < min { throw invalid(field, "Choose more options.") }
-                if let max = field["maxItems"]?.numberValue, Double(items.count) > max { throw invalid(field, "Choose fewer options.") }
+                if let min = field["minItems"]?.numberValue, Double(items.count) < min { throw invalid(field, String(localized: "Choose more options.")) }
+                if let max = field["maxItems"]?.numberValue, Double(items.count) > max { throw invalid(field, String(localized: "Choose fewer options.")) }
             }
         }
         // The server remains authoritative for formats, patterns and custom validators.

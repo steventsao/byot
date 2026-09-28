@@ -3,6 +3,8 @@ import SwiftUI
 struct OpenCodeModelPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Grows with the indicator so large text never runs into it.
+    @ScaledMetric(relativeTo: .callout) private var indicatorWidth = 24.0
     @ObservedObject var store: OpenCodeSessionStore
     @State private var searchText = ""
 
@@ -79,7 +81,7 @@ struct OpenCodeModelPickerView: View {
 
                 if store.isLoadingModels && store.providerModels.isEmpty {
                     Section {
-                        BYOTActivityView(.loading, title: "Loading models", layout: .inline)
+                        BYOTActivityView(.loading, title: String(localized: "Loading models"), layout: .inline)
                     }
                 } else if !store.isLoadingModels,
                           store.providerModels.isEmpty,
@@ -132,7 +134,7 @@ struct OpenCodeModelPickerView: View {
         Image(systemName: selected ? "checkmark.circle.fill" : "circle")
             .font(.cleanBody)
             .foregroundStyle(selected ? BYOTBrand.accent : .secondary)
-            .frame(width: 24)
+            .frame(width: indicatorWidth)
             .accessibilityHidden(true)
     }
 
@@ -146,7 +148,7 @@ struct OpenCodeModelPickerView: View {
 
     private var automaticMatchesSearch: Bool {
         normalizedSearchText.isEmpty
-            || "automatic server default".contains(normalizedSearchText)
+            || String(localized: "automatic server default").contains(normalizedSearchText)
     }
 
     private func modelStatus(_ status: String) -> some View {

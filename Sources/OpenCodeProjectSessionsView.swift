@@ -3,8 +3,6 @@ import SwiftUI
 struct OpenCodeProjectSessionsView: View {
     @State private var client: OpenCodeClient
     @StateObject private var store: OpenCodeProjectStore
-    @State private var isCreatingSession = false
-    @State private var newSessionTitle = ""
     @State private var createdSession: OpenCodeSession?
     let name: String
 
@@ -52,7 +50,7 @@ struct OpenCodeProjectSessionsView: View {
             if store.isLoading && store.sessions.isEmpty {
                 BYOTActivityView(
                     .loading,
-                    title: "Loading sessions",
+                    title: String(localized: "Loading sessions"),
                     layout: .blocking
                 )
             } else if !store.isLoading,
@@ -76,10 +74,11 @@ struct OpenCodeProjectSessionsView: View {
                     Label("No sessions", systemImage: "bubble.left.and.bubble.right")
                 } actions: {
                     Button("New session", systemImage: "plus") {
-                        isCreatingSession = true
+                        createSession()
                     }
                     .buttonStyle(.borderedProminent)
                     .foregroundStyle(BYOTBrand.accentInk)
+                    .disabled(store.isCreating)
                 }
             }
         }
@@ -87,9 +86,11 @@ struct OpenCodeProjectSessionsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("New session", systemImage: "plus") {
-                    isCreatingSession = true
+                Button(action: createSession) {
+                    if store.isCreating { ProgressView() }
+                    else { Image(systemName: "plus") }
                 }
+                .accessibilityLabel(store.isCreating ? "Creating session" : "New session")
                 .tint(BYOTBrand.chromeTint)
                 .disabled(store.isCreating)
             }
@@ -109,29 +110,24 @@ struct OpenCodeProjectSessionsView: View {
                 )
             }
         }
-        .alert("New session", isPresented: $isCreatingSession) {
-            TextField("Optional title", text: $newSessionTitle)
-            Button("Cancel", role: .cancel) {
-                newSessionTitle = ""
-            }
-            Button("Create") {
-                let title = newSessionTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                newSessionTitle = ""
-                Task {
-                    createdSession = await store.createSession(title: title.isEmpty ? nil : title)
-                }
-            }
-        } message: {
-            Text("\(client.profile.name) · \(store.directory)")
-        }
     }
+
+    private func createSession() {
+        guard !store.isCreating else { return }
+        Task { createdSession = await store.createSession(title: nil) }
+    }
+
 }
 
 struct OpenCodeSessionRow: View {
     let session: OpenCodeSession
     let status: OpenCodeSessionStatus?
     var projectName: String? = nil
+    /// The worktree the session runs in, when it isn't the project's main checkout.
+    var worktreeName: String? = nil
     var attentionMessage: String? = nil
+    /// Waiting on a permission or question; outranks every other status.
+    var needsInput = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -146,12 +142,14 @@ struct OpenCodeSessionRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     if let projectName { Text(projectName) }
+                    if let worktreeName { worktreeLabel(worktreeName) }
                     if let agent = session.agent {
                         Text(agent)
                     }
                     if let summary = session.summary, summary.files > 0 {
                         Text("\(summary.files) files · +\(summary.additions) −\(summary.deletions)")
                     }
+                    if session.share?.link != nil { OpenCodeSharedSessionBadge() }
                     updatedText
                 }
                 .font(.cleanCaption)
@@ -166,6 +164,7 @@ struct OpenCodeSessionRow: View {
                 }
                 HStack(spacing: 12) {
                     if let projectName { Text(projectName).lineLimit(1) }
+                    if let worktreeName { worktreeLabel(worktreeName).lineLimit(1) }
                     if let agent = session.agent {
                         Text(agent)
                     }
@@ -173,6 +172,7 @@ struct OpenCodeSessionRow: View {
                         Text("\(summary.files) files")
                         Text("+\(summary.additions) −\(summary.deletions)")
                     }
+                    if session.share?.link != nil { OpenCodeSharedSessionBadge() }
                     Spacer()
                     updatedText
                 }
@@ -192,9 +192,28 @@ struct OpenCodeSessionRow: View {
         .padding(.vertical, 5)
     }
 
+    private func worktreeLabel(_ name: String) -> some View {
+        Label(name, systemImage: "arrow.triangle.branch")
+            .labelStyle(OpenCodeCompactLabelStyle())
+            .accessibilityLabel("Worktree \(name)")
+    }
+
     @ViewBuilder
     private var statusView: some View {
-        if attentionMessage != nil {
+        if needsInput {
+            // Sized like the other status glyphs, but in primary text: this
+            // is the one status that asks the user to act.
+            HStack(spacing: 5) {
+                Image(systemName: "hand.raised.fill")
+                    .imageScale(.small)
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text("Needs input")
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .font(.cleanCaptionBold)
+            .accessibilityElement(children: .combine)
+        } else if attentionMessage != nil {
             Label("Needs attention", systemImage: "exclamationmark.circle.fill")
                 .font(.cleanCaption)
                 .foregroundStyle(.red)
@@ -214,13 +233,29 @@ struct OpenCodeSessionRow: View {
     }
 
     private var updatedText: some View {
-        Text(Date(timeIntervalSince1970: session.time.updated / 1_000), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+        // A live list no longer reloads on a timer, so the row keeps its own
+        // relative time current instead of saying "Just now" indefinitely.
+        TimelineView(.everyMinute) { context in
+            let updated = Date(timeIntervalSince1970: session.time.updated / 1_000)
+            // A session that just arrived live can carry a server clock slightly
+            // ahead of the device; never show it as updated "in 0 sec.".
+            if updated.timeIntervalSince(context.date) > -60 {
+                Text("Just now")
+            } else {
+                Text(updated, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+            }
+        }
     }
 }
 
 struct OpenCodeStatusLabel: View {
     let status: OpenCodeSessionStatus
     let eventConnected: Bool?
+    // Scales with the label: a fixed 7pt dot beside accessibility-size text
+    // read as a stray “·” separator.
+    @ScaledMetric(relativeTo: .footnote) private var scaledIndicator = 12.0
+
+    private var indicator: CGFloat { min(scaledIndicator, 32) }
 
     var body: some View {
         HStack(spacing: 5) {
@@ -236,24 +271,34 @@ struct OpenCodeStatusLabel: View {
     @ViewBuilder
     private var statusIndicator: some View {
         if eventConnected == false {
-            BYOTActivityGlyph(phase: .reconnecting, size: 12, tint: .orange)
+            BYOTActivityGlyph(phase: .reconnecting, size: indicator, tint: .orange)
         } else {
             switch status {
             case .idle:
                 Circle()
                     .fill(Color.secondary)
-                    .frame(width: 7, height: 7)
-                    .frame(width: 12, height: 12)
+                    .frame(width: indicator * 0.58, height: indicator * 0.58)
+                    .frame(width: indicator, height: indicator)
                     .accessibilityHidden(true)
             case .busy:
-                BYOTActivityGlyph(phase: .working, size: 12)
+                BYOTActivityGlyph(phase: .working, size: indicator)
             case .retry:
-                BYOTActivityGlyph(phase: .retrying, size: 12)
+                BYOTActivityGlyph(phase: .retrying, size: indicator)
             }
         }
     }
 
     private var displayLabel: String {
-        eventConnected == false ? "Reconnecting" : status.label
+        eventConnected == false ? String(localized: "Reconnecting") : status.label
+    }
+}
+
+/// An icon and title set tight, for metadata beside other caption text.
+struct OpenCodeCompactLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
+            configuration.icon.imageScale(.small)
+            configuration.title
+        }
     }
 }

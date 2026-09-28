@@ -5,6 +5,8 @@ import Foundation
 struct OpenCodeClient: Sendable {
     let profile: OpenCodeServerProfile
     let transport: any OpenCodeHTTPTransport
+    /// This server's last-known sessions and transcripts on this device, if caching is on.
+    let offlineCache: OpenCodeOfflineCacheScope?
     private let connection: OpenCodeConnection
     private let actions: OpenCodeActions
 
@@ -12,21 +14,25 @@ struct OpenCodeClient: Sendable {
         profile: OpenCodeServerProfile,
         password: String,
         session: URLSession = .shared,
-        serverProtocol: OpenCodeServerProtocol? = nil
+        serverProtocol: OpenCodeServerProtocol? = nil,
+        offlineCache: OpenCodeOfflineCache? = .shared
     ) {
         self.init(
             profile: profile,
             transport: OpenCodeTransport(profile: profile, password: password, session: session),
-            serverProtocol: serverProtocol
+            serverProtocol: serverProtocol,
+            offlineCache: offlineCache
         )
     }
 
     init(
         profile: OpenCodeServerProfile, transport: any OpenCodeHTTPTransport,
-        serverProtocol: OpenCodeServerProtocol? = nil
+        serverProtocol: OpenCodeServerProtocol? = nil,
+        offlineCache: OpenCodeOfflineCache? = .shared
     ) {
         self.profile = profile
         self.transport = transport
+        self.offlineCache = offlineCache.map { OpenCodeOfflineCacheScope(cache: $0, profile: profile) }
         actions = OpenCodeActions(transport: transport)
         connection = OpenCodeConnection(
             source: OpenCodeLiveConnectionSource(transport: transport, profile: profile),
@@ -198,12 +204,60 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) -> AsyncThrowingStream<OpenCodeEvent, Error> {
+        events { $0.eventRoute(directory: directory, workspace: workspace) }
+    }
+
+    /// The session list's single server-wide stream (every project at once).
+    func sessionListEvents() -> AsyncThrowingStream<OpenCodeEvent, Error> {
+        events { $0.sessionListEventRoute }
+    }
+
+    /// Sessions waiting on a permission or question in `directory`, keyed by
+    /// session with the pending request IDs. Nil on v2 servers that list
+    /// requests per session only.
+    func pendingInputRequests(directory: String) async throws -> [String: Set<String>]? {
+        let adapter = try await connection.adapter()
+        if adapter.serverProtocol == .v2 {
+            guard adapter.listsPendingRequestsByLocation else { return nil }
+            return try await actions.v2PendingRequests(directory: directory)
+        }
+        async let permissions = actions.permissions(directory: directory)
+        // Questions arrived after permissions; an older server without them still flags permissions.
+        async let questions = Self.unlessUnsupported { try await actions.questions(directory: directory) }
+        var result: [String: Set<String>] = [:]
+        for request in try await permissions { result[request.sessionID, default: []].insert(request.id) }
+        for request in try await questions ?? [] { result[request.sessionID, default: []].insert(request.id) }
+        return result
+    }
+
+    /// One session's pending request IDs on v2, for sessions no directory
+    /// listing covered; v1 answers per directory instead.
+    func pendingInputRequests(sessionID: String) async throws -> Set<String>? {
+        guard try await connection.adapter().serverProtocol == .v2 else { return nil }
+        async let permissions = v2Permissions(sessionID: sessionID)
+        async let questions = v2Questions(sessionID: sessionID)
+        return Set(try await permissions.map(\.id)).union(try await questions.map(\.id))
+    }
+
+    func parentSessionID(of sessionID: String, directory: String?) async throws -> String? {
+        try await connection.adapter().session(id: sessionID, directory: directory).parentID
+    }
+
+    private static func unlessUnsupported<Value: Sendable>(
+        _ operation: @Sendable () async throws -> Value
+    ) async throws -> Value? {
+        do { return try await operation() }
+        catch let error as OpenCodeConnectionError where error.isUnsupportedRoute { return nil }
+    }
+
+    private func events(
+        route: @escaping @Sendable (any OpenCodeProtocolAdapting) -> OpenCodeEventRoute
+    ) -> AsyncThrowingStream<OpenCodeEvent, Error> {
         AsyncThrowingStream(bufferingPolicy: .bufferingNewest(OpenCodeEventStream.bufferLimit)) {
             continuation in
             let task = Task {
                 do {
-                    let route = try await connection.adapter().eventRoute(
-                        directory: directory, workspace: workspace)
+                    let route = try await route(connection.adapter())
                     for try await event in transport.events(path: route.path, query: route.query) {
                         try Task.checkCancellation()
                         guard try OpenCodeEventStream.yieldEvent(event, to: continuation) else { return }

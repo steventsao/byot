@@ -2,6 +2,8 @@ import SwiftUI
 
 struct OpenCodeSessionRoute: Hashable {
     let session: OpenCodeSession
+    /// Set when the session was just made, so the message field is ready.
+    var focusesComposer = false
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.session.id == rhs.session.id && lhs.session.directory == rhs.session.directory
     }
@@ -11,10 +13,21 @@ struct OpenCodeSessionRoute: Hashable {
     }
 }
 
-struct OpenCodeNewSessionRoute: Hashable {}
+struct OpenCodeNewSessionRoute: Hashable {
+    let id = UUID()
+    /// Something shared from another app, added to the new session's message.
+    var share: BYOTShareContent?
+}
 
 struct OpenCodeConnectedView: View {
     let openNewSession: () -> Void
+    /// Shows a conversation in the iPhone stack, in place of whatever was
+    /// pushed over the list.
+    private let openSession: (OpenCodeSessionRoute) -> Void
+    /// The split view's detail on regular width. Rows then select into it
+    /// instead of pushing; nil keeps the iPhone navigation stack.
+    private let selection: Binding<OpenCodeSplitDetail?>?
+    private let request: OpenCodeSessionListRequest?
     @State private var client: OpenCodeClient
     @StateObject private var workspace: OpenCodeWorkspaceStore
     @StateObject private var browser: OpenCodeSessionBrowserStore
@@ -24,35 +37,58 @@ struct OpenCodeConnectedView: View {
     @AppStorage("byot.projects.sort") private var projectSort: OpenCodeSessionSort = .recent
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openCodeVisibleSessions) private var onScreenConversations
     @State private var isVisible = false
     @State private var search = ""
     @State private var collapsedProjects = Set<String>()
-    @State private var createdRoute: OpenCodeSessionRoute?
     @State private var isCreating = false
     @State private var creationError: String?
+    @State private var focusesSearchOnAppear = false
     @FocusState private var isSearching: Bool
 
-    init(client: OpenCodeClient, openNewSession: @escaping () -> Void) {
+    init(client: OpenCodeClient, openNewSession: @escaping () -> Void,
+         openSession: @escaping (OpenCodeSessionRoute) -> Void,
+         selection: Binding<OpenCodeSplitDetail?>? = nil, request: OpenCodeSessionListRequest? = nil) {
         self.openNewSession = openNewSession
+        self.openSession = openSession
+        self.selection = selection
+        self.request = request
         _client = State(initialValue: client)
         _workspace = StateObject(wrappedValue: OpenCodeWorkspaceStore(service: client))
-        _browser = StateObject(wrappedValue: OpenCodeSessionBrowserStore(service: client))
+        _browser = StateObject(wrappedValue: OpenCodeSessionBrowserStore(service: client, cache: client.offlineCache))
         _attention = StateObject(wrappedValue: OpenCodeSessionAttentionStore(serverID: client.profile.id))
     }
 
     @State private var canArchiveSessions = false
     @State private var archiveError: String?
+    @State private var canOpenTerminal = false
+    @State private var terminalRoute: OpenCodeTerminalRoute?
+    @State private var canOpenStatus = false
+    @State private var statusRoute: OpenCodeProjectStatusRoute?
+    @State private var canManageWorktrees = false
+    @State private var worktreeRoute: OpenCodeWorktreeRoute?
 
     var body: some View {
         List {
             Group {
-                if let error = creationError ?? archiveError ?? workspace.errorMessage {
+                if let savedAt = offlineSavedAt {
+                    Section {
+                        OpenCodeOfflineNotice(subject: .sessions, savedAt: savedAt, detail: workspace.errorMessage,
+                                              isRetrying: workspace.isLoading) {
+                            Task { await reload() }
+                        }
+                    }
+                    if let error = creationError ?? archiveError {
+                        Section { ErrorBanner(message: error) }
+                    }
+                } else if let error = creationError ?? archiveError ?? workspace.errorMessage {
                     Section { ErrorBanner(message: error) }
                 }
                 if !browser.groups.isEmpty && (groupByProject || !visibleSessions(browser.sessions).isEmpty) {
                     Section {
                         if groupByProject {
-                            ForEach(browser.orderedGroups(by: projectSort, attention: attentionIDs)) { group in
+                            ForEach(browser.orderedGroups(by: projectSort, attention: flaggedIDs)) { group in
                                 projectSection(group)
                             }
                         } else {
@@ -80,21 +116,37 @@ struct OpenCodeConnectedView: View {
                 if !groupByProject {
                     ForEach(browser.groups.filter { $0.error != nil }) { group in
                         Section(group.project.displayName) {
-                            ErrorBanner(message: group.error ?? "Couldn’t refresh sessions")
+                            ErrorBanner(message: group.error ?? String(localized: "Couldn’t refresh sessions"))
                         }
                     }
                 }
-                if browser.isLoading {
+                if browser.isLoading || (workspace.isLoading && browser.cachedAt != nil && offlineSavedAt == nil) {
                     Section {
-                        BYOTActivityView(.loading, title: "Refreshing sessions", layout: .inline)
+                        BYOTActivityView(.loading, title: String(localized: "Refreshing sessions"), layout: .inline)
                     }
                 }
                 if !workspace.isLoading && !browser.isLoading && browser.sessions.isEmpty && workspace.errorMessage == nil {
                     Section {
                         ContentUnavailableView {
                             Label("No sessions", systemImage: "bubble.left.and.bubble.right")
+                        } description: {
+                            // At accessibility sizes the line would push the action
+                            // below the search bar; the title and button say enough.
+                            if !dynamicTypeSize.isAccessibilitySize {
+                                Text("Sessions you start here or in OpenCode on this server appear here.")
+                            }
                         } actions: {
-                            newSessionMenu
+                            Button(action: openNewSession) {
+                                // The compact icon button's label can collapse to
+                                // one character per line in ContentUnavailableView.
+                                Text("New session")
+                                    .fixedSize(horizontal: true, vertical: true)
+                                    .frame(minHeight: 44)
+                            }
+                            // Prominent like the project screen's empty state; the
+                            // gray bordered button read as disabled in dark mode.
+                            .buttonStyle(.borderedProminent)
+                            .foregroundStyle(BYOTBrand.accentInk)
                         }
                     }
                 } else if !browser.sessions.isEmpty && visibleSessions(browser.sessions).isEmpty {
@@ -123,6 +175,11 @@ struct OpenCodeConnectedView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(BYOTBrand.canvas)
+        // Live changes (a new session, a status or title change) settle into
+        // place instead of jumping; loads and searches stay immediate.
+        .animation(reduceMotion ? nil : .snappy(duration: BYOTBrand.Motion.quick), value: browser.liveRevision)
+        // Live changes reach the widget and Live Activities too, not only full reloads.
+        .onChange(of: browser.liveRevision) { _, _ in publishActivity() }
         .overlay {
             if workspace.isLoading && browser.groups.isEmpty {
                 BYOTActivityView(.connecting, layout: .blocking)
@@ -172,6 +229,12 @@ struct OpenCodeConnectedView: View {
             .background(BYOTBrand.canvas)
         }
         .toolbar {
+            if canOpenStatus && !projects.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) { statusMenu }
+            }
+            if canOpenTerminal && !projects.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) { terminalMenu }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu("Session list options", systemImage: "line.3.horizontal.decrease") {
                     Toggle("Group by project", isOn: $groupByProject)
@@ -194,27 +257,88 @@ struct OpenCodeConnectedView: View {
             }
         }
         .refreshable { await reload() }
-        .onAppear { isVisible = true }
+        .onAppear {
+            isVisible = true
+            if focusesSearchOnAppear {
+                focusesSearchOnAppear = false
+                focusSearch()
+            }
+        }
         .onDisappear { isVisible = false }
+        .onChange(of: request) { _, request in
+            if let request { handle(request) }
+        }
         .task(id: isVisible && scenePhase == .active) {
+            // Leaving the list (opening a session, which streams on its own)
+            // or backgrounding the app cancels this, closing the list's stream.
             guard isVisible && scenePhase == .active else { return }
             await reload()
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(15)) }
-                catch { break }
-                guard !Task.isCancelled else { break }
-                guard workspace.compatibility != nil,
-                      workspace.compatibility?.state != .unsupported else { continue }
-                await browser.load(projects: projects)
-                await attention.refresh(sessions: browser.sessions, service: client)
-            }
+            await followSessionList()
         }
         .navigationDestination(for: OpenCodeSessionRoute.self) { route in
             sessionView(route)
         }
-        .navigationDestination(item: $createdRoute) { route in
-            sessionView(route, startsWithComposerFocused: true)
+        .navigationDestination(item: $terminalRoute) { route in
+            OpenCodeTerminalScreen(client: client, route: route)
         }
+        .navigationDestination(item: $statusRoute) { route in
+            OpenCodeProjectStatusScreen(client: client, route: route)
+        }
+        .navigationDestination(item: $worktreeRoute) { route in
+            OpenCodeWorktreesScreen(client: client, route: route, attention: attention)
+        }
+    }
+
+    /// Like the terminal: one project opens straight away; several ask which one.
+    @ViewBuilder
+    private var statusMenu: some View {
+        let projects = projects.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        if projects.count == 1, let project = projects.first {
+            Button("Status", systemImage: "gauge.with.dots.needle.33percent") { openStatus(of: project) }
+                .tint(BYOTBrand.chromeTint)
+                .accessibilityHint("Shows MCP servers, language servers and settings for \(project.displayName)")
+                .accessibilityIdentifier("open-status")
+        } else {
+            Menu("Status", systemImage: "gauge.with.dots.needle.33percent") {
+                Section("Show the status of") {
+                    ForEach(projects) { project in
+                        Button(project.displayName) { openStatus(of: project) }
+                    }
+                }
+            }
+            .tint(BYOTBrand.chromeTint)
+            .accessibilityIdentifier("open-status")
+        }
+    }
+
+    private func openStatus(of project: OpenCodeProject) {
+        statusRoute = OpenCodeProjectStatusRoute(directory: project.worktree, projectName: project.displayName)
+    }
+
+    /// One project opens straight away; several ask which project's shell to open.
+    @ViewBuilder
+    private var terminalMenu: some View {
+        let projects = projects.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        if projects.count == 1, let project = projects.first {
+            Button("Terminal", systemImage: "apple.terminal") { openTerminal(in: project) }
+                .tint(BYOTBrand.chromeTint)
+                .accessibilityHint("Opens a shell in \(project.displayName)")
+                .accessibilityIdentifier("open-terminal")
+        } else {
+            Menu("Terminal", systemImage: "apple.terminal") {
+                Section("Open a terminal in") {
+                    ForEach(projects) { project in
+                        Button(project.displayName) { openTerminal(in: project) }
+                    }
+                }
+            }
+            .tint(BYOTBrand.chromeTint)
+            .accessibilityIdentifier("open-terminal")
+        }
+    }
+
+    private func openTerminal(in project: OpenCodeProject) {
+        terminalRoute = OpenCodeTerminalRoute(directory: project.worktree, projectName: project.displayName)
     }
 
     @ViewBuilder
@@ -244,6 +368,24 @@ struct OpenCodeConnectedView: View {
                     createSession(in: group.project)
                 }
                 .disabled(isCreating)
+                if canOpenTerminal {
+                    Button("Terminal in \(group.project.displayName)", systemImage: "apple.terminal") {
+                        openTerminal(in: group.project)
+                    }
+                }
+                if canOpenStatus {
+                    Button("Status of \(group.project.displayName)", systemImage: "gauge.with.dots.needle.33percent") {
+                        openStatus(of: group.project)
+                    }
+                }
+                // Worktrees need a Git project and a server with the worktree routes.
+                if canManageWorktrees && group.project.vcs == "git" {
+                    Button(worktreesTitle(group.project), systemImage: "arrow.triangle.branch") {
+                        worktreeRoute = OpenCodeWorktreeRoute(directory: group.project.worktree,
+                                                              projectName: group.project.displayName)
+                    }
+                    .accessibilityIdentifier("worktrees-\(group.project.displayName)")
+                }
             } label: {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(group.project.displayName).font(.cleanBodySemibold)
@@ -256,16 +398,24 @@ struct OpenCodeConnectedView: View {
         }
     }
 
+    @ViewBuilder
     private func projectSummary(_ group: OpenCodeSessionGroup) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                projectStatus(group)
-                Text("·")
-                projectUpdatedText(group)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                projectStatus(group)
-                projectUpdatedText(group)
+        let stacked = VStack(alignment: .leading, spacing: 4) {
+            projectStatus(group)
+            projectUpdatedText(group)
+        }
+        if dynamicTypeSize.isAccessibilitySize {
+            // Neither layout fits at these sizes, and ViewThatFits then kept
+            // the row, wrapping the status and time into narrow columns.
+            stacked
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    projectStatus(group)
+                    Text("·")
+                    projectUpdatedText(group)
+                }
+                stacked
             }
         }
     }
@@ -286,19 +436,33 @@ struct OpenCodeConnectedView: View {
         } else if !group.isLoaded {
             Text("Loading sessions")
         } else {
-            let countLabel = group.sessions.count == 1 ? "1 session" : "\(group.sessions.count) sessions"
+            let countLabel = group.sessions.count == 1 ? String(localized: "1 session") : String(localized: "\(group.sessions.count) sessions")
             let retries = group.sessions.filter {
                 if case .retry = group.status(for: $0) { return true }
                 return false
             }.count
+            let attentionIDs = attentionIDs
+            let needsInputIDs = needsInputIDs
             let failures = group.sessions.filter { attentionIDs.contains($0.id) }.count
+            let waiting = group.sessions.filter { needsInputIDs.contains($0.id) }.count
             let active = group.sessions.filter { group.status(for: $0)?.isActive == true }.count
-            if failures > 0 {
+            if waiting > 0 {
+                Label {
+                    Text(waiting == 1 ? "1 needs input · \(countLabel)" : "\(waiting) need input · \(countLabel)")
+                } icon: {
+                    Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
+                }
+            } else if failures > 0 {
                 Label("\(failures) need attention · \(countLabel)", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.red)
             } else if retries > 0 {
-                Label("\(retries) retrying · \(countLabel)", systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
+                // A retry is still working, as its orange row status says; red
+                // is for sessions that stopped with an error.
+                Label {
+                    Text("\(retries) retrying · \(countLabel)")
+                } icon: {
+                    Image(systemName: "arrow.clockwise").foregroundStyle(.orange)
+                }
             } else if active > 0 {
                 Label("\(active) active · \(countLabel)", systemImage: "circle.dotted")
             } else {
@@ -319,15 +483,44 @@ struct OpenCodeConnectedView: View {
         )) {
             archive(session)
         } content: {
-            NavigationLink(value: OpenCodeSessionRoute(session: session)) {
-                OpenCodeSessionRow(
-                    session: session,
-                    status: browser.statuses[session.id],
-                    projectName: showProject ? projectName(for: session) : nil,
-                    attentionMessage: attentionIDs.contains(session.id) ? attention.failures[session.id] : nil
-                )
+            let row = OpenCodeSessionRow(
+                session: session,
+                status: browser.statuses[session.id],
+                projectName: showProject ? projectName(for: session) : nil,
+                worktreeName: worktreeName(for: session),
+                attentionMessage: attentionIDs.contains(session.id) ? attention.failures[session.id] : nil,
+                needsInput: needsInputIDs.contains(session.id)
+            )
+            if selection != nil {
+                let isSelected = selection?.wrappedValue?.shows(session, on: client.profile.id) == true
+                Button { select(session) } label: { row }
+                    .buttonStyle(OpenCodeSidebarRowStyle(isSelected: isSelected))
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    .accessibilityIdentifier("session-\(session.id)")
+            } else {
+                NavigationLink(value: OpenCodeSessionRoute(session: session)) { row }
+                    .accessibilityIdentifier("session-\(session.id)")
             }
-            .accessibilityIdentifier("session-\(session.id)")
+        }
+    }
+
+    /// A sidebar row: the open conversation keeps a quiet highlight, and the
+    /// pointer highlights the whole row on iPad.
+    private struct OpenCodeSidebarRowStyle: ButtonStyle {
+        let isSelected: Bool
+
+        func makeBody(configuration: Configuration) -> some View {
+            let shape = RoundedRectangle(cornerRadius: BYOTBrand.controlRadius, style: .continuous)
+            configuration.label
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, BYOTBrand.Space.sm + 2)
+                .padding(.vertical, BYOTBrand.Space.xs)
+                .background {
+                    shape.fill(isSelected || configuration.isPressed ? BYOTBrand.selectedSurface : .clear)
+                }
+                .contentShape(.hoverEffect, shape)
+                .contentShape(shape)
+                .hoverEffect(.highlight)
         }
     }
 
@@ -409,31 +602,113 @@ struct OpenCodeConnectedView: View {
 
     private func archive(_ session: OpenCodeSession) {
         archiveError = nil
+        // Like OpenCode's web app, archiving the open session moves on to
+        // its neighbour in the list, or leaves the detail empty.
+        if let selection, selection.wrappedValue?.shows(session, on: client.profile.id) == true {
+            let sessions = displayedSessions
+            if let id = OpenCodeSessionListOrder.neighbour(of: session.id, in: sessions.map(\.id)),
+               let next = sessions.first(where: { $0.id == id }) {
+                select(next)
+            } else {
+                selection.wrappedValue = nil
+            }
+        }
         browser.markArchived(session.id)
         Task {
             do {
                 try await client.archiveSession(sessionID: session.id, directory: session.directory, workspace: session.workspaceID)
             } catch {
                 browser.unmarkArchived(session.id)
-                archiveError = "Couldn’t archive “\(session.title)”: \(error.localizedDescription)"
+                archiveError = String(localized: "Couldn’t archive “\(session.title)”: \(error.localizedDescription)")
                 await browser.load(projects: projects)
             }
         }
     }
 
-    private func sessionView(
-        _ route: OpenCodeSessionRoute,
-        startsWithComposerFocused: Bool = false
-    ) -> some View {
+    /// Opens `session` in the split view's detail column. Choosing the open
+    /// conversation again keeps it, with its scroll position and draft.
+    private func select(_ session: OpenCodeSession, focusesComposer: Bool = false) {
+        guard let selection, selection.wrappedValue?.shows(session, on: client.profile.id) != true else { return }
+        openSwipeSessionID = nil
+        selection.wrappedValue = .session(OpenCodeSessionSelection(
+            client: client, session: session, attention: attention, focusesComposer: focusesComposer))
+    }
+
+    private func handle(_ request: OpenCodeSessionListRequest) {
+        switch request.kind {
+        case .focusSearch:
+            // A list covered by a conversation focuses once it is back on screen.
+            if isVisible { focusSearch() } else { focusesSearchOnAppear = true }
+        case .step(let step):
+            let sessions = displayedSessions
+            guard let id = step.target(from: currentSessionID, in: sessions.map(\.id)),
+                  let session = sessions.first(where: { $0.id == id }) else { return }
+            if selection != nil {
+                select(session)
+            } else if onScreenConversations?.top?.session.id != session.id {
+                openSession(OpenCodeSessionRoute(session: session))
+            }
+        case .refresh:
+            Task { await browser.load(projects: projects) }
+        }
+    }
+
+    /// The session ⌘[ and ⌘] step from: the split view's selection, or on
+    /// iPhone the conversation on screen.
+    private var currentSessionID: String? {
+        if let selection {
+            guard selection.wrappedValue?.serverID == client.profile.id else { return nil }
+            return selection.wrappedValue?.session?.id
+        }
+        guard let top = onScreenConversations?.top, top.client.profile.id == client.profile.id else { return nil }
+        return top.session.id
+    }
+
+    private func focusSearch() {
+        // Let a sidebar that is sliding in, or a pop, settle before the
+        // field takes the keyboard.
+        Task {
+            await Task.yield()
+            isSearching = true
+        }
+    }
+
+    /// The sessions in the order the list shows them, for ⌘[ and ⌘].
+    private var displayedSessions: [OpenCodeSession] {
+        guard groupByProject else { return visibleSessions(browser.sessions) }
+        return OpenCodeSessionListOrder.displayed(
+            groups: browser.orderedGroups(by: projectSort, attention: attentionIDs)
+                .map { (id: $0.id, sessions: visibleSessions($0.sessions)) },
+            collapsed: collapsedProjects, isSearching: !search.isEmpty)
+    }
+
+    private func sessionView(_ route: OpenCodeSessionRoute) -> some View {
         OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory,
                             attention: attention,
-                            startsWithComposerFocused: startsWithComposerFocused)
+                            startsWithComposerFocused: route.focusesComposer)
     }
 
     private func projectName(for session: OpenCodeSession) -> String {
         projects.first { $0.worktree == session.directory }?.displayName
+            // A worktree session belongs to its project; its folder name is already the worktree badge.
+            ?? projects.first { project in
+                project.sandboxes.contains { OpenCodeWorktree.key($0) == OpenCodeWorktree.key(session.directory) }
+            }?.displayName
             ?? projects.first { $0.id == session.projectID }?.displayName
             ?? URL(fileURLWithPath: session.directory).lastPathComponent
+    }
+
+    private func worktreesTitle(_ project: OpenCodeProject) -> String {
+        let count = project.sandboxes.count
+        return count == 0 ? String(localized: "Worktrees of \(project.displayName)") : String(localized: "Worktrees of \(project.displayName) (\(count))")
+    }
+
+    /// Sessions started in a worktree run in one of their project's `sandboxes`.
+    private func worktreeName(for session: OpenCodeSession) -> String? {
+        let directory = OpenCodeWorktree.key(session.directory)
+        guard projects.contains(where: { $0.sandboxes.contains { OpenCodeWorktree.key($0) == directory } })
+        else { return nil }
+        return OpenCodeWorktree.name(of: directory)
     }
 
     private func visibleSessions(_ sessions: [OpenCodeSession]) -> [OpenCodeSession] {
@@ -441,15 +716,28 @@ struct OpenCodeConnectedView: View {
             search.isEmpty || $0.title.localizedStandardContains(search)
                 || $0.directory.localizedStandardContains(search)
                 || projectName(for: $0).localizedStandardContains(search)
-        }, statuses: browser.statuses, attention: attentionIDs)
+        }, statuses: browser.statuses, attention: flaggedIDs)
     }
 
     private var attentionIDs: Set<String> {
         Set(attention.failures.keys.filter { browser.statuses[$0]?.isActive != true })
     }
 
+    /// When the saved sessions on screen were saved, while the server can't be reached.
+    private var offlineSavedAt: Date? {
+        guard workspace.compatibility == nil, workspace.errorMessage != nil else { return nil }
+        return browser.cachedAt
+    }
+
+    private var needsInputIDs: Set<String> { browser.needsInputIDs }
+
+    /// Sessions that need the user: waiting on a permission or question, or failed.
+    private var flaggedIDs: Set<String> { attentionIDs.union(needsInputIDs) }
+
     private var projects: [OpenCodeProject] {
-        var result = workspace.projects
+        // Until the server lists its projects, use the saved list's. A failed first
+        // listing must not reload, and so re-save, the list without them.
+        var result = workspace.projects.isEmpty ? browser.cachedProjects : workspace.projects
         if let directory = client.profile.normalizedDirectory,
            !result.contains(where: { $0.worktree == directory }) {
             result.append(Self.project(directory: directory))
@@ -462,7 +750,7 @@ struct OpenCodeConnectedView: View {
                         time: OpenCodeProjectTime(created: 0, updated: 0), sandboxes: [])
     }
 
-    private func reload() async {
+    private func reload(showsProgress: Bool = true) async {
         attention.reload()
         await workspace.load()
         guard !Task.isCancelled else { return }
@@ -473,9 +761,93 @@ struct OpenCodeConnectedView: View {
         guard workspace.compatibility != nil else { return }
         // Swipe to archive only where the server can archive (v1 today).
         async let support = try? client.sessionFeatureSupport()
-        await browser.load(projects: projects)
+        // Terminals appear only where the server offers PTYs (v1 /pty, v2 /api/pty).
+        let terminalProbe = projects.first.map {
+            OpenCodeTerminalService(client: client, route: OpenCodeTerminalRoute(directory: $0.worktree))
+        }
+        async let terminals = terminalProbe?.isAvailable() ?? false
+        // Status reads the negotiated schema only; it sends no request of its own.
+        let statusProbe = projects.first.map {
+            OpenCodeServerContextService(client: client, route: OpenCodeProjectStatusRoute(directory: $0.worktree))
+        }
+        async let status = statusProbe?.isAvailable() ?? false
+        // Worktree rows appear only where the server lists worktrees (v1, or a v2 schema with the routes).
+        let worktreeProbe = projects.first { $0.vcs == "git" }.map {
+            OpenCodeWorktreeService(client: client, route: OpenCodeWorktreeRoute(directory: $0.worktree))
+        }
+        async let worktrees = worktreeProbe?.isAvailable() ?? false
+        await browser.load(projects: projects, showsProgress: showsProgress)
         canArchiveSessions = await support?.archive ?? false
+        canOpenTerminal = await terminals
+        canOpenStatus = await status
+        canManageWorktrees = await worktrees
         await attention.refresh(sessions: browser.sessions, service: client)
+        publishActivity()
+    }
+
+    /// Shares this server's running and attention-needing sessions with the
+    /// home-screen widget and settles Live Activities for conversations that
+    /// are no longer open. A refresh that reached no project changes nothing.
+    private func publishActivity() {
+        guard !Task.isCancelled, browser.groups.contains(where: { $0.statuses != nil }) else { return }
+        let statuses = browser.statuses
+        let pending = browser.needsInputIDs
+        BYOTWidgetSync.shared.publish(BYOTWidgetSync.server(
+            profile: client.profile, sessions: browser.sessions, statuses: statuses,
+            pendingSessionIDs: pending, failures: attention.failures))
+        BYOTLiveActivityController.shared.reconcile(
+            serverID: client.profile.id, sessions: browser.sessions, statuses: statuses,
+            pendingSessionIDs: pending, failures: attention.failures)
+    }
+
+    private var isServerUsable: Bool {
+        workspace.compatibility != nil && workspace.compatibility?.state != .unsupported
+    }
+
+    /// Follows the server's event stream while the list is visible, so status,
+    /// input requests, failures, titles and created or deleted sessions appear
+    /// as they happen. When the stream is unavailable the list polls, and it
+    /// retries the stream after a pause unless the server has none.
+    private func followSessionList() async {
+        let timing = OpenCodeSessionListLiveTiming.standard
+        while !Task.isCancelled {
+            // Nil until the stream was tried against a usable server.
+            var outcome: OpenCodeSessionListLiveState?
+            if isServerUsable {
+                outcome = await browser.followLiveUpdates(.init(
+                    reconcile: { scope in
+                        if scope == .projects { await reload(showsProgress: false) } else { await refreshSessions() }
+                    },
+                    failure: { id, message in attention.record(sessionID: id, message: message) },
+                    settled: { id in settle(id) }
+                ))
+                // Cancelled, or another follower owns the stream now.
+                if outcome == .off { return }
+            }
+            let retryAt = ContinuousClock.now + timing.retryLiveAfter
+            repeat {
+                do { try await Task.sleep(for: timing.pollInterval) } catch { return }
+                // Offline with saved sessions on screen: keep trying to reconnect.
+                if !isServerUsable, offlineSavedAt != nil { await reload(showsProgress: false) }
+                guard isServerUsable else { continue }
+                // The server just became usable (a pull to refresh); go live now.
+                if outcome == nil { break }
+                await refreshSessions()
+            } while !Task.isCancelled && (outcome == .unsupported || !isServerUsable || ContinuousClock.now < retryAt)
+        }
+    }
+
+    private func refreshSessions() async {
+        await browser.load(projects: projects, showsProgress: false)
+        await attention.refresh(sessions: browser.sessions, service: client)
+        publishActivity()
+    }
+
+    /// A failed session went idle again; recheck whether its last turn still failed.
+    private func settle(_ id: String) {
+        guard attention.failures[id] != nil,
+              let session = browser.sessions.first(where: { $0.id == id }) else { return }
+        Task { await attention.refresh(sessions: [session], service: client) }
     }
 
     private func createSession(in project: OpenCodeProject) {
@@ -486,7 +858,12 @@ struct OpenCodeConnectedView: View {
             defer { isCreating = false }
             do {
                 let session = try await client.createSession(directory: project.worktree, title: nil)
-                createdRoute = OpenCodeSessionRoute(session: session)
+                if selection != nil {
+                    select(session, focusesComposer: true)
+                    await browser.load(projects: projects)
+                } else {
+                    openSession(OpenCodeSessionRoute(session: session, focusesComposer: true))
+                }
             } catch { creationError = error.localizedDescription }
         }
     }

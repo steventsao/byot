@@ -15,6 +15,7 @@ function fixture() {
       'utf8',
     ),
   );
+  db.exec(readFileSync(new URL('../migrations/0002_prompt_queue.sql', import.meta.url), 'utf8'));
   const wrap = (sql, args = []) => ({
     bind(...a) {
       return wrap(sql, a);
@@ -274,5 +275,48 @@ test('bounds and schema validation, stale events, and missing APNs configuration
   assert.equal(
     (await f.call('POST', '/events', f.event(), p.senderKey)).status,
     503,
+  );
+});
+test('only actionable permission and question alerts carry a notification category', async (t) => {
+  const f = fixture(),
+    p = await f.pair();
+  const categories = [];
+  t.mock.method(globalThis, 'fetch', async (_url, o) => {
+    categories.push(JSON.parse(o.body).aps.category);
+    return new Response(null, { status: 200 });
+  });
+  for (const [kind, actionable] of [
+    ['permission', true],
+    ['question', true],
+    ['permission', undefined],
+    ['question', undefined],
+  ]) {
+    const response = await f.call(
+      'POST',
+      '/events',
+      { ...f.event(kind), ...(actionable ? { actionable } : {}) },
+      p.senderKey,
+    );
+    assert.equal(response.status, 200);
+  }
+  assert.deepEqual(categories, [
+    'BYOT_PERMISSION',
+    'BYOT_QUESTION',
+    undefined,
+    undefined,
+  ]);
+  for (const event of [
+    { ...f.event('complete'), actionable: true },
+    { ...f.event('error'), actionable: true },
+    { ...f.event('permission'), actionable: 'yes' },
+  ])
+    assert.equal(
+      (await f.call('POST', '/events', event, p.senderKey)).status,
+      400,
+    );
+  assert.equal(categories.length, 4);
+  assert.equal(
+    payload(f.id, { ...f.event('complete'), actionable: true }).aps.category,
+    undefined,
   );
 });

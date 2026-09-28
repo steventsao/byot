@@ -91,6 +91,14 @@ final class OpenCodeRemoteFileStore: ObservableObject {
         }
     }
 
+    /// Bytes of a server file for an inline preview, such as an image a
+    /// prompt referenced. Independent of the reader's published content.
+    func data(path: String) async throws -> Data {
+        let content = try await service.read(path: path)
+        guard let data = content.data, !data.isEmpty else { throw OpenCodeRemoteFileError.unsupported(String(localized: "file previews")) }
+        return data
+    }
+
     func reference(path: String, selection: OpenCodeFileLineRange? = nil) -> OpenCodePromptFileReference {
         scope.reference(path: path, selection: selection)
     }

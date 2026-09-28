@@ -1,6 +1,6 @@
 import Foundation
 
-struct OpenCodePromptAttachment: Identifiable, Equatable, Sendable {
+struct OpenCodePromptAttachment: Identifiable, Equatable, Codable, Sendable {
     static let maximumCount = 10
     static let maximumFileBytes = 20 * 1_024 * 1_024
     static let maximumTotalBytes = 20 * 1_024 * 1_024
@@ -67,13 +67,13 @@ enum OpenCodePromptAttachmentError: LocalizedError, Equatable, Sendable {
     var errorDescription: String? {
         switch self {
         case .tooMany(let maximum):
-            "Attach up to \(maximum) files to one message."
+            String(localized: "Attach up to \(maximum) files to one message.")
         case .emptyFile(let filename):
-            "\(filename) is empty and can’t be attached."
+            String(localized: "\(filename) is empty and can’t be attached.")
         case .fileTooLarge(let filename, let maximumBytes):
-            "\(filename) is larger than \(Self.formatted(maximumBytes))."
+            String(localized: "\(filename) is larger than \(Self.formatted(maximumBytes)).")
         case .totalTooLarge(let maximumBytes):
-            "Attachments can total up to \(Self.formatted(maximumBytes)) per message."
+            String(localized: "Attachments can total up to \(Self.formatted(maximumBytes)) per message.")
         }
     }
 

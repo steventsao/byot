@@ -17,10 +17,10 @@ struct OpenCodeComposerDispatch {
         try OpenCodePromptAttachment.validate(prompt.attachments)
         guard prompt.remoteReferences.allSatisfy({
             $0.serverID == context.profile.id && $0.directory == directory && $0.workspaceID == workspace
-        }) else { throw OpenCodeConnectionError.server("This file context belongs to a different server or workspace. Remove it and select the file again.") }
+        }) else { throw OpenCodeConnectionError.server(String(localized: "This file context belongs to a different server or workspace. Remove it and select the file again.")) }
         if let variant = prompt.variant {
             guard context.supportsModelVariants, prompt.model?.variants.contains(variant) == true else {
-                throw OpenCodeConnectionError.server("The selected model no longer advertises that variant. Choose Default or refresh models.")
+                throw OpenCodeConnectionError.server(String(localized: "The selected model no longer advertises that variant. Choose Default or refresh models."))
             }
         }
         if context.serverProtocol == .v1 {
@@ -54,7 +54,7 @@ struct OpenCodeComposerDispatch {
 
     private func sendV1(sessionID: String, directory: String, workspace: String?, prompt: OpenCodeQueuedPrompt) async throws {
         guard prompt.command?.kind != .skill else {
-            throw OpenCodeConnectionError.server("This server does not support slash skill attachments.")
+            throw OpenCodeConnectionError.server(String(localized: "This server does not support slash skill attachments."))
         }
         try await context.transport.postExpectingEmptyResponse(
             ["session", sessionID, prompt.command == nil ? "prompt_async" : "command"],
@@ -66,7 +66,7 @@ struct OpenCodeComposerDispatch {
         let path = command == nil ? "/api/session/{sessionID}/prompt" : "/api/session/{sessionID}/command"
         let properties = context.composerSchemaProperties(path)
         guard context.supports(path, method: "post") else {
-            throw OpenCodeConnectionError.server("This server does not support sending this kind of input.")
+            throw OpenCodeConnectionError.server(String(localized: "This server does not support sending this kind of input."))
         }
         let files: [OpenCodeJSONValue] = prompt.attachments.map {
             .object(["uri": .string($0.dataURL), "name": .string($0.filename)])
@@ -79,7 +79,7 @@ struct OpenCodeComposerDispatch {
         if !files.isEmpty { content["files"] = .array(files) }
         if let skill = prompt.command, skill.kind == .skill {
             guard properties["skills"] != nil else {
-                throw OpenCodeConnectionError.server("This server does not support slash skill attachments.")
+                throw OpenCodeConnectionError.server(String(localized: "This server does not support slash skill attachments."))
             }
             content["skills"] = .array([.object(["id": .string(skill.name)])])
         }
@@ -102,7 +102,7 @@ struct OpenCodeComposerDispatch {
         }
         if properties["text"] != nil { body.merge(content) { _, new in new } }
         else if properties["prompt"] != nil { body["prompt"] = .object(content) }
-        else { throw OpenCodeConnectionError.server("This server exposes an unsupported command or prompt shape.") }
+        else { throw OpenCodeConnectionError.server(String(localized: "This server exposes an unsupported command or prompt shape.")) }
         return .object(body)
     }
 
@@ -115,12 +115,12 @@ struct OpenCodeComposerDispatch {
                 throw OpenCodeConnectionError.invalidResponse
             }
             guard activeSessions[sessionID] == nil else {
-                throw OpenCodeConnectionError.server("The session became active before this message was sent. Its selections are saved; retry when the current turn finishes.")
+                throw OpenCodeConnectionError.server(String(localized: "The session became active before this message was sent. Its selections are saved; retry when the current turn finishes."))
             }
         }
         if let agent = prompt.agent {
             guard context.supports("/api/session/{sessionID}/agent", method: "post") else {
-                throw OpenCodeConnectionError.server("This server does not support changing the primary agent.")
+                throw OpenCodeConnectionError.server(String(localized: "This server does not support changing the primary agent."))
             }
             try await context.transport.postExpectingEmptyResponse(["api", "session", sessionID, "agent"],
                 body: OpenCodeJSONValue.object(["agent": .string(agent)]))

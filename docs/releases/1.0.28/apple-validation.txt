@@ -1,0 +1,6 @@
+2026-09-20 23:55:30.847  INFO: [ContentDelivery.Uploader.888C48440] 
+==========================================
+VERIFY SUCCEEDED with no errors
+==========================================
+No errors validating archive at '.asc/artifacts/BYOT.ipa'.
+{"ipa_path":".asc/artifacts/BYOT.ipa","validated":true}

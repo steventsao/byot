@@ -1,20 +1,43 @@
 name: BYOT
 options:
   bundleIdPrefix: com.steventsao
+  developmentLanguage: en
   deploymentTarget:
     iOS: "17.0"
 settings:
   base:
-    MARKETING_VERSION: 1.0.26
+    MARKETING_VERSION: 1.0.31
     CURRENT_PROJECT_VERSION: 1
     SWIFT_VERSION: 6.0
     DEVELOPMENT_TEAM: 449BD89VDV
+    # String Catalogs in Sources/Resources: Localizable (app, widget and share
+    # extension copy), InfoPlist (permission prompts) and AppShortcuts (Siri
+    # phrases). Builds extract SwiftUI literals and String(localized:) calls;
+    # see docs/features/localization.md.
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
+packages:
+  # Terminal emulator for the PTY screen. 1.10.1 is the newest release without
+  # build-tool plugins or benchmark dependencies in its manifest; later ones need
+  # plugin trust in command-line and archive builds.
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.10.1
 targets:
   BYOT:
     type: application
     platform: iOS
     sources:
       - Sources
+      - Shared
+    dependencies:
+      - package: SwiftTerm
+      # Home-screen widget and Live Activity UI. Remove this entry (and the
+      # App Group key in Sources/BYOT.entitlements) to ship without it; see
+      # docs/releases/1.0.31-signing.md.
+      # Share-sheet entry that hands text, links, images and files to the
+      # composer. Remove this entry to ship without it; see
+      # docs/releases/1.0.31-signing.md.
     info:
       path: Sources/Info.plist
       properties:
@@ -22,6 +45,23 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleURLName: app.byot.pair
+            CFBundleURLSchemes:
+              - byot
+          # Opened by the share extension with the id of a saved share only.
+          - CFBundleURLName: com.steventsao.byot.share
+            CFBundleURLSchemes:
+              - byot-share
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSBonjourServices:
+          - _http._tcp
+        NSCameraUsageDescription: byot uses the camera only to scan the pairing code for your OpenCode server.
+        NSLocalNetworkUsageDescription: byot finds OpenCode servers on your network and connects to the ones you add by local address.
+        NSMicrophoneUsageDescription: byot listens only while you dictate a message, and only after you tap the microphone.
+        NSSpeechRecognitionUsageDescription: byot turns what you dictate into message text. Speech is transcribed on this device when your language supports it; otherwise Apple transcribes it.
+        NSSupportsLiveActivities: true
         UIAppFonts:
           - OpenRunde-Bold.otf
           - OpenRunde-Regular.otf
@@ -47,6 +87,80 @@ targets:
       testTargets:
         - BYOTTests
         - BYOTUITests
+  BYOTWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widgets
+      - Shared
+      - path: Sources/BYOTBrand.swift
+      - path: Sources/Resources/Fonts/OpenRunde-Bold.otf
+        buildPhase: resources
+      # The app's catalog, so widget and Live Activity copy is translated too.
+      - path: Sources/Resources/Localizable.xcstrings
+        buildPhase: resources
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: byot
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        UIAppFonts:
+          - OpenRunde-Bold.otf
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Widgets/BYOTWidgets.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot.widgets
+        PRODUCT_NAME: BYOTWidgets
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Widgets/Info.plist
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+  BYOTShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ShareExtension
+      - path: Shared/BYOTAppGroup.swift
+      - path: Sources/BYOTBrand.swift
+      - path: Sources/BYOTDesignSystem.swift
+      - path: Sources/BYOTShareImport.swift
+      - path: Sources/BYOTShareInbox.swift
+      - path: Sources/OpenCodePromptAttachment.swift
+      - path: Sources/Resources/Fonts/OpenRunde-Bold.otf
+        buildPhase: resources
+      - path: Sources/Resources/Localizable.xcstrings
+        buildPhase: resources
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: byot
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).BYOTShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsFileWithMaxCount: 10
+        UIAppFonts:
+          - OpenRunde-Bold.otf
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: ShareExtension/BYOTShare.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot.share
+        PRODUCT_NAME: BYOTShare
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: ShareExtension/Info.plist
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
   BYOTTests:
     type: bundle.unit-test
     platform: iOS

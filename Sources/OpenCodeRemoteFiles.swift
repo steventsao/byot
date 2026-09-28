@@ -49,9 +49,17 @@ struct OpenCodeRemoteFileContent: Equatable, Sendable {
     let text: String?
     let mimeType: String
     let byteCount: Int
+    /// Raw bytes, kept so binary files such as images can be previewed.
+    var data: Data? = nil
     var lines: [String] {
+        normalizedText?.components(separatedBy: "\n") ?? []
+    }
+    /// The text with every line ending as `\n`.
+    var normalizedText: String? {
         text?.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
-            .components(separatedBy: "\n") ?? []
+    }
+    var syntaxLanguage: BYOTSyntaxLanguage? {
+        BYOTSyntaxLanguage(path: path) ?? BYOTSyntaxLanguage(mimeType: mimeType)
     }
 }
 
@@ -77,10 +85,10 @@ enum OpenCodeRemoteFileError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unsupported(let operation): "This server does not provide \(operation)."
-        case .outsideProject: "Choose a file inside this session’s project."
-        case .wrongLocation: "The server returned files from a different project or workspace. Refresh the session before choosing context."
-        case .tooLarge: "This file is too large to preview on your phone. You can still add the file as context."
+        case .unsupported(let operation): String(localized: "This server does not provide \(operation).")
+        case .outsideProject: String(localized: "Choose a file inside this session’s project.")
+        case .wrongLocation: String(localized: "The server returned files from a different project or workspace. Refresh the session before choosing context.")
+        case .tooLarge: String(localized: "This file is too large to preview on your phone. You can still add the file as context.")
         }
     }
 }
@@ -125,7 +133,7 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
     }
 
     func search(query: String) async throws -> [OpenCodeRemoteFileEntry] {
-        let connection = try await checkedContext(v2Path: "/api/fs/find", operation: "file search")
+        let connection = try await checkedContext(v2Path: "/api/fs/find", operation: String(localized: "file search"))
         let queryItems = locationQuery(connection) + [URLQueryItem(name: "query", value: query),
                                                       URLQueryItem(name: "type", value: "file"),
                                                       URLQueryItem(name: "limit", value: "50")]
@@ -144,7 +152,7 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
 
     func list(path: String) async throws -> [OpenCodeRemoteFileEntry] {
         let relative = try scope.relativePath(path, allowRoot: true)
-        let connection = try await checkedContext(v2Path: "/api/fs/list", operation: "file browsing")
+        let connection = try await checkedContext(v2Path: "/api/fs/list", operation: String(localized: "file browsing"))
         let query = locationQuery(connection) + [URLQueryItem(name: "path", value: relative)]
         let entries: [OpenCodeRemoteFileEntry]
         if connection.serverProtocol == .v1 {
@@ -162,10 +170,10 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
     }
 
     func changes() async throws -> [OpenCodeRemoteFileChange] {
-        let connection = try await checkedContext(v2Path: "/api/vcs/status", operation: "changed files")
+        let connection = try await checkedContext(v2Path: "/api/vcs/status", operation: String(localized: "changed files"))
         let values: [OpenCodeRemoteFileChange]
         if connection.serverProtocol == .v1 {
-            throw OpenCodeRemoteFileError.unsupported("changed files")
+            throw OpenCodeRemoteFileError.unsupported(String(localized: "changed files"))
         } else {
             let response: FileLocationResponse<[OpenCodeRemoteFileChange]> = try await connection.transport.get(
                 ["api", "vcs", "status"], query: locationQuery(connection))
@@ -178,7 +186,7 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
 
     func read(path: String) async throws -> OpenCodeRemoteFileContent {
         let relative = try scope.relativePath(path)
-        let connection = try await checkedContext(v2Path: "/api/fs/read/*", operation: "file previews")
+        let connection = try await checkedContext(v2Path: "/api/fs/read/*", operation: String(localized: "file previews"))
         if connection.serverProtocol == .v1 {
             struct Content: Decodable { let type: String; let content: String; let encoding: String?; let mimeType: String? }
             let request = try connection.transport.makeRequest(path: ["file", "content"],
@@ -192,7 +200,7 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
             guard data.count <= Self.maximumPreviewBytes else { throw OpenCodeRemoteFileError.tooLarge }
             return .init(path: relative, text: value.type == "text" ? String(data: data, encoding: .utf8) : nil,
                          mimeType: value.mimeType ?? (value.type == "text" ? "text/plain" : "application/octet-stream"),
-                         byteCount: data.count)
+                         byteCount: data.count, data: data)
         }
         var request = try connection.transport.makeRequest(path: ["api", "fs", "read"],
             query: locationQuery(connection), method: "GET", body: nil)
@@ -211,7 +219,7 @@ struct OpenCodeRemoteFileService: OpenCodeRemoteFileServicing {
         guard data.count <= Self.maximumPreviewBytes else { throw OpenCodeRemoteFileError.tooLarge }
         let mime = http.mimeType ?? "application/octet-stream"
         let text = data.contains(0) ? nil : String(data: data, encoding: .utf8)
-        return .init(path: relative, text: text, mimeType: mime, byteCount: data.count)
+        return .init(path: relative, text: text, mimeType: mime, byteCount: data.count, data: data)
     }
 
     private func boundedData(_ connection: OpenCodeFeatureContext, request: URLRequest,

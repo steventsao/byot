@@ -7,6 +7,7 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
     let profile: OpenCodeServerProfile
     let serverProtocol = OpenCodeServerProtocol.v2
     var usesForms: Bool { contract.forms }
+    var listsPendingRequestsByLocation: Bool { contract.pendingRequestLists && !contract.forms }
     let capabilities = OpenCodeProtocolCapabilities.v2
 
     func listProjects() async throws -> [OpenCodeProject] {
@@ -70,6 +71,15 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
             .map(\.normalized)
     }
 
+    func session(
+        id: String,
+        directory: String?
+    ) async throws -> OpenCodeSession {
+        let response: OpenCodeV2DataResponse<OpenCodeV2Session> = try await transport.get(
+            ["api", "session", id], query: [])
+        return response.data.normalized
+    }
+
     func createSession(
         directory: String,
         title: String?
@@ -110,7 +120,8 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
                             modelID: model.id,
                             modelName: model.name,
                             status: model.status,
-                            variants: contract.schema.objectValue?["components"]?.objectValue?["schemas"]?.objectValue?["Model.Ref"]?.objectValue?["properties"]?.objectValue?["variant"] != nil ? (model.variants ?? []).map(\.id) : []
+                            variants: contract.schema.objectValue?["components"]?.objectValue?["schemas"]?.objectValue?["Model.Ref"]?.objectValue?["properties"]?.objectValue?["variant"] != nil ? (model.variants ?? []).map(\.id) : [],
+                            contextLimit: model.limit?.context.flatMap { $0 >= 1 ? Int($0) : nil }
                         )
                     }
                     .sorted {
@@ -256,6 +267,10 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         OpenCodeEventRoute(path: ["api", "event"], query: [])
     }
 
+    var sessionListEventRoute: OpenCodeEventRoute {
+        OpenCodeEventRoute(path: ["api", "event"], query: [])
+    }
+
     private func allSessions(
         directory: String?
     ) async throws -> [OpenCodeV2Session] {
@@ -286,7 +301,7 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         guard let next else { return nil }
         guard seen.insert(next).inserted else {
             throw OpenCodeConnectionError.server(
-                "OpenCode returned a repeated pagination cursor."
+                String(localized: "OpenCode returned a repeated pagination cursor.")
             )
         }
         return next
@@ -389,7 +404,7 @@ private struct OpenCodeV2Session: Decodable {
             directory: location.directory,
             parentID: parentID,
             summary: nil,
-            title: title ?? "New session",
+            title: title ?? String(localized: "New session"),
             agent: agent,
             version: "2",
             time: OpenCodeSessionTime(
@@ -412,7 +427,16 @@ private struct OpenCodeV2Provider: Decodable {
 
 private struct OpenCodeV2Model: Decodable {
     struct Variant: Decodable { let id: String }
+    // Optional and lenient: an unexpected limit shape must not drop the model.
+    struct Limit: Decodable {
+        let context: Double?
+        private enum CodingKeys: String, CodingKey { case context }
+        init(from decoder: Decoder) throws {
+            context = try? decoder.container(keyedBy: CodingKeys.self).decodeIfPresent(Double.self, forKey: .context)
+        }
+    }
     let variants: [Variant]?
+    let limit: Limit?
     let id: String
     let providerID: String
     let name: String

@@ -1,0 +1,11 @@
+{
+  "sessionID": "ses_f3a8f3d3affeAgzcxTF8CgSIb4",
+  "directory": "/workspace",
+  "model": "opencode/big-pickle",
+  "response": [
+    "BYOT App Review connection verified."
+  ],
+  "error": null,
+  "verified": true,
+  "testSessionArchived": true
+}

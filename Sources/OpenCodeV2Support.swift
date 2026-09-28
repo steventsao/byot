@@ -43,7 +43,7 @@ enum OpenCodeV2Normalization {
                 ?? "",
             parentID: object["parentID"]?.stringValue,
             summary: nil,
-            title: object["title"]?.stringValue ?? "Untitled session",
+            title: object["title"]?.stringValue ?? String(localized: "Untitled session"),
             agent: object["agent"]?.stringValue,
             version: object["version"]?.stringValue ?? "2",
             time: OpenCodeSessionTime(
@@ -52,7 +52,10 @@ enum OpenCodeV2Normalization {
                 compacting: time?["compacting"]?.numberValue,
                 archived: time?["archived"]?.numberValue
             ),
-            forkSourceID: object["fork"]?.objectValue?["sessionID"]?.stringValue
+            forkSourceID: object["fork"]?.objectValue?["sessionID"]?.stringValue,
+            cost: object["cost"]?.numberValue,
+            tokens: OpenCodeTokenUsage(object["tokens"]),
+            share: object["share"]?.objectValue?["url"]?.stringValue.map(OpenCodeSessionShare.init(url:))
         )
     }
 
@@ -73,15 +76,27 @@ enum OpenCodeV2Normalization {
             let selectedModel = metadata?["model"]?.objectValue
             let text = metadata?["displayText"]?.stringValue ?? object["text"]?.stringValue ?? ""
             if !text.isEmpty {
-                parts.append(
-                    textPart(
-                        messageID: id,
-                        sessionID: sessionID,
-                        kind: "text",
-                        ordinal: 0,
-                        text: text
-                    )
+                var part = textPart(
+                    messageID: id,
+                    sessionID: sessionID,
+                    kind: "text",
+                    ordinal: 0,
+                    text: text
                 )
+                // System context updates and synthetic messages are context
+                // OpenCode added for the model, not words the agent wrote.
+                if type == "synthetic" || type == "system" { part.synthetic = true }
+                parts.append(part)
+            }
+            // @agent mentions (Prompt.agents) render as the v1 agent part does.
+            for (index, agent) in (object["agents"]?.arrayValue ?? []).enumerated() {
+                guard let name = agent.objectValue?["name"]?.stringValue, !name.isEmpty else { continue }
+                var part = OpenCodePart(
+                    id: "\(id):agent:\(index)", sessionID: sessionID, messageID: id, type: "agent", text: nil,
+                    mime: nil, filename: nil, url: nil, callID: nil, tool: nil, state: nil, files: nil,
+                    description: nil, agent: nil)
+                part.name = name
+                parts.append(part)
             }
             for (index, file) in (object["files"]?.arrayValue ?? []).enumerated() {
                 guard let file = file.objectValue else { continue }
@@ -162,6 +177,9 @@ enum OpenCodeV2Normalization {
                     continue
                 }
             }
+            parts += stepParts(messageID: id, sessionID: sessionID, finish: object["finish"]?.stringValue,
+                               cost: object["cost"]?.numberValue, tokens: object["tokens"],
+                               files: object["snapshot"]?.objectValue?["files"])
             return OpenCodeMessageEnvelope(
                 info: OpenCodeMessageInfo(
                     id: id,
@@ -175,10 +193,37 @@ enum OpenCodeV2Normalization {
                     modelID: model?["id"]?.stringValue,
                     providerID: model?["providerID"]?.stringValue,
                     finish: object["finish"]?.stringValue,
-                    error: error
+                    error: error,
+                    cost: object["cost"]?.numberValue,
+                    tokens: OpenCodeTokenUsage(object["tokens"])
                 ),
                 parts: parts
             )
+        case "compaction", "agent-switched", "model-switched":
+            // Conversation markers render as the matching v1 part types.
+            let model = object["model"]?.objectValue
+            var part = OpenCodePart(
+                id: "\(id):\(type)", sessionID: sessionID, messageID: id,
+                type: ["agent-switched": "agent", "model-switched": "model"][type] ?? type,
+                text: object["summary"]?.stringValue, mime: nil, filename: nil, url: nil, callID: nil, tool: nil,
+                state: nil, files: nil, description: nil, agent: nil)
+            part.auto = object["reason"]?.stringValue.map { $0 == "auto" }
+            part.name = object["agent"]?.stringValue ?? model?["id"]?.stringValue ?? model?["modelID"]?.stringValue
+            return OpenCodeMessageEnvelope(info: OpenCodeMessageInfo(id: id, sessionID: sessionID, role: "system",
+                time: OpenCodeMessageTime(created: created, completed: nil), agent: nil, modelID: nil, providerID: nil,
+                finish: nil, error: nil), parts: [part])
+        case "shell" where (object["shellID"] ?? object["callID"])?.stringValue != nil:
+            // The beta record names its shell `shellID` and nests the output;
+            // current opencode names it `callID`, keeps the output as text and
+            // marks the end only with `time.completed`.
+            let completed = time?["completed"]?.numberValue
+            return shellMessage(
+                messageID: id, sessionID: sessionID,
+                shellID: (object["shellID"] ?? object["callID"])?.stringValue ?? "",
+                command: object["command"]?.stringValue ?? "",
+                status: object["status"]?.stringValue ?? (completed == nil ? "running" : "exited"), exit: object["exit"],
+                output: object["output"]?.objectValue ?? object["output"].map { ["output": $0] },
+                created: created, completed: completed)
         default:
             let errorObject = object["error"]?.objectValue
             let text = [object["description"]?.stringValue, object["command"]?.stringValue,
@@ -192,6 +237,61 @@ enum OpenCodeV2Normalization {
                 parts: [textPart(messageID: id, sessionID: sessionID, kind: "text", ordinal: 0,
                     text: label + status + (text.isEmpty ? "" : "\n\n" + text))])
         }
+    }
+
+    /// Synthetic parts carrying a settled v2 step's accounting and changed
+    /// files, in the v1 step-finish and patch shapes. The snapshot projection
+    /// and step.ended both produce them, under the same IDs.
+    static func stepParts(
+        messageID: String, sessionID: String, finish: String?, cost: Double?,
+        tokens: OpenCodeJSONValue?, files: OpenCodeJSONValue?
+    ) -> [OpenCodePart] {
+        var parts: [OpenCodePart] = []
+        let paths = files?.arrayValue?.compactMap(\.stringValue) ?? []
+        if let usage = OpenCodeTokenUsage(tokens) {
+            var part = OpenCodePart(
+                id: "\(messageID):step-finish", sessionID: sessionID, messageID: messageID, type: "step-finish",
+                text: nil, mime: nil, filename: nil, url: nil, callID: nil, tool: nil, state: nil, files: nil,
+                description: nil, agent: nil)
+            part.reason = finish; part.cost = cost; part.tokens = usage
+            parts.append(part)
+        }
+        if !paths.isEmpty {
+            parts.append(OpenCodePart(
+                id: "\(messageID):patch", sessionID: sessionID, messageID: messageID, type: "patch", text: nil,
+                mime: nil, filename: nil, url: nil, callID: nil, tool: nil, state: nil, files: paths,
+                description: nil, agent: nil))
+        }
+        return parts
+    }
+
+    static func isStepPart(_ part: OpenCodePart) -> Bool {
+        part.id == "\(part.messageID):step-finish" || part.id == "\(part.messageID):patch"
+    }
+
+    /// A user-run shell command (`Session.Message.Shell`). It is neither a
+    /// prompt nor an assistant turn, so it never counts as an unanswered user
+    /// message; one `shell` part carries the command, status, exit and output.
+    static func shellMessage(
+        messageID: String, sessionID: String, shellID: String, command: String, status: String,
+        exit: OpenCodeJSONValue?, output: [String: OpenCodeJSONValue]?, created: Double, completed: Double?
+    ) -> OpenCodeMessageEnvelope {
+        let truncated: Bool? = if case .bool(let value)? = output?["truncated"] { value } else { nil }
+        let metadata = OpenCodeToolMetadata(exit: exit?.numberValue, truncated: truncated).fields
+        let state = OpenCodeToolState(
+            status: status, input: ["command": .string(command)], raw: nil, title: nil,
+            output: output?["output"]?.stringValue, error: nil,
+            time: OpenCodeToolTime(start: created, end: completed), metadata: metadata)
+        let part = OpenCodePart(
+            id: "\(messageID):shell", sessionID: sessionID, messageID: messageID, type: "shell",
+            text: nil, mime: nil, filename: nil, url: nil, callID: shellID, tool: "shell",
+            state: state, files: nil, description: nil, agent: nil)
+        return OpenCodeMessageEnvelope(
+            info: OpenCodeMessageInfo(
+                id: messageID, sessionID: sessionID, role: "system",
+                time: OpenCodeMessageTime(created: created, completed: completed),
+                agent: nil, modelID: nil, providerID: nil, finish: nil, error: nil),
+            parts: [part])
     }
 
     static func toolState(
@@ -225,17 +325,21 @@ enum OpenCodeV2Normalization {
                 title: nil,
                 output: toolOutputText(state["content"]),
                 error: state["error"]?.objectValue?["message"]?.stringValue,
-                time: toolTime
+                time: toolTime,
+                metadata: OpenCodeToolState.retainedMetadata(state["structured"]?.objectValue)
             )
         default:
+            // Current servers project a pending tool's partial input as a
+            // string, and a running tool's latest progress checkpoint as content.
             return OpenCodeToolState(
                 status: status,
                 input: state["input"]?.objectValue,
-                raw: nil,
+                raw: state["input"]?.stringValue,
                 title: nil,
-                output: nil,
+                output: toolOutputText(state["content"]),
                 error: nil,
-                time: toolTime
+                time: toolTime,
+                metadata: OpenCodeToolState.retainedMetadata(state["structured"]?.objectValue)
             )
         }
     }

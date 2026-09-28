@@ -38,7 +38,7 @@ final class OpenCodeWorkspaceStore: ObservableObject {
         guard summary.state != .unsupported else {
             projects = []
             errorMessage = summary.detail
-                ?? "This OpenCode server version is not supported."
+                ?? String(localized: "This OpenCode server version is not supported.")
             return
         }
         do {

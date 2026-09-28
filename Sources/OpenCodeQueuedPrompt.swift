@@ -1,6 +1,6 @@
 import Foundation
 
-struct OpenCodeQueuedPrompt: Identifiable, Equatable, Sendable {
+struct OpenCodeQueuedPrompt: Identifiable, Equatable, Codable, Sendable {
     let id: UUID
     let text: String
     let model: OpenCodeModelOption?

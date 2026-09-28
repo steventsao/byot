@@ -214,6 +214,7 @@ struct OpenCodeRemoteFileReader: View {
     let add: (OpenCodePromptFileReference) -> Void
     @State private var firstLine: Int?
     @State private var lastLine: Int?
+    @State private var highlighted: OpenCodeHighlightedFile?
 
     init(files: OpenCodeRemoteFileStore, path: String, existingSelection: OpenCodeFileLineRange? = nil,
          add: @escaping (OpenCodePromptFileReference) -> Void) {
@@ -238,6 +239,22 @@ struct OpenCodeRemoteFileReader: View {
             if files.capabilities == nil { await files.loadCapabilities() }
             await files.read(path: path)
         }
+        .task(id: files.content) { await highlight(files.content) }
+    }
+
+    /// Colors the file off the main actor; long files would otherwise stall
+    /// the sheet's presentation.
+    private func highlight(_ content: OpenCodeRemoteFileContent?) async {
+        guard let content, let text = content.normalizedText else {
+            highlighted = nil
+            return
+        }
+        let language = content.syntaxLanguage
+        let lines = await Task.detached(priority: .userInitiated) {
+            BYOTSyntaxHighlighter.lines(text, language: language)
+        }.value
+        guard !Task.isCancelled else { return }
+        highlighted = OpenCodeHighlightedFile(content: content, language: language, lines: lines)
     }
 
     @ViewBuilder private var previewContent: some View {
@@ -247,15 +264,17 @@ struct OpenCodeRemoteFileReader: View {
                 description: { Text(error) }
                 actions: { Button("Retry") { Task { await files.read(path: path) } } }
         } else if let content = files.content, content.path == path {
-            if content.text != nil { textPreview(content) }
-            else {
+            if content.text != nil {
+                if let highlighted, highlighted.content == content { textPreview(highlighted) }
+                else { ProgressView("Reading file").frame(maxHeight: .infinity) }
+            } else {
                 ContentUnavailableView("Binary file", systemImage: "doc", description:
                     Text("\(content.mimeType) · \(ByteCountFormatter.string(fromByteCount: Int64(content.byteCount), countStyle: .file))"))
             }
         }
     }
 
-    private func textPreview(_ content: OpenCodeRemoteFileContent) -> some View {
+    private func textPreview(_ file: OpenCodeHighlightedFile) -> some View {
         VStack(spacing: 0) {
             Text(files.capabilities?.lineSelection == true
                  ? "Tap a line, then another line to select a range."
@@ -263,8 +282,8 @@ struct OpenCodeRemoteFileReader: View {
                 .font(.cleanCaption).foregroundStyle(.secondary).padding(10)
             ScrollView([.horizontal, .vertical]) {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(content.lines.enumerated()), id: \.offset) { index, line in
-                        lineRow(number: index + 1, text: line)
+                    ForEach(Array(file.lines.enumerated()), id: \.offset) { index, line in
+                        lineRow(number: index + 1, line: line)
                     }
                 }
             }
@@ -272,13 +291,18 @@ struct OpenCodeRemoteFileReader: View {
         }
     }
 
-    private func lineRow(number: Int, text: String) -> some View {
-        Button { select(line: number) } label: {
+    private func lineRow(number: Int, line: BYOTSyntaxLine) -> some View {
+        let text = line.text
+        return Button { select(line: number) } label: {
             HStack(alignment: .top, spacing: 12) {
                 if files.capabilities?.lineSelection == true {
                     Text("\(number)").foregroundStyle(.secondary).frame(minWidth: 40, alignment: .trailing)
                 }
-                Text(text.isEmpty ? " " : text).foregroundStyle(.primary)
+                Group {
+                    if line.segments.isEmpty { Text(" ") }
+                    else { Text(BYOTSyntaxRenderer.attributedString(line)) }
+                }
+                .foregroundStyle(.primary)
             }
             .font(.system(.footnote, design: .monospaced))
             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -288,7 +312,7 @@ struct OpenCodeRemoteFileReader: View {
         }
         .buttonStyle(.plain)
         .disabled(files.capabilities?.lineSelection != true)
-        .accessibilityLabel(files.capabilities?.lineSelection == true ? "Line \(number): \(text)" : text)
+        .accessibilityLabel(files.capabilities?.lineSelection == true ? String(localized: "Line \(String(number)): \(text)") : text)
         .accessibilityIdentifier("remote-file-line-\(number)")
         .accessibilityAddTraits(isSelected(number) ? [.isSelected] : [])
     }
@@ -320,4 +344,12 @@ struct OpenCodeRemoteFileReader: View {
         guard files.capabilities?.lineSelection == true, let selection else { return false }
         return line >= selection.startLine && line <= selection.endLine
     }
+}
+
+/// A file preview with its syntax color computed, tied to the exact content
+/// it came from so a newer read never shows stale lines.
+struct OpenCodeHighlightedFile: Equatable, Sendable {
+    let content: OpenCodeRemoteFileContent
+    let language: BYOTSyntaxLanguage?
+    let lines: [BYOTSyntaxLine]
 }

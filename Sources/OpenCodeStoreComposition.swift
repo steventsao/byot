@@ -8,7 +8,10 @@ extension OpenCodeSessionStore {
         self.init(
             service: client, serverID: client.profile.id, session: session, directory: directory,
             defaults: defaults,
+            offlineCache: client.offlineCache,
             remoteFiles: OpenCodeRemoteFileStore(service: OpenCodeRemoteFileService(
-                client: client, session: session, directory: directory)))
+                client: client, session: session, directory: directory)),
+            durableQueue: BYOTDurableQueue(profile: client.profile,
+                route: BYOTPushRoute(serverID: client.profile.id, sessionID: session.id, directory: directory, workspace: session.workspaceID), defaults: defaults))
     }
 }

@@ -10,10 +10,16 @@ struct OpenCodeSessionComposerView: View {
     private let restoredMessage: OpenCodeMessageEnvelope?
     private let onRestoreConsumed: (() -> Void)?
     private let screenshotAttachment: OpenCodePromptAttachment?
+    private let serverName: String?
+    private let keyboardCommandsEnabled: Bool
     @State private var text = ""
+    @State private var isShellMode = false
+    @State private var didLoadDraft = false
+    @State private var draftErrorMessage: String?
     @State private var remoteReferences: [OpenCodePromptFileReference] = []
     @State private var isShowingRemoteFiles = false
     @State private var isShowingAgentPicker = false
+    @State private var agentCycleCount = 0
     @State private var attachments: [OpenCodePromptAttachment] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isShowingPhotoPicker = false
@@ -23,31 +29,63 @@ struct OpenCodeSessionComposerView: View {
     @State private var isShowingModelPicker = false
     @State private var previewAttachment: OpenCodePromptAttachment?
     @State private var didRequestInitialFocus = false
+    @StateObject private var dictation = OpenCodeDictationController()
+    @State private var isOnScreen = false
+    @State private var keyboardRegistration = UUID()
+    @Environment(\.openCodeKeyboardRouter) private var keyboardRouter
     @FocusState private var isFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
         store: OpenCodeSessionStore,
         startsFocused: Bool = false,
         screenshotAttachment: OpenCodePromptAttachment? = nil,
+        serverName: String? = nil,
         onNewSession: (() -> Void)? = nil,
         sessionActions: [OpenCodeComposerAction] = [],
         restoredMessage: OpenCodeMessageEnvelope? = nil,
-        onRestoreConsumed: (() -> Void)? = nil
+        onRestoreConsumed: (() -> Void)? = nil,
+        keyboardCommandsEnabled: Bool = true
     ) {
         self.store = store
         self.startsFocused = startsFocused
         self.screenshotAttachment = screenshotAttachment
+        self.serverName = serverName
         self.onNewSession = onNewSession
         self.sessionActions = sessionActions
         self.restoredMessage = restoredMessage
         self.onRestoreConsumed = onRestoreConsumed
+        self.keyboardCommandsEnabled = keyboardCommandsEnabled
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            slashSuggestions
-            if let files = store.remoteFiles {
+            if let draftErrorMessage {
+                Text(draftErrorMessage)
+                    .font(.cleanCaption)
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("composer-draft-error")
+            }
+            if isImportingAttachment {
+                Text("Adding attachments…")
+                    .font(.cleanCaption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("attachment-import-progress")
+            }
+            if let notice = dictation.notice, !inShellMode {
+                Text(notice)
+                    .font(.cleanCaption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 8)
+                    .accessibilityIdentifier("opencode-dictation-notice")
+            }
+            if inShellMode { shellModeHeader }
+            else { slashSuggestions }
+            if !inShellMode, let files = store.remoteFiles {
                 OpenCodeRemoteContextView(text: $text, references: $remoteReferences, files: files,
                                           showingPicker: $isShowingRemoteFiles)
             }
@@ -68,28 +106,74 @@ struct OpenCodeSessionComposerView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel("Attachments")
             }
+            if dictation.isActive, !inShellMode {
+                OpenCodeDictationStatusView(dictation: dictation) { dictation.finish() }
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+            }
 
             HStack(alignment: .bottom, spacing: 4) {
                 if !isExpanded { attachmentButton }
-                TextField("Message", text: $text, axis: .vertical)
+                TextField(inShellMode ? "Shell command" : "Message", text: $text, axis: .vertical)
                     .focused($isFocused)
+                    .font(inShellMode ? .cleanMono : nil)
                     .tint(BYOTBrand.interactionTint)
                     .lineLimit(1...(dynamicTypeSize.isAccessibilitySize ? 2 : 6))
                     .padding(.horizontal, 8)
                     .padding(.top, isExpanded ? 6 : 0)
                     .frame(minHeight: isExpanded ? 0 : 44)
+                    // Commands are typed exactly; UIKit reads these traits only
+                    // when a field gains focus, so each mode gets its own field.
+                    .textInputAutocapitalization(inShellMode ? .never : nil)
+                    .autocorrectionDisabled(inShellMode)
+                    .id(inShellMode)
                     .accessibilityIdentifier("opencode-composer-message")
-                    .submitLabel(.send)
+                    .accessibilityLabel(inShellMode ? "Shell command" : "Message")
+                    .submitLabel(inShellMode ? .go : .send)
                     .onSubmit(send)
+                    .onKeyPress(.escape) {
+                        guard inShellMode else { return .ignored }
+                        setShellMode(false, refocus: true)
+                        return .handled
+                    }
+                    // The message field may take Return for itself before the
+                    // ⌘↩ shortcut sees it. Sending twice is harmless: the
+                    // first send empties the draft.
+                    .onKeyPress(.return, phases: .down) { press in
+                        guard press.modifiers.contains(.command) else { return .ignored }
+                        keyboardCommands?.send?()
+                        return .handled
+                    }
                 if !isExpanded {
+                    if showsDictation { dictationButton }
                     sessionProgress
                     submitButton
                 }
+            }
+            .alert(dictation.blocked?.title ?? "", isPresented: Binding(
+                get: { dictation.blocked != nil },
+                set: { if !$0 { dictation.blocked = nil } }
+            ), presenting: dictation.blocked) { block in
+                if block.opensSettings {
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                    }
+                    Button("Not Now", role: .cancel) {}
+                } else {
+                    Button("OK", role: .cancel) {}
+                }
+            } message: { block in
+                Text(block.message)
             }
 
             if isExpanded { controlRow }
         }
         .animation(.smooth(duration: BYOTBrand.Motion.composerResize), value: isExpanded)
+        .animation(reduceMotion ? nil : .smooth(duration: BYOTBrand.Motion.quick), value: dictation.isActive)
+        .sensoryFeedback(trigger: dictation.phase) { old, new in
+            if new == .listening { return .start }
+            if old != .preparing, new == .idle { return .stop }
+            return nil
+        }
         .padding(10)
         .background(BYOTBrand.controlSurface, in: RoundedRectangle(cornerRadius: 26))
         .overlay {
@@ -100,6 +184,49 @@ struct OpenCodeSessionComposerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(BYOTBrand.canvas)
+        .onAppear {
+            loadDraft()
+            isOnScreen = true
+        }
+        .onChange(of: text) { old, new in
+            if !inShellMode, store.supportsShell, attachments.isEmpty, remoteReferences.isEmpty,
+               OpenCodeShellInput.entersShellMode(from: old, to: new) {
+                text = ""
+                setShellMode(true, refocus: true)
+            }
+            dictation.noteEdit(text)
+            saveDraft()
+        }
+        // The microphone never stays open behind another app; the words so far remain.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { dictation.cancel() }
+        }
+        .onDisappear {
+            dictation.cancel()
+            isOnScreen = false
+            keyboardRouter?.update(keyboardRegistration, nil)
+        }
+        .onChange(of: keyboardCommands?.state, initial: true) { _, _ in
+            keyboardRouter?.update(keyboardRegistration, keyboardCommands)
+        }
+        .onChange(of: isShellMode) { _, _ in saveDraft() }
+        // A shell draft on a server without the operation becomes a message
+        // draft once that is known, rather than a composer that can't send.
+        .onChange(of: isShellUnsupported) { _, unsupported in
+            if unsupported { isShellMode = false }
+        }
+        .onChange(of: store.restoredShellCommand) { _, command in
+            guard let command else { return }
+            // Never overwrite a message typed while the command was running;
+            // the failed run's card still shows the command.
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, attachments.isEmpty, remoteReferences.isEmpty {
+                text = command
+                setShellMode(true, refocus: false)
+            }
+            store.consumeRestoredShellCommand()
+        }
+        .onChange(of: remoteReferences) { _, _ in saveDraft() }
+        .onChange(of: attachments) { _, _ in saveDraftAttachments() }
         .task {
             guard startsFocused, !didRequestInitialFocus else { return }
             didRequestInitialFocus = true
@@ -154,17 +281,61 @@ struct OpenCodeSessionComposerView: View {
                 Button("OK", role: .cancel) { attachmentErrorMessage = nil }
             },
             message: {
-                Text(attachmentErrorMessage ?? "The attachment couldn’t be read.")
+                Text(attachmentErrorMessage ?? String(localized: "The attachment couldn’t be read."))
             }
         )
     }
 
+    private var draftStore: OpenCodeComposerDraftStore {
+        OpenCodeComposerDraftStore(serverID: store.serverID, sessionID: store.session.id,
+            directory: store.directory, workspace: store.session.workspaceID)
+    }
+
+    private func loadDraft() {
+        guard !didLoadDraft else { return }
+        do {
+            let (draft, savedAttachments) = try draftStore.load()
+            text = draft.text
+            remoteReferences = draft.references
+            attachments = savedAttachments
+            isShellMode = draft.isShellMode == true && !isShellUnsupported
+        } catch {
+            draftErrorMessage = String(localized: "Couldn’t restore this draft from this iPhone.")
+        }
+        didLoadDraft = true
+    }
+
+    private func saveDraft() {
+        guard didLoadDraft else { return }
+        do {
+            try draftStore.save(OpenCodeComposerDraft(text: text, references: remoteReferences,
+                                                      isShellMode: isShellMode ? true : nil))
+        } catch {
+            draftErrorMessage = String(localized: "Couldn’t save this draft. Keep this session open until you send it.")
+        }
+    }
+
+    private func saveDraftAttachments() {
+        guard didLoadDraft else { return }
+        do {
+            try draftStore.saveAttachments(attachments)
+        } catch {
+            draftErrorMessage = String(localized: "Couldn’t save draft attachments. Keep this session open until you send them.")
+        }
+    }
+
     private var isExpanded: Bool {
-        Self.showsExpandedControls(
+        // Dictation keeps the full row so the microphone doesn't move while in use.
+        inShellMode || (dictation.isActive && showsDictation) || Self.showsExpandedControls(
             isFocused: isFocused, text: text,
             hasAttachments: !attachments.isEmpty || !remoteReferences.isEmpty
         )
     }
+
+    /// Shell mode only shows once the server's shell operation is confirmed.
+    private var inShellMode: Bool { isShellMode && store.supportsShell }
+
+    private var isShellUnsupported: Bool { store.isShellSupportKnown && !store.supportsShell }
 
     // The composer only carries its knobs while it is in use. Sending clears the
     // draft and releases focus, so the container animates back to the single
@@ -182,30 +353,51 @@ struct OpenCodeSessionComposerView: View {
     // because the labels cannot share a line at those widths.
     @ViewBuilder
     private var controlRow: some View {
-        if dynamicTypeSize.isAccessibilitySize {
+        if inShellMode {
+            // Model, agent and effort don't apply to a command the server runs directly.
+            HStack(spacing: 4) {
+                shellToggle
+                Spacer(minLength: 8)
+                sessionProgress
+                submitButton
+            }
+        } else if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 8) {
-                if !store.composerCatalog.agents.isEmpty { agentButton }
-                if !store.availableVariants.isEmpty { variantMenu }
-                modelButton
+                // Stacked knobs and the slash list don't both fit above the
+                // keyboard at these sizes and were drawn over each other; the
+                // knobs come back once a command is picked.
+                if !isChoosingSlashCommand {
+                    if !store.composerCatalog.agents.isEmpty { agentToggle }
+                    if !store.availableVariants.isEmpty { variantMenu }
+                    modelButton
+                }
                 HStack(spacing: 8) {
                     attachmentButton
+                    if store.supportsShell { shellToggle }
                     Spacer(minLength: 8)
+                    if showsDictation { dictationButton }
                     sessionProgress
                     submitButton
                 }
             }
         } else {
             HStack(spacing: 4) {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal) {
                     HStack(spacing: 4) {
                         attachmentButton
+                        if store.supportsShell { shellToggle }
                         modelButton
-                        if !store.composerCatalog.agents.isEmpty { agentButton }
+                        if !store.composerCatalog.agents.isEmpty { agentToggle }
                         if !store.availableVariants.isEmpty { variantMenu }
                     }
                 }
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                // A long model name pushes the last knobs past the edge; flash the
+                // indicator when the row opens so they read as a scroll away.
+                .scrollIndicators(.automatic, axes: .horizontal)
+                .scrollIndicatorsFlash(onAppear: true)
                 .fixedSize(horizontal: false, vertical: true)
+                if showsDictation { dictationButton }
                 sessionProgress
                 submitButton
             }
@@ -213,14 +405,119 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private var hasSendableContent: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !attachments.isEmpty || !remoteReferences.isEmpty
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (!inShellMode && hasAttachedContext)
+    }
+
+    private var hasAttachedContext: Bool { !attachments.isEmpty || !remoteReferences.isEmpty }
+
+    /// The explicit entry point beside `!`: the button reads as on while the
+    /// composer runs commands instead of sending messages.
+    private var shellToggle: some View {
+        Button { setShellMode(!inShellMode, refocus: isFocused) } label: {
+            Image(systemName: "terminal")
+                .font(.cleanControlIcon)
+                .frame(width: 44, height: 44)
+                .background(inShellMode ? BYOTBrand.selectedSurface : .clear, in: Circle())
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .disabled(!inShellMode && hasAttachedContext)
+        .accessibilityLabel("Shell mode")
+        .accessibilityValue(inShellMode ? "On" : "Off")
+        .accessibilityHint(!inShellMode && hasAttachedContext
+            ? "Remove attachments to run a shell command."
+            : inShellMode ? "Returns to messages." : "Runs commands on the server instead of messaging the agent.")
+        .accessibilityIdentifier("opencode-shell-toggle")
+    }
+
+    /// Names where a command will run, since it acts on that machine directly.
+    private var shellModeHeader: some View {
+        VStack(alignment: .leading, spacing: BYOTBrand.Space.xs) {
+            HStack(alignment: .center, spacing: BYOTBrand.Space.sm) {
+                Label("Shell", systemImage: "terminal")
+                    .font(.cleanCaptionBold)
+                if !dynamicTypeSize.isAccessibilitySize { shellLocationText }
+                Spacer(minLength: 0)
+                Button { setShellMode(false, refocus: isFocused) } label: {
+                    Image(systemName: "xmark")
+                        .font(.cleanCaptionBold)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Exit shell mode")
+                .accessibilityIdentifier("opencode-shell-exit")
+            }
+            .accessibilityElement(children: .contain)
+            if dynamicTypeSize.isAccessibilitySize { shellLocationText }
+            if let reason = store.shellUnavailableReason {
+                Text(reason)
+                    .font(.cleanCaption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("opencode-shell-unavailable")
+            }
+        }
+        .padding(.leading, 8)
+        .accessibilityIdentifier("opencode-shell-header")
+    }
+
+    private var shellLocationText: some View {
+        Text(shellLocation)
+            .font(.cleanCaption)
+            .foregroundStyle(.secondary)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+            .truncationMode(.middle)
+            // With the keyboard up the composer is squeezed; wrap rather than cut mid-word.
+            .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
+    }
+
+    private var shellLocation: String {
+        let project = URL(fileURLWithPath: store.directory).lastPathComponent
+        guard let serverName = serverName?.trimmedNonEmpty else { return String(localized: "Runs in \(project)") }
+        return String(localized: "Runs in \(project) on \(serverName)")
+    }
+
+    /// `refocus` keeps the keyboard up while the field is rebuilt for its new
+    /// keyboard traits. Focus writes land asynchronously, so callers say it.
+    private func setShellMode(_ enabled: Bool, refocus: Bool) {
+        guard enabled != isShellMode else { return }
+        // Commands are typed exactly, so shell mode has no dictation.
+        if enabled { dictation.cancel() }
+        isShellMode = enabled
+        if enabled {
+            AccessibilityNotification.Announcement(String(localized: "Shell mode. Commands run on the server.")).post()
+        }
+        guard refocus else { return }
+        Task { @MainActor in
+            await Task.yield()
+            isFocused = true
+        }
+    }
+
+    /// Dictation writes messages; shell commands are typed exactly.
+    private var showsDictation: Bool { dictation.isSupported && !inShellMode }
+
+    private var dictationButton: some View {
+        OpenCodeDictationButton(dictation: dictation) {
+            dictation.toggle(text: $text, vocabulary: dictationVocabulary)
+        }
+    }
+
+    /// Names the recognizer is unlikely to know on its own.
+    private var dictationVocabulary: [String] {
+        var terms = ["OpenCode", URL(fileURLWithPath: store.directory).lastPathComponent]
+        terms += store.composerCatalog.agents.map(\.displayName)
+        if let model = store.selectedModel?.modelName { terms.append(model) }
+        return terms.filter { !$0.isEmpty }
     }
 
     private var modelButton: some View {
         Button(action: showModelPicker) {
             HStack(spacing: 6) {
-                Text(store.selectedModel?.modelName ?? "Automatic")
+                Text(store.selectedModel?.modelName ?? String(localized: "Automatic"))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     .truncationMode(.tail)
                 Image(systemName: "chevron.down")
@@ -295,6 +592,9 @@ struct OpenCodeSessionComposerView: View {
         if !store.canSubmitPrompt {
             ProgressView()
                 .controlSize(.small)
+                // The field row aligns to the bottom; center the spinner on the
+                // 44pt buttons beside it instead of dropping it to the baseline.
+                .frame(height: 44)
                 .accessibilityLabel("Checking session status")
         }
     }
@@ -304,7 +604,7 @@ struct OpenCodeSessionComposerView: View {
             if showsStopControl { stopTurn() }
             else { send() }
         } label: {
-            Image(systemName: showsStopControl ? "stop.fill" : "arrow.up")
+            Image(systemName: showsStopControl ? "stop.fill" : (inShellMode ? "return" : "arrow.up"))
                 .font(.cleanControlIcon)
                 .foregroundStyle(BYOTBrand.primaryActionInk)
                 .frame(width: 44, height: 44)
@@ -312,9 +612,11 @@ struct OpenCodeSessionComposerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(showsStopControl ? "Stop the current turn" :
-            (store.willQueueNextPrompt ? "Queue message" : "Send message"))
+            (inShellMode ? "Run command" : (store.willQueueNextPrompt ? "Queue message" : "Send message")))
         .accessibilityIdentifier(showsStopControl ? "opencode-composer-stop" : "opencode-composer-send")
-        .disabled(!showsStopControl && (!hasSendableContent || !store.canSubmitPrompt))
+        // A shell draft waiting on the server's features must not send as a message.
+        .disabled(!showsStopControl && (!hasSendableContent || isImportingAttachment || isShellMode != inShellMode
+            || (inShellMode ? store.shellUnavailableReason != nil : !store.canSubmitPrompt)))
     }
 
     private func attachmentChip(_ attachment: OpenCodePromptAttachment) -> some View {
@@ -375,6 +677,43 @@ struct OpenCodeSessionComposerView: View {
         canStop && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasAttachments
     }
 
+    /// ⌘↩ and ⌘. for the conversation on screen. A conversation covered by
+    /// another offers neither; one covered by its own sheet or alert also
+    /// holds back the root's shortcuts.
+    private var keyboardCommands: OpenCodeComposerCommandActions? {
+        guard isOnScreen else { return nil }
+        guard keyboardCommandsEnabled, !isPresentingSheet else { return OpenCodeComposerCommandActions(isCovered: true) }
+        let canSend = Self.sendsFromKeyboard(
+            text: text, hasAttachments: !attachments.isEmpty || !remoteReferences.isEmpty,
+            canSubmit: store.canSubmitPrompt, isImporting: isImportingAttachment)
+        var actions = OpenCodeComposerCommandActions()
+        if canSend { actions.send = { sendFromKeyboard() } }
+        if store.canStopTurn { actions.stop = { stopTurn() } }
+        if store.willQueueNextPrompt { actions.sendTitle = String(localized: "Queue Message") }
+        return actions
+    }
+
+    private var isPresentingSheet: Bool {
+        previewAttachment != nil || isShowingModelPicker || isShowingAgentPicker || isShowingRemoteFiles
+            || isShowingPhotoPicker || isShowingFileImporter || attachmentErrorMessage != nil
+    }
+
+    // ⌘↩ sends whenever the send button would: a draft with text,
+    // attachments or server files, queued while a turn runs.
+    nonisolated static func sendsFromKeyboard(text: String, hasAttachments: Bool,
+                                              canSubmit: Bool, isImporting: Bool) -> Bool {
+        canSubmit && !isImporting
+            && (hasAttachments || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    /// A hardware keyboard stays in the message field for the next prompt;
+    /// there is no on-screen keyboard to put away.
+    private func sendFromKeyboard() {
+        let wasFocused = isFocused
+        send()
+        if wasFocused { isFocused = true }
+    }
+
     private func showModelPicker() {
         isFocused = false
         isShowingModelPicker = true
@@ -385,6 +724,17 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private func send() {
+        guard !isImportingAttachment else { return }
+        // What's been heard so far is what gets sent; nothing arrives afterwards.
+        dictation.cancel()
+        // A command must never fall through to the model as a prompt.
+        if isShellMode {
+            guard inShellMode, store.runShell(text) else { return }
+            text = ""
+            setShellMode(false, refocus: false)
+            isFocused = false
+            return
+        }
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if attachments.isEmpty, remoteReferences.isEmpty,
            !store.composerCatalog.commands.contains(where: { "/" + $0.name == prompt }),
@@ -392,34 +742,89 @@ struct OpenCodeSessionComposerView: View {
         guard (!prompt.isEmpty || !attachments.isEmpty || !remoteReferences.isEmpty), store.canSubmitPrompt else { return }
         let promptAttachments = attachments
         let promptReferences = remoteReferences
-        text = ""
-        attachments = []
-        remoteReferences = []
-        if store.send(prompt, attachments: promptAttachments, remoteReferences: promptReferences) == false,
-           text.isEmpty, attachments.isEmpty, remoteReferences.isEmpty {
-            text = prompt
-            attachments = promptAttachments
-            remoteReferences = promptReferences
-        } else {
+        if store.send(prompt, attachments: promptAttachments, remoteReferences: promptReferences) {
+            text = ""
+            attachments = []
+            remoteReferences = []
+            saveDraft()
+            saveDraftAttachments()
             isFocused = false
         }
     }
 
-    private var agentButton: some View {
-        Button {
-            isFocused = false
-            isShowingAgentPicker = true
-        } label: {
-            Label(store.selectedAgentName, systemImage: "person.crop.circle")
-                .font(.cleanCaptionBold)
-                .lineLimit(1)
-                .padding(.horizontal, 8)
-                .frame(minHeight: 44)
+    // The TUI's Tab: one tap moves to the next primary agent (build <-> plan
+    // on a stock server) and the chip always names the agent this session will
+    // run. Touch and hold lists every agent; the sheet adds descriptions and
+    // the inherit-the-session choice.
+    @ViewBuilder
+    private var agentToggle: some View {
+        Group {
+            if store.composerCatalog.agents.count > 1 {
+                Menu { agentMenuContent } label: { agentToggleLabel } primaryAction: { cycleAgent(.forward) }
+            } else {
+                Menu { agentMenuContent } label: { agentToggleLabel }
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Choose agent")
-        .accessibilityValue(store.selectedAgentName)
+        .foregroundStyle(.primary)
+        // Only a tap on this device clicks; server-side switches stay silent.
+        .sensoryFeedback(.selection, trigger: agentCycleCount)
+        .accessibilityLabel("Agent")
+        .accessibilityValue(store.currentAgentName)
+        // VoiceOver reaches the full list through the "Choose agent" action,
+        // not touch and hold, so the hint names only the tap's result.
+        .accessibilityHint(store.nextAgentInCycle.map { "Switches to \($0.displayName)." }
+            ?? "Shows the available agents.")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: cycleAgent(.forward)
+            case .decrement: cycleAgent(.backward)
+            @unknown default: break
+            }
+        }
+        .accessibilityAction(named: "Choose agent") { showAgentPicker() }
         .accessibilityIdentifier("opencode-agent-picker")
+    }
+
+    private var agentToggleLabel: some View {
+        Label {
+            Text(store.currentAgentName)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                .contentTransition(reduceMotion ? .identity : .opacity)
+        } icon: {
+            Image(systemName: OpenCodeAgentOption.systemImage(for: store.currentAgentID))
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+        }
+        .font(.cleanCaptionBold)
+        .padding(.horizontal, 8)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .animation(reduceMotion ? nil : .smooth(duration: BYOTBrand.Motion.quick), value: store.currentAgentID)
+    }
+
+    @ViewBuilder
+    private var agentMenuContent: some View {
+        Picker("Agent", selection: Binding(
+            get: { store.currentAgentID ?? "" },
+            set: { store.selectAgent($0) }
+        )) {
+            ForEach(store.composerCatalog.agents) { agent in
+                Label(agent.displayName, systemImage: agent.systemImage).tag(agent.id)
+            }
+        }
+        .pickerStyle(.inline)
+        Divider()
+        Button("All Agents…", systemImage: "list.bullet") { showAgentPicker() }
+    }
+
+    private func cycleAgent(_ direction: OpenCodeAgentCycle.Direction) {
+        let previous = store.currentAgentID
+        store.cycleAgent(direction)
+        if store.currentAgentID != previous { agentCycleCount &+= 1 }
+    }
+
+    private func showAgentPicker() {
+        isFocused = false
+        isShowingAgentPicker = true
     }
 
     private var variantMenu: some View {
@@ -448,19 +853,23 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private var builtinActions: [OpenCodeComposerAction] {
-        var actions = [OpenCodeComposerAction(name: "model", title: "Choose model", unavailableReason: nil, run: showModelPicker)]
+        var actions = [OpenCodeComposerAction(name: "model", title: String(localized: "Choose model"), unavailableReason: nil, run: showModelPicker)]
         if let onNewSession {
-            actions.append(OpenCodeComposerAction(name: "new", title: "New session", unavailableReason: nil, run: onNewSession))
+            actions.append(OpenCodeComposerAction(name: "new", title: String(localized: "New session"), unavailableReason: nil, run: onNewSession))
         }
         return actions + sessionActions
+    }
+
+    /// A slash command is being picked: the draft is `/` plus a name, no arguments yet.
+    private var isChoosingSlashCommand: Bool {
+        !inShellMode && text.hasPrefix("/") && !text.dropFirst().contains(where: \.isWhitespace)
     }
 
     @ViewBuilder
     private var slashSuggestions: some View {
         if text.hasPrefix("/") {
             let token = String(text.dropFirst().prefix(while: { !$0.isWhitespace }))
-            let isChoosing = !text.dropFirst().contains(where: \.isWhitespace)
-            if isChoosing {
+            if isChoosingSlashCommand {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(builtinActions.filter { token.isEmpty || $0.name.localizedCaseInsensitiveContains(token) }, id: \.name) { action in
@@ -470,7 +879,7 @@ struct OpenCodeSessionComposerView: View {
                                 isFocused = false
                                 action.run()
                             } label: {
-                                commandRow(name: action.name, detail: action.unavailableReason ?? action.title, kind: "App action")
+                                commandRow(name: action.name, detail: action.unavailableReason ?? action.title, kind: String(localized: "App action"))
                             }
                             .buttonStyle(.plain)
                             .disabled(action.unavailableReason != nil)
@@ -481,8 +890,8 @@ struct OpenCodeSessionComposerView: View {
                                 text = "/\(command.name) "
                                 isFocused = true
                             } label: {
-                                commandRow(name: command.name, detail: command.description ?? "Add arguments, then send",
-                                           kind: command.kind == .command ? "Server command" : "Server skill")
+                                commandRow(name: command.name, detail: command.description ?? String(localized: "Add arguments, then send"),
+                                           kind: command.kind == .command ? String(localized: "Server command") : String(localized: "Server skill"))
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("opencode-command-\(command.id)")
@@ -495,10 +904,16 @@ struct OpenCodeSessionComposerView: View {
                         }
                     }
                 }
-                .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? 180 : 220)
+                .frame(maxHeight: dynamicTypeSize.isAccessibilitySize ? 150 : 220)
+                // Hold the list's height when the keyboard is up; at accessibility
+                // sizes it was squeezed to a single clipped row. 150 leaves the
+                // send row above the keyboard with a second command peeking in.
+                .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("opencode-slash-suggestions")
             } else if let invocation = OpenCodeCommandInvocation.parse(text, catalog: store.composerCatalog.commands) {
-                Text("/\(invocation.name) · \(invocation.kind == .command ? "Server command" : "Server skill") · Add arguments below")
+                Text(invocation.kind == .command
+                     ? "/\(invocation.name) · Server command · Add arguments below"
+                     : "/\(invocation.name) · Server skill · Add arguments below")
                     .font(.cleanCaption)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("opencode-command-arguments")
@@ -530,12 +945,22 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private func restore(_ message: OpenCodeMessageEnvelope) {
-        text = message.parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n\n")
+        dictation.cancel()
+        if let command = store.shellCommand(restoring: message) {
+            text = command
+            attachments = []
+            remoteReferences = []
+            isShellMode = true
+            isFocused = true
+            return
+        }
+        isShellMode = false
+        text = message.parts.filter(\.isAuthoredText).compactMap(\.text).joined(separator: "\n\n")
         attachments = message.parts.compactMap { part in
             guard part.type == "file", let url = part.url, url.hasPrefix("data:"),
                   let comma = url.firstIndex(of: ","), url[..<comma].hasSuffix(";base64"),
                   let data = Data(base64Encoded: String(url[url.index(after: comma)...])) else { return nil }
-            return OpenCodePromptAttachment(filename: part.filename ?? "Attachment",
+            return OpenCodePromptAttachment(filename: part.filename ?? String(localized: "Attachment"),
                                             mimeType: part.mime ?? "application/octet-stream", data: data)
         }
         remoteReferences = OpenCodePromptFileReference.restored(from: message, serverID: store.serverID,
@@ -560,7 +985,7 @@ struct OpenCodeSessionComposerView: View {
                 var imported: [OpenCodePromptAttachment] = []
                 for (index, item) in items.enumerated() {
                     guard let data = try await item.loadTransferable(type: Data.self) else {
-                        throw OpenCodeAttachmentImportError.unreadable("Photo \(index + 1)")
+                        throw OpenCodeAttachmentImportError.unreadable(String(localized: "Photo \(index + 1)"))
                     }
                     let type = item.supportedContentTypes.first(where: {
                         $0.preferredMIMEType != nil
@@ -568,11 +993,12 @@ struct OpenCodeSessionComposerView: View {
                     let fileExtension = type.preferredFilenameExtension ?? "jpg"
                     imported.append(
                         OpenCodePromptAttachment(
-                            filename: "Photo \(attachments.count + imported.count + 1).\(fileExtension)",
+                            filename: String(localized: "Photo \(attachments.count + imported.count + 1).\(fileExtension)"),
                             mimeType: type.preferredMIMEType ?? "image/jpeg",
                             data: data
                         )
                     )
+                    try OpenCodePromptAttachment.validate(attachments + imported)
                 }
                 try appendAttachments(imported)
             } catch {
@@ -590,9 +1016,13 @@ struct OpenCodeSessionComposerView: View {
             Task { @MainActor in
                 defer { isImportingAttachment = false }
                 do {
+                    guard urls.count + attachments.count <= OpenCodePromptAttachment.maximumCount else {
+                        throw OpenCodePromptAttachmentError.tooMany(maximum: OpenCodePromptAttachment.maximumCount)
+                    }
                     var imported: [OpenCodePromptAttachment] = []
                     for url in urls {
                         imported.append(try await Self.loadAttachment(from: url))
+                        try OpenCodePromptAttachment.validate(attachments + imported)
                     }
                     try appendAttachments(imported)
                 } catch {
@@ -641,7 +1071,7 @@ private enum OpenCodeAttachmentImportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unreadable(let filename):
-            "\(filename) couldn’t be read as a file."
+            String(localized: "\(filename) couldn’t be read as a file.")
         }
     }
 }

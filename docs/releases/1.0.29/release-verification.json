@@ -1,0 +1,17 @@
+{
+  "appID": "6782403920",
+  "version": "1.0.29",
+  "buildNumber": "20260921121630",
+  "buildID": "cb22a475-43e2-4306-af55-01265d45550a",
+  "processingState": "VALID",
+  "internalBuildState": "IN_BETA_TESTING",
+  "groups": [
+    {
+      "id": "a2c29c92-ddfd-4c22-9368-8563d9b756ea",
+      "name": "Internal Testers",
+      "isInternalGroup": true
+    }
+  ],
+  "notesVerified": true,
+  "sourceCommit": "95bc9463f9aee88def25d40ad72dcfc6596a4b39"
+}

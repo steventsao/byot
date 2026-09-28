@@ -12,6 +12,13 @@ export type Event = {
   route: string;
   thread: string;
   createdAt: number;
+  // Set by companions whose encrypted route names the pending request, so the
+  // app can answer it from the notification.
+  actionable?: boolean;
+};
+export const categories: Partial<Record<Kind, string>> = {
+  permission: 'BYOT_PERMISSION',
+  question: 'BYOT_QUESTION',
 };
 export const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,7 +37,9 @@ export function parseEvent(value: unknown, now = Date.now()): Event {
     typeof e.createdAt !== 'number' ||
     !Number.isFinite(e.createdAt) ||
     e.createdAt < now - 3600_000 ||
-    e.createdAt > now + 60_000
+    e.createdAt > now + 60_000 ||
+    (e.actionable !== undefined &&
+      (e.actionable !== true || !categories[e.kind as Kind]))
   ) {
     throw new Error('Invalid or expired event');
   }
@@ -40,6 +49,7 @@ export function parseEvent(value: unknown, now = Date.now()): Event {
     route: e.route,
     thread: e.thread,
     createdAt: e.createdAt,
+    ...(e.actionable === true ? { actionable: true } : {}),
   };
 }
 export function payload(subscriptionID: string, event: Event) {
@@ -63,11 +73,13 @@ export function payload(subscriptionID: string, event: Event) {
     ],
   };
   const [title, body] = copy[event.kind];
+  const category = event.actionable ? categories[event.kind] : undefined;
   return {
     aps: {
       alert: { title, body },
       sound: 'default',
       'thread-id': event.thread,
+      ...(category ? { category } : {}),
     },
     byot: { version: 1, subscriptionID, kind: event.kind, route: event.route },
   };

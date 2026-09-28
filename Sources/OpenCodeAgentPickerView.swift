@@ -12,8 +12,9 @@ struct OpenCodeAgentPickerView: View {
                         store.selectAgent(nil)
                         dismiss()
                     } label: {
-                        Label("Default agent", systemImage: store.selectedAgentID == nil ? "checkmark.circle.fill" : "circle")
+                        Label("Default agent", systemImage: store.explicitAgentID == nil ? "checkmark.circle.fill" : "circle")
                     }
+                    .accessibilityIdentifier("opencode-agent-default")
                     Text("Inherit this session’s agent or the server default.")
                         .font(.cleanCaption)
                         .foregroundStyle(.secondary)
@@ -25,9 +26,9 @@ struct OpenCodeAgentPickerView: View {
                             dismiss()
                         } label: {
                             HStack(alignment: .top) {
-                                Image(systemName: store.selectedAgentID == agent.id ? "checkmark.circle.fill" : "circle")
+                                Image(systemName: store.explicitAgentID == agent.id ? "checkmark.circle.fill" : "circle")
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(agent.name).font(.cleanBodySemibold)
+                                    Text(agent.displayName).font(.cleanBodySemibold)
                                     if let description = agent.description {
                                         Text(description).font(.cleanCaption).foregroundStyle(.secondary)
                                     }
@@ -35,6 +36,7 @@ struct OpenCodeAgentPickerView: View {
                             }
                         }
                         .accessibilityIdentifier("opencode-agent-\(agent.id)")
+                        .accessibilityAddTraits(store.explicitAgentID == agent.id ? .isSelected : [])
                     }
                 }
                 if let error = store.composerErrorMessage {

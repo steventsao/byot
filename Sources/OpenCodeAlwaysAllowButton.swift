@@ -4,11 +4,14 @@ struct OpenCodeAlwaysAllowButton: View {
     @State private var isConfirming = false
     let request: OpenCodePermissionRequest
     let isWorking: Bool
+    var fillsWidth = false
     let respond: () async -> Void
 
     var body: some View {
-        Button("Always allow", systemImage: "checkmark.shield") {
+        Button {
             isConfirming = true
+        } label: {
+            Label("Always allow", systemImage: "checkmark.shield").frame(maxWidth: fillsWidth ? .infinity : nil)
         }
         .buttonStyle(.borderedProminent)
         .foregroundStyle(BYOTBrand.accentInk)
@@ -30,6 +33,6 @@ struct OpenCodeAlwaysAllowButton: View {
 
     private var confirmationMessage: String {
         request.alwaysAllowConfirmationMessage
-            ?? "OpenCode did not provide a reusable permission scope."
+            ?? String(localized: "OpenCode did not provide a reusable permission scope.")
     }
 }

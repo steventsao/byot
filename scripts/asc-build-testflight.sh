@@ -23,7 +23,7 @@ run_asc() {
   fi
 }
 
-BYOT_VERSION="${BYOT_VERSION:-1.0.26}"
+BYOT_VERSION="${BYOT_VERSION:-1.0.31}"
 # 14-digit YYYYMMDDHHMMSS: monotonically increasing and always larger than the
 # 20260624152336 build that poisoned the sequence. A 12-digit %Y%m%d%H%M number is
 # numerically smaller than that one, so iOS/TestFlight treats such builds as
@@ -58,7 +58,6 @@ run_asc xcode version edit \
 archive_flags=(
   --xcodebuild-flag=-destination
   --xcodebuild-flag="$XCODE_DESTINATION"
-  --xcodebuild-flag=PRODUCT_BUNDLE_IDENTIFIER="$BYOT_BUNDLE_ID"
 )
 export_flags=()
 validate_args=()

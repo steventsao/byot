@@ -39,11 +39,11 @@ struct BYOTPushSettingsView: View {
                             } else { Text("Waiting for the notification companion to connect.").foregroundStyle(.secondary) }
                         }
                     } header: { Text("Alerts") } footer: {
-                        Text("Notifications use private, generic text. Your prompts, code, server password, and session titles are never included.")
+                        Text("Notifications use private, generic text. Your prompts, code, server password, and session titles are never included.\n\nTouch and hold an approval to allow it once or reject it, or reply to a question. You’ll unlock your iPhone first, and byot sends your response straight to your server. Nothing is ever approved automatically.")
                     }
                     if prefs.enabled {
                         Button("Send test notification", systemImage: "bell.badge") {
-                            perform { try await push.test(profile); message = "Test notification sent to Apple." }
+                            perform { try await push.test(profile); message = String(localized: "Test notification sent to Apple.") }
                         }.accessibilityIdentifier("push-test")
                     }
                 }
@@ -74,7 +74,7 @@ struct BYOTPushSettingsView: View {
                     }
                     if push.credentials[profile.id] != nil {
                         Button("Disconnect notifications", role: .destructive) {
-                            perform { try await push.remove(profile.id); pairing = nil; message = "Notification companion disconnected." }
+                            perform { try await push.remove(profile.id); pairing = nil; message = String(localized: "Notification companion disconnected.") }
                         }
                     }
                 }

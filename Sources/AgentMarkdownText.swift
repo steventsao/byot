@@ -2,15 +2,25 @@ import SwiftUI
 import UIKit
 
 /// One parsed block in an agent reply. The parser intentionally covers only the
-/// shapes agents actually emit (prose, headings, lists, quotes, fenced code)
-/// so rendering stays fast and deterministic.
+/// shapes agents actually emit (prose, headings, lists, quotes, fenced code,
+/// tables) so rendering stays fast and deterministic.
 enum AgentMarkdownBlock: Equatable {
     case paragraph(String)
     case heading(level: Int, text: String)
     case list(items: [String], ordered: Bool)
     case quote(String)
     case codeBlock(language: String?, code: String)
+    case table(AgentMarkdownTable)
     case divider
+}
+
+/// A GitHub-style pipe table. Rows are padded or cut to the header's width.
+struct AgentMarkdownTable: Equatable {
+    enum Alignment: Equatable { case leading, center, trailing }
+
+    let header: [String]
+    let alignments: [Alignment]
+    let rows: [[String]]
 }
 
 enum AgentMarkdownParser {
@@ -50,7 +60,10 @@ enum AgentMarkdownParser {
             flushQuote()
         }
 
-        for line in lines {
+        var index = 0
+        while index < lines.count {
+            let line = lines[index]
+            index += 1
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
             if codeLines != nil {
@@ -77,6 +90,24 @@ enum AgentMarkdownParser {
 
             if trimmed.isEmpty {
                 flushProse()
+                continue
+            }
+
+            // A header row followed by a `|---|---|` delimiter row starts a table;
+            // agents summarize with them often, and raw pipes are hard to read.
+            if index < lines.count,
+               let header = tableCells(trimmed),
+               let alignments = tableAlignments(lines[index].trimmingCharacters(in: .whitespaces)),
+               alignments.count == header.count {
+                flushProse()
+                index += 1
+                var rows: [[String]] = []
+                while index < lines.count,
+                      let cells = tableCells(lines[index].trimmingCharacters(in: .whitespaces)) {
+                    rows.append(Array((cells + Array(repeating: "", count: header.count)).prefix(header.count)))
+                    index += 1
+                }
+                blocks.append(.table(AgentMarkdownTable(header: header, alignments: alignments, rows: rows)))
                 continue
             }
 
@@ -134,6 +165,55 @@ enum AgentMarkdownParser {
         flushProse()
 
         return blocks
+    }
+
+    /// The cells of a pipe-table row, or nil when the line isn't one. Escaped
+    /// pipes (`\|`) and pipes inside inline code stay in their cell.
+    static func tableCells(_ line: String) -> [String]? {
+        guard line.contains("|") else { return nil }
+        var cells: [String] = []
+        var current = ""
+        var inCode = false
+        var escaped = false
+        for character in line {
+            if escaped {
+                current.append(character == "|" ? "|" : "\\\(character)")
+                escaped = false
+            } else if character == "\\" {
+                escaped = true
+            } else if character == "`" {
+                inCode.toggle()
+                current.append(character)
+            } else if character == "|", !inCode {
+                cells.append(current)
+                current = ""
+            } else {
+                current.append(character)
+            }
+        }
+        if escaped { current.append("\\") }
+        cells.append(current)
+        if line.hasPrefix("|") { cells.removeFirst() }
+        if line.hasSuffix("|"), !line.hasSuffix("\\|"), !cells.isEmpty { cells.removeLast() }
+        let trimmed = cells.map { $0.trimmingCharacters(in: .whitespaces) }
+        // A lone pipe in prose isn't a table row.
+        guard trimmed.count > 1 || line.hasPrefix("|") else { return nil }
+        return trimmed
+    }
+
+    private static func tableAlignments(_ line: String) -> [AgentMarkdownTable.Alignment]? {
+        guard let cells = tableCells(line), !cells.isEmpty else { return nil }
+        var alignments: [AgentMarkdownTable.Alignment] = []
+        for cell in cells {
+            let dashes = cell.trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+            guard !dashes.isEmpty, dashes.allSatisfy({ $0 == "-" }) else { return nil }
+            switch (cell.hasPrefix(":"), cell.hasSuffix(":")) {
+            case (true, true): alignments.append(.center)
+            case (false, true): alignments.append(.trailing)
+            default: alignments.append(.leading)
+            }
+        }
+        return alignments
     }
 
     private static func isDivider(_ line: String) -> Bool {
@@ -276,6 +356,9 @@ private struct AgentMarkdownBlockView: View {
         case .codeBlock(let language, let code):
             AgentCodeBlockView(language: language, code: code)
 
+        case .table(let table):
+            AgentMarkdownTableView(table: table)
+
         case .divider:
             Divider()
                 .overlay(BYOTBrand.hairline)
@@ -295,6 +378,118 @@ private struct AgentMarkdownBlockView: View {
     }
 }
 
+/// A pipe table as a grid that scrolls sideways when it's wider than the
+/// reply. At accessibility sizes each row becomes a stacked card of
+/// “column: value” lines, since the columns can't sit side by side.
+private struct AgentMarkdownTableView: View {
+    let table: AgentMarkdownTable
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                stacked
+            } else {
+                ScrollView(.horizontal) {
+                    grid
+                }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            }
+        }
+        .background(BYOTBrand.surface.opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(BYOTBrand.hairline, lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Table")
+    }
+
+    private var grid: some View {
+        Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+            GridRow {
+                ForEach(table.header.indices, id: \.self) { column in
+                    cell(table.header[column], column: column, isHeader: true)
+                }
+            }
+            // The semibold header over a stronger rule; per-cell fills drew
+            // as separate tiles rather than one band.
+            Rectangle().fill(BYOTBrand.strongHairline).frame(height: 1).gridCellUnsizedAxes(.horizontal)
+            ForEach(table.rows.indices, id: \.self) { row in
+                if row > 0 { Divider().overlay(BYOTBrand.hairline).gridCellUnsizedAxes(.horizontal) }
+                GridRow {
+                    ForEach(table.header.indices, id: \.self) { column in
+                        cell(table.rows[row][column], column: column, isHeader: false)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func cell(_ text: String, column: Int, isHeader: Bool) -> some View {
+        Text(AgentInlineMarkdown.attributedString(from: text))
+            .font(isHeader ? .cleanBodySemibold : nil)
+            .multilineTextAlignment(textAlignment(column))
+            .frame(maxWidth: 260, alignment: frameAlignment(column))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .gridColumnAlignment(horizontalAlignment(column))
+    }
+
+    private var stacked: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(table.rows.indices, id: \.self) { row in
+                if row > 0 { Divider().overlay(BYOTBrand.hairline) }
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(table.header.indices, id: \.self) { column in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(AgentInlineMarkdown.attributedString(from: table.header[column]))
+                                .font(.cleanCaptionBold)
+                                .foregroundStyle(.secondary)
+                            Text(AgentInlineMarkdown.attributedString(from: table.rows[row][column]))
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
+    private func alignment(_ column: Int) -> AgentMarkdownTable.Alignment {
+        column < table.alignments.count ? table.alignments[column] : .leading
+    }
+
+    private func horizontalAlignment(_ column: Int) -> HorizontalAlignment {
+        switch alignment(column) {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+    }
+
+    private func frameAlignment(_ column: Int) -> Alignment {
+        switch alignment(column) {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+    }
+
+    private func textAlignment(_ column: Int) -> TextAlignment {
+        switch alignment(column) {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+    }
+}
+
 private struct AgentCodeBlockView: View {
     let language: String?
     let code: String
@@ -304,12 +499,12 @@ private struct AgentCodeBlockView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Text(language?.lowercased() ?? "code")
+                Text(language?.lowercased() ?? String(localized: "code"))
                     .font(.cleanMono)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 Button {
-                    selection = AgentTextSelection(text: code, isCode: true)
+                    selection = AgentTextSelection(text: code, isCode: true, language: syntaxLanguage)
                 } label: {
                     Label("Select code", systemImage: "text.cursor")
                         .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
@@ -340,9 +535,7 @@ private struct AgentCodeBlockView: View {
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.cleanMono)
-                    .foregroundStyle(.primary)
+                BYOTCodeText(code: code, language: syntaxLanguage)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -354,6 +547,10 @@ private struct AgentCodeBlockView: View {
                 .stroke(BYOTBrand.hairline, lineWidth: 1)
         }
         .sheet(item: $selection) { AgentTextSelectionSheet(selection: $0) }
+    }
+
+    private var syntaxLanguage: BYOTSyntaxLanguage? {
+        BYOTSyntaxLanguage(fenceLabel: language)
     }
 
     private func copy() {

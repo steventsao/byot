@@ -1,0 +1,8 @@
+Keep your work moving between your iPhone and computer:
+
+- Unsent text, attachments, and selected files are saved on this iPhone when you switch sessions or relaunch BYOT.
+- Optional notifications let you know when a turn finishes or needs your attention.
+- An optional computer queue runs accepted prompts in order while BYOT is closed. Notifications and the computer queue require the BYOT companion running on your OpenCode computer.
+- Returning to BYOT refreshes the conversation without interrupting a message being sent.
+- Attachment imports finish before Send becomes available, and oversized selections are caught earlier.
+- Fixed text alignment on the empty session screen, including larger text sizes.

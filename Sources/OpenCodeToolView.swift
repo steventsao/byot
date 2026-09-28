@@ -7,23 +7,34 @@ struct OpenCodeToolView: View {
     let name: String
     let state: OpenCodeToolState
 
+    /// Built once per state: it parses read results and edit diffs, which
+    /// every part of the body would otherwise repeat.
+    private let presentation: OpenCodeToolPresentation
+
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var presentation: OpenCodeToolPresentation {
-        OpenCodeToolPresentation(name: name, state: state)
+    init(name: String, state: OpenCodeToolState) {
+        self.name = name
+        self.state = state
+        presentation = OpenCodeToolPresentation(name: name, state: state)
     }
 
     var body: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: BYOTBrand.Space.sm) {
                 if let input = presentation.input {
-                    OpenCodeToolDetailBlock(title: "Input", text: input)
+                    OpenCodeToolDetailBlock(title: String(localized: "Input"), text: input)
                 }
-                if let output = presentation.output {
-                    OpenCodeToolDetailBlock(title: "Output", text: output)
+                if let code = presentation.inputCode {
+                    OpenCodeToolDetailBlock(code: code)
+                }
+                if let code = presentation.outputCode {
+                    OpenCodeToolDetailBlock(code: code)
+                } else if let output = presentation.output {
+                    OpenCodeToolDetailBlock(title: String(localized: "Output"), text: output)
                 }
                 if let error = presentation.error {
-                    OpenCodeToolDetailBlock(title: "Error", text: error, isError: true)
+                    OpenCodeToolDetailBlock(title: String(localized: "Error"), text: error, isError: true)
                 }
             }
             .padding(10)

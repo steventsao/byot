@@ -73,7 +73,7 @@ enum KeychainStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unexpectedStatus(let status):
-            "Keychain operation failed with status \(status)."
+            String(localized: "Keychain operation failed with status \(String(status)).")
         }
     }
 }
