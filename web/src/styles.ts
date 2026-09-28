@@ -67,6 +67,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-
 .pill:hover { opacity: .82; }
 
 /* Hero */
+.hero > * { min-width: 0; }
 .hero { display: grid; grid-template-columns: 1.2fr 1fr; align-items: center; gap: 48px; padding-block: 88px 96px; }
 .eyebrow { font: 600 13px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
 h1 { margin-top: 20px; font: 700 clamp(40px, 5.2vw, 60px)/1.05 var(--display); letter-spacing: -.035em; }
@@ -155,9 +156,9 @@ h1 span { display: block; }
   .nav a:not(.pill) { display: none; }
   .section { padding-block: 72px; }
   .stage { min-height: 0; }
-  .stage .device { width: 232px; }
-  .stage .front { margin-left: 72px; }
-  .stage .back { width: 200px; left: calc(50% - 160px); bottom: 28px; }
+  .stage .device { width: min(232px, 60vw); }
+  .stage .front { margin-left: min(72px, 18vw); }
+  .stage .back { width: min(200px, 52vw); left: calc(50% - min(160px, 42vw)); bottom: 28px; }
   .gallery { grid-template-columns: repeat(4, 74%); gap: 20px; }
   .footer-inner { flex-direction: column; align-items: flex-start; }
 }
