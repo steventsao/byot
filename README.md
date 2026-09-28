@@ -1,33 +1,27 @@
 # BYOT
 
-BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source coding agent. It connects to the OpenCode server running on your own computer and lets you drive real coding sessions from your iPhone.
+BYOT is a native iOS client for [OpenCode](https://opencode.ai), the open-source coding agent. It connects to the OpenCode server running on your own computer and lets you drive real coding sessions from your iPhone or iPad.
 
 [**Download on the App Store**](https://apps.apple.com/us/app/byot/id6782403920) · [byot.app](https://byot.app)
 
 <p align="center">
-  <img src="docs/app-store/screenshots/en-US/iphone-6.9/01-sessions.png" alt="Sessions across projects on a Mac mini server, with live Working and Idle status" width="32%">
-  <img src="docs/app-store/screenshots/en-US/iphone-6.9/02-live-turn.png" alt="A live turn: reasoning, search, read, write, and edit tool calls with task progress" width="32%">
-  <img src="docs/app-store/screenshots/en-US/iphone-6.9/03-answer-questions.png" alt="OpenCode asks which rate limiter to use, with choices or a custom answer" width="32%">
-</p>
-<p align="center">
-  <img src="docs/app-store/screenshots/en-US/iphone-6.9/04-approve-permissions.png" alt="A bash permission request: allow once, always allow, or reject" width="32%">
-  <img src="docs/app-store/screenshots/en-US/iphone-6.9/05-turn-complete.png" alt="The finished turn: all upload tests pass, with a summary of the changed files" width="32%">
-  <img src="docs/app-store/screenshots/en-US/iphone-6.9/06-review-changes.png" alt="Reviewing the session diff on the phone" width="32%">
+  <img src="docs/screenshots/readme/live-turn.png" alt="A live turn streaming tool calls and a highlighted TypeScript snippet, with the context meter at 51%" width="24%">
+  <img src="docs/screenshots/readme/shell-mode.png" alt="Shell mode: a git status run in the transcript and npm run lint in the composer" width="24%">
+  <img src="docs/screenshots/readme/review-changes.png" alt="Reviewing a colored diff of the upload route" width="24%">
+  <img src="docs/screenshots/readme/terminal.png" alt="A terminal tab showing git log and a passing test run" width="24%">
 </p>
 
 ## What it does
 
-- Browse the projects and sessions on your server
-- Send prompts and watch the full turn stream live — assistant text, reasoning, files, patches
-- See every tool call with its input, progress, output, and errors
-- Review session diffs before you trust the result
-- Answer permission requests: allow once, always allow, or reject
-- Answer questions with choices or your own text
-- Get optional push alerts for approvals, questions, completed turns, and errors ([setup](push/README.md))
-- Keep unsent drafts and attachments on this iPhone across session changes and app relaunches
-- Queue follow-up prompts while a turn runs, or steer the current one
-- Pick the model per prompt from your server's own catalog
-- Follow your device's appearance, or choose Light or Dark from the home screen's information button
+- Browse projects and sessions across your servers, with live Working, Idle, and Needs input status
+- Watch each turn stream live: text, reasoning, syntax-highlighted code, and every tool call with its input, output, and errors
+- Review session diffs in color before you trust the result
+- Answer permission requests (allow once, always allow, reject) and questions
+- Run a shell command in the session's project by starting a prompt with `!`
+- Open terminal tabs on the server where it offers them
+- Check how full the model's context is, and what the session has cost
+- Queue follow-ups while a turn runs, pick the model per prompt, and keep unsent drafts across relaunches
+- Get optional push alerts for approvals, questions, finished turns, and errors ([setup](push/README.md))
 
 ## Requirements
 
