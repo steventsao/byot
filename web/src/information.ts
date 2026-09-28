@@ -1,3 +1,5 @@
+import { renderPage } from "./layout.ts";
+
 const content: Record<string, {title:string; body:string}> = {
   '/privacy': {
     title:'Privacy policy',
@@ -22,7 +24,23 @@ const content: Record<string, {title:string; body:string}> = {
 <h2>Privacy and help</h2><p>Ordinary OpenCode requests connect directly to your server. Optional notifications and encrypted queued prompts use the BYOT relay; see the <a href="/privacy">privacy policy</a>. For help, <a href="https://github.com/steventsao/byot/issues">open an issue</a>.</p>`
   }
 };
-export function renderInformation(path:string):string|undefined {
-  const page=content[path];if(!page)return;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${page.title} — BYOT</title><style>body{font:17px/1.6 system-ui,sans-serif;color:#202524;background:#fafbf8;max-width:760px;padding:32px 22px;margin:auto}a{color:#286653}h1{font-size:2rem}h2{font-size:1.25rem;margin-top:2rem}li{margin:.5rem 0}footer{color:#58615d;margin-top:3rem;font-size:.9rem}</style></head><body><nav><a href="/">byot</a></nav><main><h1>${page.title}</h1>${page.body}</main><footer>Updated September 20, 2026</footer></body></html>`;
+const DESCRIPTIONS: Record<string, string> = {
+  "/privacy": "How the BYOT iOS app handles your OpenCode content, optional notifications, and the optional computer queue.",
+  "/support": "Connect BYOT to your OpenCode server, set up notifications and the computer queue, and fix common problems.",
+};
+
+export function renderInformation(path: string): string | undefined {
+  const page = content[path];
+  if (!page) return;
+  return renderPage({
+    title: `${page.title} — BYOT`,
+    description: DESCRIPTIONS[path],
+    path,
+    body: `    <article class="wrap doc">
+      <p class="eyebrow">BYOT</p>
+      <h1>${page.title}</h1>
+      <p class="updated">Updated September 20, 2026</p>
+      <div class="doc-body">${page.body}</div>
+    </article>`,
+  });
 }

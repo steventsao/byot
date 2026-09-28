@@ -1,8 +1,22 @@
 # BYOT landing page
 
-Source for [byot.app](https://byot.app/), packaged separately from the iOS app.
-`src/landing.ts` renders the page with inline styles and the official App Store
-badge. It has no client-side JavaScript or external asset requests.
+Source for [byot.app](https://byot.app/): the home page, `/privacy`, and
+`/support`, packaged separately from the iOS app. The pages follow the app's
+design: system type for prose, monospace for code, the Open Runde `byot`
+wordmark, 16-point radii, inset grouped lists, and the forest (Light) and mint
+(Dark) accent. They follow the visitor's Light or Dark appearance and have no
+client-side JavaScript, tracking, or third-party requests.
+
+- `src/landing.ts` renders the home page. `src/information.ts` holds the
+  privacy and support text. `src/layout.ts` is the shared shell.
+- `src/styles.ts` mirrors `BYOTBrand` tokens.
+- `public/shots/` holds the iPhone App Store frames from
+  `docs/app-store/screenshots/en-US/iphone-6.9/`, re-encoded as 660-pixel WebP:
+  `cwebp -q 82 -resize 660 0 <frame>.png -o public/shots/<frame>.webp`.
+- `src/wordmark-font.ts` embeds Open Runde Bold, subset to the wordmark glyphs:
+  `uv run --with fonttools --with brotli scripts/build-wordmark-font.py`.
+- `node scripts/render-static.ts <dir>` writes the pages and assets to a folder
+  for offline review.
 
 ## Validate
 
@@ -29,7 +43,7 @@ npm run deploy
 
 `wrangler.jsonc` deploys `byot-landing` on the standard routes `byot.app/*` and
 `www.byot.app/*`. It serves GET and HEAD requests for `/`, `/index.html`, `/privacy`, and `/support`,
-including query strings. Other requests are forwarded unchanged to the existing
+including query strings, and the files in `public/` as static assets. Other requests are forwarded unchanged to the existing
 `byot-dispatcher` Custom Domain worker. More specific API, task, and agent routes
 retain precedence; tenant subdomains and email routing keep their existing paths.
 
