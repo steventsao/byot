@@ -51,13 +51,13 @@
 		<string>_http._tcp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>byot uses the camera only to scan the pairing code for your OpenCode server.</string>
+	<string>byot uses the camera when you scan an OpenCode pairing QR code, so it can fill in your server address and sign-in details.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>byot finds OpenCode servers on your network and connects to the ones you add by local address.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>byot listens only while you dictate a message, and only after you tap the microphone.</string>
+	<string>When you tap the microphone, byot records your voice to draft a message to your OpenCode agent, such as a request to fix a failing test.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>byot turns what you dictate into message text. Speech is transcribed on this device when your language supports it; otherwise Apple transcribes it.</string>
+	<string>byot converts your dictated request into editable message text. Recognition runs on this device when supported; otherwise audio is sent to Apple for transcription.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIAppFonts</key>

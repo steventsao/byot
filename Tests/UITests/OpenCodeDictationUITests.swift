@@ -4,6 +4,38 @@ final class OpenCodeDictationUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
     @MainActor
+    func testMicrophonePromptWaitsForTapAndExplainsItsUse() {
+        let app = XCUIApplication()
+        app.resetAuthorizationStatus(for: .microphone)
+        app.launchArguments = ["--attachment-screenshot", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        let composer = app.textFields["opencode-composer-message"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        composer.tap()
+        composer.typeText("Fix the failing test")
+        let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        XCTAssertFalse(system.alerts.firstMatch.exists, "Typing does not request microphone access")
+
+        app.buttons["opencode-dictation-toggle"].tap()
+        let alert = system.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10))
+        XCTAssertTrue(alert.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@", "records your voice to draft a message to your OpenCode agent"
+        )).firstMatch.exists)
+        screenshot(system, name: "microphone-permission-description")
+        let deny = alert.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "don")).firstMatch
+        XCTAssertTrue(deny.exists)
+        deny.tap()
+        let notNow = app.buttons["Not Now"]
+        XCTAssertTrue(notNow.waitForExistence(timeout: 5))
+        notNow.tap()
+        XCTAssertEqual(composer.value as? String, "Fix the failing test")
+        composer.tap()
+        composer.typeText(" without voice")
+        XCTAssertEqual(composer.value as? String, "Fix the failing test without voice")
+    }
+
+    @MainActor
     func testDictationStreamsIntoTheDraftAndDoneKeepsTheFinalWording() {
         for appearance in ["light", "dark"] {
             let app = XCUIApplication()

@@ -1,3 +1,9 @@
+BYOT 1.0.31 — App Review permission fix
+
+Corrected English camera, microphone, speech-recognition, and local-network permission descriptions.
+
+Camera access is requested only after choosing Scan pairing code. Microphone and speech access are requested only after tapping the composer microphone. Adding a photo uses the system photo picker. Declining optional permissions leaves typed messages and file attachments available.
+
 BYOT 1.0.31 — OpenCode parity
 
 This release brings most of what OpenCode's terminal and web app can do to iPhone and iPad. byot shows a feature only when your OpenCode server supports it, so a missing button usually means the server doesn't offer that feature.

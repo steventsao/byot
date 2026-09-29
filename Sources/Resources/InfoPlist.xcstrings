@@ -1,54 +1,78 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "NSCameraUsageDescription" : {
-      "comment" : "Permission prompt for scanning a pairing code",
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "byot 仅使用相机扫描 OpenCode 服务器的配对码。"
+  "sourceLanguage": "en",
+  "strings": {
+    "NSCameraUsageDescription": {
+      "comment": "Permission prompt for scanning a pairing code",
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当你扫描 OpenCode 配对二维码时，byot 会使用相机，以填写服务器地址和登录信息。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "byot uses the camera when you scan an OpenCode pairing QR code, so it can fill in your server address and sign-in details."
           }
         }
       }
     },
-    "NSLocalNetworkUsageDescription" : {
-      "comment" : "Permission prompt for finding servers on the local network",
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "byot 会查找你网络中的 OpenCode 服务器，并连接你通过本地地址添加的服务器。"
+    "NSLocalNetworkUsageDescription": {
+      "comment": "Permission prompt for finding servers on the local network",
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "byot 会查找你网络中的 OpenCode 服务器，并连接你通过本地地址添加的服务器。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "byot finds OpenCode servers on your network and connects to the ones you add by local address."
           }
         }
       }
     },
-    "NSMicrophoneUsageDescription" : {
-      "comment" : "Permission prompt for dictation",
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "byot 仅在你轻点麦克风并听写消息时收听。"
+    "NSMicrophoneUsageDescription": {
+      "comment": "Permission prompt for dictation",
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当你轻点麦克风时，byot 会录制你的语音，以起草发送给 OpenCode 智能体的消息，例如请求修复失败的测试。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When you tap the microphone, byot records your voice to draft a message to your OpenCode agent, such as a request to fix a failing test."
           }
         }
       }
     },
-    "NSSpeechRecognitionUsageDescription" : {
-      "comment" : "Permission prompt for speech recognition during dictation",
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "byot 会将你的听写内容转换为消息文本。如果你的语言支持，语音会在本设备上转写；否则由 Apple 转写。"
+    "NSSpeechRecognitionUsageDescription": {
+      "comment": "Permission prompt for speech recognition during dictation",
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "byot 会将你口述的请求转换为可编辑的消息文本。如果设备支持，语音识别会在本设备上运行；否则音频会发送给 Apple 进行转写。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "byot converts your dictated request into editable message text. Recognition runs on this device when supported; otherwise audio is sent to Apple for transcription."
           }
         }
       }
     }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

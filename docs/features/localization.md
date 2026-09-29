@@ -45,6 +45,13 @@ Sync marks strings no longer in source as stale; delete them once their
 replacements are translated. `BYOTLocalizationTests` checks that every Chinese
 string keeps its English placeholders.
 
+`InfoPlist.xcstrings` uses system key names rather than English sentences as its
+keys. Every entry therefore needs an explicit `en` translation as well as
+`zh-Hans`. Otherwise Xcode emits the key itself into `en.lproj/InfoPlist.strings`,
+overriding the correct description in the base plist. Keep the English values
+aligned with `project.yml`. The localization tests check the compiled bundle,
+and `scripts/verify-permission-strings.py` checks the exported IPA before upload.
+
 ## Chinese terminology
 
 | English | 简体中文 |

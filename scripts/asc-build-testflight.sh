@@ -306,6 +306,10 @@ assert_metadata_value "IPA build" "$BYOT_BUILD" "$IPA_BUILD"
 assert_metadata_value "IPA bundle identifier" "$BYOT_BUNDLE_ID" "$IPA_BUNDLE_ID"
 echo "Release metadata verified: $BYOT_BUNDLE_ID $BYOT_VERSION ($BYOT_BUILD)."
 
+# Localized InfoPlist.strings override the base plist at runtime. Validate the
+# exported binary so a missing source-language translation cannot ship key names.
+python3 "$SCRIPT_DIR/verify-permission-strings.py" "$IPA_PATH"
+
 run_asc xcode validate \
   --ipa "$IPA_PATH" \
   "${validate_args[@]}" \

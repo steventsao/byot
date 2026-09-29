@@ -7,7 +7,7 @@ options:
 settings:
   base:
     MARKETING_VERSION: 1.0.31
-    CURRENT_PROJECT_VERSION: 1
+    CURRENT_PROJECT_VERSION: 20260929075519
     SWIFT_VERSION: 6.0
     DEVELOPMENT_TEAM: 449BD89VDV
     # String Catalogs in Sources/Resources: Localizable (app, widget and share
@@ -57,10 +57,10 @@ targets:
           NSAllowsLocalNetworking: true
         NSBonjourServices:
           - _http._tcp
-        NSCameraUsageDescription: byot uses the camera only to scan the pairing code for your OpenCode server.
+        NSCameraUsageDescription: byot uses the camera when you scan an OpenCode pairing QR code, so it can fill in your server address and sign-in details.
         NSLocalNetworkUsageDescription: byot finds OpenCode servers on your network and connects to the ones you add by local address.
-        NSMicrophoneUsageDescription: byot listens only while you dictate a message, and only after you tap the microphone.
-        NSSpeechRecognitionUsageDescription: byot turns what you dictate into message text. Speech is transcribed on this device when your language supports it; otherwise Apple transcribes it.
+        NSMicrophoneUsageDescription: When you tap the microphone, byot records your voice to draft a message to your OpenCode agent, such as a request to fix a failing test.
+        NSSpeechRecognitionUsageDescription: byot converts your dictated request into editable message text. Recognition runs on this device when supported; otherwise audio is sent to Apple for transcription.
         NSSupportsLiveActivities: true
         UIAppFonts:
           - OpenRunde-Bold.otf

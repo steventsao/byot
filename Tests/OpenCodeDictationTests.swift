@@ -73,6 +73,17 @@ struct OpenCodeDictationTests {
 
     // MARK: Permissions
 
+    @Test("Opening the composer does not request voice permissions or start recording")
+    func waitsForUserAction() async {
+        let engine = FakeDictationEngine(microphone: .undetermined, speech: .undetermined)
+        let controller = Self.controller(engine)
+        controller.noteEdit("Typed messages work without voice access")
+        await Task.yield()
+        #expect(controller.phase == .idle)
+        #expect(engine.requests.isEmpty)
+        #expect(engine.starts == 0)
+    }
+
     @Test("Refusals block before anything is requested; undecided permissions are asked one at a time")
     func resolvesAccess() {
         typealias Access = OpenCodeDictationAccess

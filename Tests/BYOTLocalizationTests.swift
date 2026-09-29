@@ -47,6 +47,24 @@ struct BYOTLocalizationTests {
         }
     }
 
+    @Test("Compiled permission prompts contain descriptions in every shipped language")
+    func permissionDescriptions() throws {
+        let info = try #require(Bundle.main.infoDictionary)
+        let keys = info.keys.filter { $0.hasSuffix("UsageDescription") }
+        #expect(keys.count >= 4)
+        for locale in Bundle.main.localizations where locale != "Base" {
+            let prompts = Self.table("InfoPlist", localization: locale)
+            for key in keys {
+                let description = try #require(prompts[key], "Missing \(locale) permission: \(key)")
+                #expect(!description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                #expect(!description.contains("UsageDescription"), "Placeholder in \(locale): \(key)")
+                if locale == "en" {
+                    #expect(description == info[key] as? String, "English override differs from Info.plist: \(key)")
+                }
+            }
+        }
+    }
+
     @Test("Counts and names land in the Chinese sentence, reordered where Chinese needs it")
     func formatsChinese() throws {
         let strings = Self.table("Localizable")
