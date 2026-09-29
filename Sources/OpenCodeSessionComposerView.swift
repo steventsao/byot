@@ -589,13 +589,15 @@ struct OpenCodeSessionComposerView: View {
 
     @ViewBuilder
     private var sessionProgress: some View {
-        if !store.canSubmitPrompt {
+        if !store.canSubmitPrompt && !store.isLoadingTranscript && !store.canStopTurn {
             ProgressView()
                 .controlSize(.small)
+                .tint(.secondary)
                 // The field row aligns to the bottom; center the spinner on the
                 // 44pt buttons beside it instead of dropping it to the baseline.
                 .frame(height: 44)
                 .accessibilityLabel("Checking session status")
+                .accessibilityIdentifier("composer-session-progress")
         }
     }
 

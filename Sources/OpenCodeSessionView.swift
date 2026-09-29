@@ -205,7 +205,7 @@ struct OpenCodeSessionScreen: View {
                         }
                     }
 
-                    if store.todoProgress.totalCount > 0 {
+                    if store.todoProgress.totalCount > 0 && !showsTranscriptLoading {
                         Button { isShowingTasks = true } label: {
                             HStack {
                                 Label(store.todoProgress.summary, systemImage: "checklist")
@@ -250,7 +250,7 @@ struct OpenCodeSessionScreen: View {
                         .id("opencode-unanswered-prompt-recovery")
                     }
 
-                    if showsSessionActivity {
+                    if showsSessionActivity && !showsTranscriptLoading {
                         BYOTActivityView(
                             sessionActivityPhase,
                             title: sessionActivityTitle,
@@ -275,17 +275,9 @@ struct OpenCodeSessionScreen: View {
                         .id("opencode-queued-prompts")
                     }
 
-                    if store.isLoading && store.messages.isEmpty {
-                        BYOTActivityView(
-                            .loading,
-                            title: String(localized: "Loading transcript"),
-                            layout: .blocking
-                        )
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 48)
-                    } else if !store.isLoading,
-                              !hasConversationContent,
-                              let errorMessage = store.errorMessage {
+                    if !store.isLoadingTranscript,
+                       !hasConversationContent,
+                       let errorMessage = store.errorMessage {
                         ContentUnavailableView {
                             Label("Couldn’t load this session", systemImage: "exclamationmark.triangle")
                         } description: {
@@ -323,6 +315,18 @@ struct OpenCodeSessionScreen: View {
                 .padding(.top, 14)
                 .padding(.bottom, 24)
                 .frame(maxWidth: .infinity)
+            }
+            .overlay {
+                if showsTranscriptLoading {
+                    BYOTActivityView(
+                        .loading,
+                        title: String(localized: "Loading transcript"),
+                        layout: .blocking
+                    )
+                    .multilineTextAlignment(.center)
+                    .padding(20)
+                    .accessibilityIdentifier("session-transcript-loading")
+                }
             }
             .scrollDismissesKeyboard(.interactively)
             .coordinateSpace(name: "transcript")
@@ -907,9 +911,12 @@ struct OpenCodeSessionScreen: View {
         }
     }
 
+    @ViewBuilder
     private var sessionStatus: some View {
-        OpenCodeStatusLabel(status: store.status, eventConnected: store.isEventConnected)
-            .fixedSize()
+        if store.isStatusReady || store.status.isActive {
+            OpenCodeStatusLabel(status: store.status, eventConnected: store.isEventConnected)
+                .fixedSize()
+        }
     }
 
     private var isPresentingSheet: Bool {
@@ -923,6 +930,10 @@ struct OpenCodeSessionScreen: View {
             || store.localShell != nil
             || !store.queuedPrompts.isEmpty
             || store.pendingActionCount > 0
+    }
+
+    private var showsTranscriptLoading: Bool {
+        store.isLoadingTranscript && !hasConversationContent
     }
 
     private func refreshSession() {
@@ -1196,4 +1207,3 @@ private struct OpenCodePartView: View {
         }
     }
 }
-

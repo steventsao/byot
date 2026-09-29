@@ -2,6 +2,47 @@ import XCTest
 
 final class OpenCodeSessionBrowserUITests: XCTestCase {
     @MainActor
+    func testSlowTranscriptHasOneCenteredLoadingState() throws {
+        try checkSlowTranscript(largeText: false)
+    }
+
+    @MainActor
+    func testSlowTranscriptAtLargestTextSize() throws {
+        try checkSlowTranscript(largeText: true)
+    }
+
+    @MainActor
+    private func checkSlowTranscript(largeText: Bool) throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--session-browser-fixture", "--reset-browser", "--slow-transcript"]
+        if largeText {
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        }
+        app.launch()
+        defer { app.terminate() }
+        let session = app.buttons["session-idle"]
+        XCTAssertTrue(session.waitForExistence(timeout: 10))
+        session.tap()
+        let loading = app.descendants(matching: .any)["session-transcript-loading"].firstMatch
+        XCTAssertTrue(loading.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(app.buttons["session-task-progress"].exists,
+                       "Tasks must not float above an unloaded transcript")
+        XCTAssertFalse(app.descendants(matching: .any)["composer-session-progress"].firstMatch.exists,
+                       "Do not show a second spinner in the composer")
+        let send = app.buttons["opencode-composer-send"]
+        XCTAssertFalse(send.isEnabled)
+        XCTAssertEqual(loading.frame.midX, app.frame.midX, accuracy: 2)
+        XCTAssertGreaterThan(loading.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+        XCTAssertLessThan(loading.frame.maxY, send.frame.minY)
+        XCTAssertLessThanOrEqual(loading.frame.maxX, app.frame.maxX)
+        attach(largeText ? "slow-transcript-largest-text" : "slow-transcript")
+        XCTAssertTrue(loading.waitForNonExistence(timeout: 25), app.debugDescription)
+        XCTAssertTrue(app.buttons["session-task-progress"].waitForExistence(timeout: 5))
+        attach(largeText ? "loaded-transcript-largest-text" : "loaded-transcript")
+    }
+
+    @MainActor
     func testEmptySessionActionStaysReadableAndOpensComposer() throws {
         try checkEmptySessionAction(largeText: false)
     }

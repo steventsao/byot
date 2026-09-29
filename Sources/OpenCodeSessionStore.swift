@@ -24,6 +24,9 @@ final class OpenCodeSessionStore: ObservableObject {
     }
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false
+    /// Message loading ends independently of slower status, permission and feature requests.
+    /// Start true so the first frame does not flash an empty conversation.
+    @Published private(set) var isLoadingTranscript = true
     @Published private(set) var isSending = false
     @Published private(set) var isEventConnected = false
     @Published private(set) var eventErrorMessage: String?
@@ -361,6 +364,8 @@ final class OpenCodeSessionStore: ObservableObject {
         status = .idle
         refreshGeneration &+= 1
         eventTask?.cancel()
+        isLoading = false
+        isLoadingTranscript = false
         eventTask = nil
         reconciliationTask?.cancel()
         reconciliationTask = nil
@@ -409,8 +414,12 @@ final class OpenCodeSessionStore: ObservableObject {
         let statusBaseline = statusMutationGeneration
         async let featureRefresh: Void = refreshSessionFeatures()
         if showLoading { isLoading = true }
+        isLoadingTranscript = true
         defer {
-            if generation == refreshGeneration { isLoading = false }
+            if generation == refreshGeneration {
+                isLoading = false
+                isLoadingTranscript = false
+            }
         }
         do {
             protocolCapabilities = try await service.capabilities()
@@ -457,21 +466,15 @@ final class OpenCodeSessionStore: ObservableObject {
                 )
             }
 
-            let results = await (
-                messageResult,
-                permissionResult,
-                v2PermissionResult,
-                questionResult,
-                v2QuestionResult,
-                diffResult,
-                statusResult
-            )
+            // Render the transcript as soon as it arrives. A slow auxiliary
+            // endpoint must not hold already downloaded messages behind a loader.
+            let loadedMessages = await messageResult
             try Task.checkCancellation()
             guard generation == refreshGeneration else { return }
 
             var coreErrors: [Error] = []
             var didApplyFreshMessages = false
-            switch results.0 {
+            switch loadedMessages {
             case .success(let messages):
                 if messageGeneration == messageRequestGeneration,
                    transcriptBaseline == transcriptMutationGeneration {
@@ -483,15 +486,28 @@ final class OpenCodeSessionStore: ObservableObject {
             case .failure(let error):
                 if messageGeneration == messageRequestGeneration {
                     coreErrors.append(error)
+                    errorMessage = error.localizedDescription
                 }
             }
-            switch results.5 {
+            isLoadingTranscript = false
+
+            let results = await (
+                permissionResult,
+                v2PermissionResult,
+                questionResult,
+                v2QuestionResult,
+                diffResult,
+                statusResult
+            )
+            try Task.checkCancellation()
+            guard generation == refreshGeneration else { return }
+            switch results.4 {
             case .success(let diffs):
                 if OpenCodeSessionDiffReconciliation.shouldApplyFetchedSnapshot(support: protocolCapabilities?.sessionDiff, mutationBaseline: diffBaseline, currentMutation: diffMutationGeneration) { self.diffs = diffs }
             case .failure(let error):
                 coreErrors.append(error)
             }
-            switch results.6 {
+            switch results.5 {
             case .success(let statuses):
                 if statusBaseline == statusMutationGeneration {
                     didStatusProbeFailWithFreshTranscript = false
@@ -514,10 +530,10 @@ final class OpenCodeSessionStore: ObservableObject {
             if actionGeneration == actionRequestGeneration,
                actionBaseline == actionMutationGeneration {
                 applyPendingActionResults(
-                    permissionResult: results.1,
-                    v2PermissionResult: results.2,
-                    questionResult: results.3,
-                    v2QuestionResult: results.4
+                    permissionResult: results.0,
+                    v2PermissionResult: results.1,
+                    questionResult: results.2,
+                    v2QuestionResult: results.3
                 )
             }
         } catch is CancellationError {
@@ -525,6 +541,7 @@ final class OpenCodeSessionStore: ObservableObject {
         } catch {
             guard generation == refreshGeneration else { return }
             errorMessage = error.localizedDescription
+            isLoadingTranscript = false
         }
         await featureRefresh
     }
