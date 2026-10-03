@@ -18,7 +18,7 @@ What is sent
 • Nothing in those events may be your server address, project name, prompt or code. If you can, read docs/features/telemetry.md and tell us if any field there feels like too much.
 
 The star ask
-• With usage data on or off, finish three turns in one or more sessions. After the third finished turn a card appears above the composer: "Like byot?" with Star byot and Later. Star byot opens github.com/steventsao/byot. Later hides it for 30 days.
+• With usage data on or off, finish three turns in one or more sessions. After the third finished turn a card appears above the composer: "Like byot?" with Star byot and Later. Star byot opens github.com/steventsao/byot. Later hides it for 6 days.
 • About byot → Support byot has Star byot on GitHub and Rate byot on the App Store.
 
 Also check that Light and Dark Mode look right on the new sheet and card, and that the rest of the app behaves as in 1.0.31.

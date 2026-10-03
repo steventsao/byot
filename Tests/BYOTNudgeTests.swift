@@ -22,7 +22,7 @@ struct BYOTNudgeTests {
         #expect(gate.recordValueMoment(now: start.addingTimeInterval(BYOTNudgeGate.cooldown)) == .star)
     }
 
-    @Test("Later waits a month and doubles the bar")
+    @Test("Later waits out the cooldown and doubles the bar")
     func later() throws {
         let gate = try makeGate()
         let start = Date(timeIntervalSince1970: 1_800_000_000)
@@ -47,7 +47,7 @@ struct BYOTNudgeTests {
         #expect(gate.hasStarred)
         #expect(gate.recordValueMoment(now: start.addingTimeInterval(60)) == nil)
         #expect(gate.recordValueMoment(now: start.addingTimeInterval(BYOTNudgeGate.cooldown)) == .review)
-        // The review ask also waits a month before the next one.
+        // The review ask also waits out the cooldown before the next one.
         #expect(gate.recordValueMoment(now: start.addingTimeInterval(BYOTNudgeGate.cooldown + 60)) == nil)
     }
 

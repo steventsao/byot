@@ -8,7 +8,7 @@ enum BYOTNudgeAsk: String, Equatable, Sendable {
     case review = "review_request"
 }
 
-/// One ask per 30 days, at a value moment: a turn byot requested finished
+/// One ask per six days, at a value moment: a turn byot requested finished
 /// well. The first asks are for a GitHub star; once the person has opened the
 /// repo, byot asks Apple's review prompt instead. Nothing before the third
 /// completed turn, and "Later" doubles that bar. Nothing in automated runs.
@@ -17,7 +17,7 @@ enum BYOTNudgeAsk: String, Equatable, Sendable {
 /// threshold on dismiss). Apple allows a custom card for a GitHub star but
 /// not for a review, so the review half uses `requestReview()` only.
 struct BYOTNudgeGate {
-    static let cooldown: TimeInterval = 30 * 24 * 60 * 60
+    static let cooldown: TimeInterval = 6 * 24 * 60 * 60
     static let initialThreshold = 3
     static let repoURL = URL(string: "https://github.com/steventsao/byot")!
     static let reviewURL = URL(string: "https://apps.apple.com/app/id6782403920?action=write-review")!
@@ -48,7 +48,7 @@ struct BYOTNudgeGate {
     var lastAskedAt: Date? { defaults.object(forKey: Self.lastAskedKey) as? Date }
 
     /// Counts the value moment and says what to ask now, if anything. An ask
-    /// starts the cooldown at once, so a card nobody answers still waits a month.
+    /// starts the cooldown at once, so a card nobody answers still waits six days.
     func recordValueMoment(now: Date = .now) -> BYOTNudgeAsk? {
         guard isAutomated == false else { return nil }
         let turns = completedTurns + 1
