@@ -1,0 +1,38 @@
+{
+  "/global/health": {
+    "status": "200",
+    "health": {
+      "healthy": true,
+      "version": "1.18.21"
+    }
+  },
+  "/project": {
+    "status": "200",
+    "worktrees": [
+      "/"
+    ]
+  },
+  "/provider": {
+    "status": "200",
+    "connected": [
+      "opencode"
+    ],
+    "models": [
+      {
+        "provider": "opencode",
+        "models": [
+          "nemotron-3.5-lightning-free",
+          "nemotron-3-ultra-free",
+          "hy3-free",
+          "muse-spark-1.2-contributor-free",
+          "x-preview-f-free",
+          "mimo-v2.5-free",
+          "big-pickle"
+        ]
+      }
+    ]
+  },
+  "anonymous": {
+    "status": 401
+  }
+}
