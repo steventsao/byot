@@ -133,6 +133,7 @@ CODE_SIGN_KEYCHAIN_UNLOCKED=0
 KEYCHAIN_SEARCH_LIST_CHANGED=0
 ORIGINAL_USER_KEYCHAINS=()
 IPA_INFO_PLIST=""
+MANUAL_EXPORT_OPTIONS=""
 
 keychain_security() {
   if command -v gtimeout >/dev/null 2>&1; then
@@ -151,6 +152,9 @@ cleanup_release_signing() {
   fi
   if [[ -n "$IPA_INFO_PLIST" && -f "$IPA_INFO_PLIST" ]]; then
     rm -f "$IPA_INFO_PLIST" || true
+  fi
+  if [[ -n "$MANUAL_EXPORT_OPTIONS" && -f "$MANUAL_EXPORT_OPTIONS" ]]; then
+    rm -f "$MANUAL_EXPORT_OPTIONS" || true
   fi
 }
 trap cleanup_release_signing EXIT
@@ -249,15 +253,57 @@ if [[ -n "${ASC_PRIVATE_KEY_PATH:-}" && -n "${ASC_KEY_ID:-}" && -n "${ASC_ISSUER
   API_PRIVATE_KEYS_DIR="$(dirname "$AUTH_KEY_PATH")"
 fi
 
-run_asc xcode archive \
-  --project BYOT.xcodeproj \
-  --scheme "$BYOT_SCHEME" \
-  --configuration Release \
-  --clean \
-  --overwrite \
-  --archive-path "$ARCHIVE_PATH" \
-  "${archive_flags[@]}" \
-  --output json
+# A manually signed archive needs a manual export too. The automatic export
+# pipeline re-signs with whichever distribution certificate Xcode picks, and a
+# distribution-only keychain cannot sign with a certificate whose private key
+# lives in the login keychain (errSecInternalComponent).
+if [[ -z "${BYOT_EXPORT_OPTIONS_PLIST:-}" && -n "${BYOT_CODE_SIGN_IDENTITY:-}" && -n "${BYOT_PROVISIONING_PROFILE_SPECIFIER:-}" ]]; then
+  MANUAL_EXPORT_OPTIONS="$(mktemp "${TMPDIR:-/tmp}/byot-export-options.XXXXXX")"
+  cat > "$MANUAL_EXPORT_OPTIONS" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>signingCertificate</key>
+	<string>${BYOT_CODE_SIGN_IDENTITY}</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>${BYOT_BUNDLE_ID}</key>
+		<string>${BYOT_PROVISIONING_PROFILE_SPECIFIER}</string>
+	</dict>
+	<key>teamID</key>
+	<string>449BD89VDV</string>
+	<key>uploadSymbols</key>
+	<true/>
+</dict>
+</plist>
+PLIST
+  EXPORT_OPTIONS_PLIST="$MANUAL_EXPORT_OPTIONS"
+fi
+
+# BYOT_REUSE_ARCHIVE=1 skips the archive and exports the one already at
+# ARCHIVE_PATH, for a second try at export or upload. The build number then
+# comes from that archive, not from the clock.
+if [[ "${BYOT_REUSE_ARCHIVE:-0}" == "1" && -d "$ARCHIVE_PATH" ]]; then
+  BYOT_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleVersion' "$ARCHIVE_PATH/Info.plist")"
+  echo "Reusing archive $ARCHIVE_PATH (build $BYOT_BUILD)."
+else
+  run_asc xcode archive \
+    --project BYOT.xcodeproj \
+    --scheme "$BYOT_SCHEME" \
+    --configuration Release \
+    --clean \
+    --overwrite \
+    --archive-path "$ARCHIVE_PATH" \
+    "${archive_flags[@]}" \
+    --output json
+fi
 
 run_asc xcode export \
   --archive-path "$ARCHIVE_PATH" \
