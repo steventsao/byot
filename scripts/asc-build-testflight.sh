@@ -64,13 +64,17 @@ validate_args=()
 
 # A distribution-only keychain cannot satisfy Xcode's automatic development
 # signature during archive. Allow an explicit identity/profile pair for CI.
+# The profile travels as the user-defined BYOT_PROVISIONING_PROFILE_SPECIFIER,
+# which only the BYOT target reads (project.yml): a plain
+# PROVISIONING_PROFILE_SPECIFIER on the command line also hits package
+# resource bundles, which refuse a profile and fail the archive.
 if [[ -n "${BYOT_CODE_SIGN_IDENTITY:-}" ]]; then
   archive_flags+=(--xcodebuild-flag="CODE_SIGN_IDENTITY=$BYOT_CODE_SIGN_IDENTITY")
 fi
 if [[ -n "${BYOT_PROVISIONING_PROFILE_SPECIFIER:-}" ]]; then
   archive_flags+=(
     --xcodebuild-flag=CODE_SIGN_STYLE=Manual
-    --xcodebuild-flag="PROVISIONING_PROFILE_SPECIFIER=$BYOT_PROVISIONING_PROFILE_SPECIFIER"
+    --xcodebuild-flag="BYOT_PROVISIONING_PROFILE_SPECIFIER=$BYOT_PROVISIONING_PROFILE_SPECIFIER"
   )
 fi
 

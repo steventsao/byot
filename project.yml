@@ -83,6 +83,12 @@ targets:
     settings:
       base:
         CODE_SIGN_STYLE: Automatic
+        # Empty in a normal build. scripts/asc-build-testflight.sh sets the
+        # user-defined BYOT_PROVISIONING_PROFILE_SPECIFIER for a manual release
+        # archive; only this target reads it. A plain PROVISIONING_PROFILE_SPECIFIER
+        # on the xcodebuild command line also hits package resource bundles
+        # (PostHog's), which refuse a profile and fail the archive.
+        PROVISIONING_PROFILE_SPECIFIER: "$(BYOT_PROVISIONING_PROFILE_SPECIFIER)"
         CODE_SIGN_ENTITLEMENTS: Sources/BYOT.entitlements
         PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot
         PRODUCT_NAME: byot
