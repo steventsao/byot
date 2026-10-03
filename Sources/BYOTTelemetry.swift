@@ -307,10 +307,14 @@ struct BYOTPostHogTransport: BYOTTelemetryTransport {
 }
 
 /// Last line of defence at the SDK boundary: only the schema's keys and the
-/// SDK's own `$` context survive, minus the device's user-visible name and
-/// the time zone, which say more than the product needs.
+/// SDK's own `$` context survive, minus what T3 Code and Orca do not send
+/// either: the device's user-visible name, time zone, language, screen size
+/// and network type. App and OS versions, device model and type stay.
 final class BYOTTelemetrySanitizer: NSObject, PostHogPropertiesSanitizer {
-    static let droppedContextKeys: Set<String> = ["$device_name", "$timezone", "$set", "$set_once"]
+    static let droppedContextKeys: Set<String> = [
+        "$device_name", "$timezone", "$locale", "$screen_height", "$screen_width",
+        "$network_wifi", "$network_cellular", "$set", "$set_once",
+    ]
 
     func sanitize(_ properties: [String: Any]) -> [String: Any] {
         properties.filter { key, _ in

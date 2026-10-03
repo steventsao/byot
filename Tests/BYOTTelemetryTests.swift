@@ -59,10 +59,11 @@ struct BYOTTelemetrySchemaTests {
     @Test("The SDK boundary keeps schema keys and vendor context only")
     func sanitizer() {
         let kept = BYOTTelemetrySanitizer().sanitize([
-            "launch": "cold", "$os_version": "26.4", "$device_name": "Steven's iPhone", "$timezone": "America/Los_Angeles",
+            "launch": "cold", "$os_version": "26.4", "$device_model": "iPhone17,3", "$device_name": "Steven's iPhone",
+            "$timezone": "America/Los_Angeles", "$locale": "zh-Hans_CN", "$screen_height": 852, "$network_wifi": true,
             "server_url": "https://mac.ts.net", "$set": ["email": "x"],
         ])
-        #expect(Set(kept.keys) == ["launch", "$os_version"])
+        #expect(Set(kept.keys) == ["launch", "$os_version", "$device_model"])
     }
 
     @Test("Every mapping the app sends passes its own schema")

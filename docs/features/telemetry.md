@@ -42,14 +42,17 @@ PostHog Cloud, US region (`us.i.posthog.com`), project 476731. The SDK runs
 with every automatic capture off: no lifecycle or screen events, no
 swizzling, no feature flags, no remote config, no session replay, no
 exception capture, no surveys. A `PostHogPropertiesSanitizer` drops any
-custom key outside the schema below and the `$device_name`, `$timezone`,
-`$set` and `$set_once` context keys. PostHog derives a country and city from
-the request address.
+custom key outside the schema below and these context keys: `$device_name`,
+`$timezone`, `$locale`, `$screen_height`, `$screen_width`, `$network_wifi`,
+`$network_cellular`, `$set`, `$set_once`. PostHog derives a country from the
+request address; a "Filter Properties" transformation on project 476731
+drops the city, postal code, coordinates, subdivision and time-zone fields
+that its GeoIP step adds, so country and continent are the only location.
 
-The SDK adds its own context to every event: `$app_version`, `$app_build`,
-`$os_name`, `$os_version`, `$device_model`, `$device_type`, `$locale`,
-`$is_testflight`, `$is_emulator`, `$lib`, `$lib_version`, screen size and
-network type.
+The SDK context that remains on every event: `$app_version`, `$app_build`,
+`$app_name`, `$app_namespace`, `$os_name`, `$os_version`, `$device_model`,
+`$device_type`, `$device_manufacturer`, `$is_testflight`, `$is_emulator`,
+`$lib`, `$lib_version`.
 
 ## Events
 
@@ -89,12 +92,34 @@ Token totals cover the replies to the turn's own user message as loaded when
 the turn settles; a reply that has not arrived yet is not counted. A turn
 whose conversation is closed before it ends is not reported at all.
 
+## How this compares
+
+The bar is "what OpenCode, T3 Code and Orca do, and not more", checked on
+2026-10-03 against their repositories.
+
+| | OpenCode (`sst/opencode`) | T3 Code (`pingdotgg/t3code`) | Orca (`stablyai/orca`) | BYOT |
+| --- | --- | --- | --- | --- |
+| Product analytics | None in the CLI, server, web or desktop app | PostHog, 5 events, server-side | PostHog, 88 events, desktop only | PostHog, 7 events |
+| Error reporting | Sentry in the web and desktop apps when a DSN is built in (Breadcrumbs off) | None | Local trace file; bundle upload only by hand | None; one coarse `error_class` |
+| Consent | n/a | Opt-out: `T3CODE_TELEMETRY_ENABLED=false` | Opt-in banner, Settings switch, `DO_NOT_TRACK`, `ORCA_TELEMETRY_DISABLED`, CI off | Opt-in question, About switch, `--telemetry-disabled`, `BYOT_TELEMETRY_DISABLED=1`, tests off, forks off |
+| Identity | n/a | Hashed provider account id, else install id | Random install id, no person profile | Random install id, no person profile, deleted on opt-out |
+| Per turn | n/a | provider, model, reasoning effort, permission mode, result, duration, token totals | agent kind, token counts, coarse error class | kind, provider, model, agent (build/plan/other), result, duration, token totals, counts |
+| Server or host | n/a | client surface, platform, arch | host OS, arch, glibc, Node major, local/WSL/SSH | address kind (tailnet/local/public), transport, protocol, `major.minor` version |
+| Device context | n/a | platform, arch, app version | version, OS, arch, coarse OS release, channel | app and OS versions, device model and type |
+| Location | n/a | PostHog default | Country only | Country only (city-level fields filtered at ingestion) |
+| Star or review ask | None | None | Desktop star card: threshold, 3-day cooldown, doubled on dismiss; none on iOS | Star card: third turn, 6-day cooldown, doubled on Later; then Apple's prompt |
+| Mobile app | Desktop and web only | iOS and Android companions, events from the server | iOS and Android companion: no telemetry, no nag | The phone is the product |
+
+Everything BYOT sends appears in at least one of the three; nothing in BYOT
+goes finer than its counterpart there.
+
 ## Never sent
 
 Prompts, replies, code, file contents, file names, directories, project and
 session names, worktree names, server addresses and names, user names,
 passwords, custom provider and agent names, error messages, stack traces,
-the device's user-visible name, the time zone.
+the device's user-visible name, the time zone, the language, the screen size,
+the network type, city-level location.
 
 ## Changing the schema
 
