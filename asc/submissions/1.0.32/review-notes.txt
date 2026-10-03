@@ -1,4 +1,4 @@
-BYOT 1.0.32 (20261003162138) is a native iPhone and iPad client for OpenCode running on the user's own computer. It uses OpenCode's public HTTP/SSE API. Commands execute on the configured server; BYOT renders responses and does not download or execute code on iOS. BYOT is independent and is not affiliated with OpenCode.
+BYOT 1.0.32 (20261003165115) is a native iPhone and iPad client for OpenCode running on the user's own computer. It uses OpenCode's public HTTP/SSE API. Commands execute on the configured server; BYOT renders responses and does not download or execute code on iOS. BYOT is independent and is not affiliated with OpenCode.
 
 There is no BYOT account, tracking, or in-app purchase. Anonymous usage data (PostHog) is off by default and starts only after the person turns it on; see USAGE DATA below. Server passwords are stored in the iOS Keychain. The dedicated review server has a scratch workspace and needs no VPN, Tailscale, browser sign-in, MFA, or invitation.
 
