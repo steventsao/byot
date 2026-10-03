@@ -58,9 +58,9 @@ composition, dependency injection, discovery lifetime, and test seams.
 ## Privacy and usage data
 
 There is no BYOT account. Prompts, code and files travel between your iPhone
-and your own OpenCode server. byot can send six kinds of anonymous usage
+and your own OpenCode server. byot can send seven kinds of anonymous usage
 events (app opened, server connected, session started, turn requested, turn
-completed, error category) to PostHog, but only after you turn that on in
+completed, error category, star or review ask) to PostHog, but only after you turn that on in
 the one-time question or in About byot → Privacy. It never sends prompts,
 code, server addresses, or project names; the full contract is in
 [docs/features/telemetry.md](docs/features/telemetry.md). Set

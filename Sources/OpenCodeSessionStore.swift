@@ -59,6 +59,9 @@ final class OpenCodeSessionStore: ObservableObject {
     /// The turn byot asked for most recently, for the anonymous
     /// `turn_completed` event. Turns started elsewhere are not reported.
     private var telemetryTurn: BYOTTelemetryTurn?
+    /// What byot asks for after this turn finished well, if anything.
+    @Published private(set) var nudge: BYOTNudgeAsk?
+    private let nudgeGate: BYOTNudgeGate
     @Published var errorMessage: String?
 
     @Published private(set) var session: OpenCodeSession
@@ -181,6 +184,7 @@ final class OpenCodeSessionStore: ObservableObject {
         self.directory = directory
         self.defaults = defaults
         self.remoteFiles = remoteFiles
+        nudgeGate = BYOTNudgeGate(defaults: defaults)
         modelSelectionKey = "byot.opencode.model.\(serverID.uuidString).\(session.id)"
         serverDefaultModelKey = Self.serverDefaultModelKey(serverID)
         persistedModelID = defaults.string(forKey: modelSelectionKey)
@@ -2227,6 +2231,28 @@ final class OpenCodeSessionStore: ObservableObject {
         }
         BYOTTelemetry.shared.record(.turnCompleted, BYOTTelemetryOpenCode.turnCompleted(
             turn, result: result, messages: messages, now: .now))
+        // A finished turn is the value moment the star or review ask waits for.
+        if result == "completed", nudge == nil, let ask = nudgeGate.recordValueMoment() {
+            nudge = ask
+            BYOTTelemetry.shared.record(.nudgeOutcome, nudgeGate.outcome(ask, "shown"))
+        }
+    }
+
+    enum NudgeAnswer { case starred, later, reviewRequested }
+
+    func answerNudge(_ answer: NudgeAnswer) {
+        guard let ask = nudge else { return }
+        nudge = nil
+        switch answer {
+        case .starred:
+            nudgeGate.recordStarred()
+            BYOTTelemetry.shared.record(.nudgeOutcome, nudgeGate.outcome(ask, "starred"))
+        case .later:
+            nudgeGate.recordLater()
+            BYOTTelemetry.shared.record(.nudgeOutcome, nudgeGate.outcome(ask, "later"))
+        case .reviewRequested:
+            BYOTTelemetry.shared.record(.nudgeOutcome, nudgeGate.outcome(ask, "requested"))
+        }
     }
 
     static func visibleAssistantActivityIDs(

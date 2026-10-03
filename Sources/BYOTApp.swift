@@ -128,6 +128,7 @@ private struct BYOTRootView: View {
 private struct AboutView: View {
     @Binding var appearance: BYOTAppearance
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @AppStorage(BYOTLiveActivityController.enabledKey) private var showsLiveActivities = true
 
     private var version: String {
@@ -173,6 +174,21 @@ private struct AboutView: View {
                     Text("Say “Ask OpenCode in byot” to start a session, or “What needs me in byot” to hear which sessions are waiting on you. byot’s actions are also in the Shortcuts app.")
                 }
                 BYOTTelemetryPrivacySection()
+                Section {
+                    Button {
+                        // Opening the repo counts as starred; later asks go to Apple's prompt.
+                        BYOTNudgeGate().recordStarred()
+                        openURL(BYOTNudgeGate.repoURL)
+                    } label: {
+                        Label("Star byot on GitHub", systemImage: "star")
+                    }
+                    .accessibilityIdentifier("about-star-byot")
+                    Link(destination: BYOTNudgeGate.reviewURL) {
+                        Label("Rate byot on the App Store", systemImage: "hand.thumbsup")
+                    }
+                } header: {
+                    Text("Support byot")
+                }
                 Section {
                     LabeledContent("Version", value: version)
                 }

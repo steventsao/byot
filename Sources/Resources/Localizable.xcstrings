@@ -1309,6 +1309,22 @@
         }
       }
     },
+    "A star on GitHub helps other OpenCode users find it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A star on GitHub helps other OpenCode users find it."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 GitHub 上点个星，能帮助更多 OpenCode 用户发现它。"
+          }
+        }
+      }
+    },
     "A worktree is a separate checkout of %@ on its own branch, for sessions that shouldn’t touch your main checkout." : {
       "localizations" : {
         "zh-Hans" : {
@@ -5157,6 +5173,22 @@
         }
       }
     },
+    "Later" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Later"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "稍后"
+          }
+        }
+      }
+    },
     "Leave blank to list known projects." : {
       "localizations" : {
         "zh-Hans" : {
@@ -5203,6 +5235,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "浅色"
+          }
+        }
+      }
+    },
+    "Like byot?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Like byot?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "喜欢 byot 吗？"
           }
         }
       }
@@ -8050,6 +8098,22 @@
         }
       }
     },
+    "Rate byot on the App Store" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Rate byot on the App Store"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 App Store 上为 byot 评分"
+          }
+        }
+      }
+    },
     "Read clipboard" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9670,6 +9734,22 @@
         }
       }
     },
+    "Seven anonymous events: app opened, server connected, session started, turn requested, turn completed, error category, and whether byot asked for a star or a review. Never your prompts, code, server addresses, or project names." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Seven anonymous events: app opened, server connected, session started, turn requested, turn completed, error category, and whether byot asked for a star or a review. Never your prompts, code, server addresses, or project names."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "七种匿名事件：打开应用、连接服务器、开始会话、请求轮次、轮次完成、错误类别，以及 byot 是否请求过点星或评分。绝不包含您的提示词、代码、服务器地址或项目名称。"
+          }
+        }
+      }
+    },
     "Share" : {
       "localizations" : {
         "zh-Hans" : {
@@ -10064,22 +10144,6 @@
         }
       }
     },
-    "Six anonymous events: app opened, server connected, session started, turn requested, turn completed, and error category. Never your prompts, code, server addresses, or project names." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Six anonymous events: app opened, server connected, session started, turn requested, turn completed, and error category. Never your prompts, code, server addresses, or project names."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "六种匿名事件：打开应用、连接服务器、开始会话、请求轮次、轮次完成和错误类别。绝不包含您的提示词、代码、服务器地址或项目名称。"
-          }
-        }
-      }
-    },
     "Slash" : {
       "localizations" : {
         "zh-Hans" : {
@@ -10206,6 +10270,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此设备上的语音识别或麦克风受到限制。"
+          }
+        }
+      }
+    },
+    "Star byot" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Star byot"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为 byot 点星"
+          }
+        }
+      }
+    },
+    "Star byot on GitHub" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Star byot on GitHub"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 GitHub 上为 byot 点星"
           }
         }
       }
@@ -10536,6 +10632,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "摘要"
+          }
+        }
+      }
+    },
+    "Support byot" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Support byot"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "支持 byot"
           }
         }
       }

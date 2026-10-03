@@ -1,7 +1,7 @@
 import Foundation
 import PostHog
 
-/// Anonymous, opt-in product usage events: six names, fixed property keys,
+/// Anonymous, opt-in product usage events: seven names, fixed property keys,
 /// enum-like values. docs/features/telemetry.md is the public contract; keep
 /// the two in step. Nothing here may carry prompts, code, server addresses,
 /// directories, project or session names, or any free text a person typed.
@@ -12,6 +12,7 @@ enum BYOTTelemetryEvent: String, CaseIterable, Sendable {
     case turnRequested = "turn_requested"
     case turnCompleted = "turn_completed"
     case errorOccurred = "error_occurred"
+    case nudgeOutcome = "nudge_outcome"
 
     /// The only property keys this event may carry. A payload with any other
     /// key is dropped whole, so a new field needs a schema change here and a
@@ -28,6 +29,7 @@ enum BYOTTelemetryEvent: String, CaseIterable, Sendable {
             ["result", "duration_ms", "agent", "provider", "model", "input_tokens", "output_tokens",
              "reasoning_tokens", "reply_count", "server_protocol"]
         case .errorOccurred: ["error_class", "surface", "server_protocol"]
+        case .nudgeOutcome: ["kind", "outcome", "completed_turns", "threshold"]
         }
     }
 

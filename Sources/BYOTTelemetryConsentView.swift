@@ -103,7 +103,7 @@ struct BYOTTelemetryPrivacySection: View {
             Text("Privacy")
         } footer: {
             if model.isAvailable {
-                Text("Six anonymous events: app opened, server connected, session started, turn requested, turn completed, and error category. Never your prompts, code, server addresses, or project names.")
+                Text("Seven anonymous events: app opened, server connected, session started, turn requested, turn completed, error category, and whether byot asked for a star or a review. Never your prompts, code, server addresses, or project names.")
             } else {
                 Text("Usage data is turned off for this build.")
             }

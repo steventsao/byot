@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 
 /// A conversation screen. A subagent session can step to a sibling or up to
@@ -57,6 +58,8 @@ struct OpenCodeSessionScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.requestReview) private var requestReview
+    @Environment(\.openURL) private var openURL
     @StateObject private var store: OpenCodeSessionStore
     @StateObject private var diffReview: OpenCodeDiffReviewStore
     @State private var diffRequest: OpenCodeDiffReviewRequest?
@@ -429,18 +432,37 @@ struct OpenCodeSessionScreen: View {
             .background(BYOTBrand.canvas)
         }
         .safeAreaInset(edge: .bottom) {
-            if let family = store.subagentFamily {
-                OpenCodeSubagentBar(
-                    agentLabel: OpenCodeSubagentTitle.agentLabel(OpenCodeSubagentTitle.agent(of: store.session)),
-                    family: family,
-                    canStop: store.canStopTurn,
-                    isStopping: store.isStoppingTurn,
-                    stop: { Task { await store.stopTurn() } },
-                    open: replaceSession
-                )
-            } else {
-                composer
+            VStack(spacing: 8) {
+                if store.nudge == .star {
+                    BYOTStarNudgeCard(
+                        star: {
+                            openURL(BYOTNudgeGate.repoURL)
+                            store.answerNudge(.starred)
+                        },
+                        later: { store.answerNudge(.later) }
+                    )
+                    .padding(.horizontal, 12)
+                }
+                if let family = store.subagentFamily {
+                    OpenCodeSubagentBar(
+                        agentLabel: OpenCodeSubagentTitle.agentLabel(OpenCodeSubagentTitle.agent(of: store.session)),
+                        family: family,
+                        canStop: store.canStopTurn,
+                        isStopping: store.isStoppingTurn,
+                        stop: { Task { await store.stopTurn() } },
+                        open: replaceSession
+                    )
+                } else {
+                    composer
+                }
             }
+        }
+        .onChange(of: store.nudge) { _, ask in
+            // Apple shows its prompt at most three times a year; the ask is
+            // recorded whether or not a dialog appears.
+            guard ask == .review else { return }
+            requestReview()
+            store.answerNudge(.reviewRequested)
         }
         .environment(\.openCodeRemoteFiles, store.remoteFiles)
         .environment(\.openCodeContextLimits, store.modelContextLimits)
