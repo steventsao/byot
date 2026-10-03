@@ -4881,6 +4881,22 @@
         }
       }
     },
+    "Help improve byot" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Help improve byot"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帮助改进 byot"
+          }
+        }
+      }
+    },
     "Hide keyboard" : {
       "localizations" : {
         "zh-Hans" : {
@@ -6370,6 +6386,22 @@
         }
       }
     },
+    "Not now" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not now"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂不"
+          }
+        }
+      }
+    },
     "Not offered by a connected provider" : {
       "localizations" : {
         "zh-Hans" : {
@@ -7668,6 +7700,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主要智能体"
+          }
+        }
+      }
+    },
+    "Privacy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Privacy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐私"
           }
         }
       }
@@ -9642,12 +9690,60 @@
         }
       }
     },
+    "Share anonymous usage data" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Share anonymous usage data"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享匿名使用数据"
+          }
+        }
+      }
+    },
+    "Share anonymous usage data?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Share anonymous usage data?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享匿名使用数据？"
+          }
+        }
+      }
+    },
     "Share link" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "分享链接"
+          }
+        }
+      }
+    },
+    "Share usage data" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Share usage data"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享使用数据"
           }
         }
       }
@@ -9964,6 +10060,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Siri 与快捷指令"
+          }
+        }
+      }
+    },
+    "Six anonymous events: app opened, server connected, session started, turn requested, turn completed, and error category. Never your prompts, code, server addresses, or project names." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Six anonymous events: app opened, server connected, session started, turn requested, turn completed, and error category. Never your prompts, code, server addresses, or project names."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "六种匿名事件：打开应用、连接服务器、开始会话、请求轮次、轮次完成和错误类别。绝不包含您的提示词、代码、服务器地址或项目名称。"
           }
         }
       }
@@ -12144,6 +12256,22 @@
         }
       }
     },
+    "Usage data is turned off for this build." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Usage data is turned off for this build."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此版本已关闭使用数据。"
+          }
+        }
+      }
+    },
     "Usage updates after the next reply." : {
       "localizations" : {
         "zh-Hans" : {
@@ -12798,6 +12926,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "byot 仅使用相机读取配对码。"
+          }
+        }
+      }
+    },
+    "byot would send which features you use and whether turns finish, plus your iOS version and device model. It never sends your prompts, code, server addresses, project names, or passwords. You can change this anytime in About byot." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "byot would send which features you use and whether turns finish, plus your iOS version and device model. It never sends your prompts, code, server addresses, project names, or passwords. You can change this anytime in About byot."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "byot 只会发送您使用了哪些功能、每轮是否完成，以及 iOS 版本和设备型号。绝不发送您的提示词、代码、服务器地址、项目名称或密码。您可以随时在“关于 byot”中更改。"
           }
         }
       }

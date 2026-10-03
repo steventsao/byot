@@ -55,6 +55,17 @@ xcodebuild test -project BYOT.xcodeproj -scheme BYOT -destination 'platform=iOS 
 The [OpenCode service layers](docs/opencode-service-layers.md) explain adapter
 composition, dependency injection, discovery lifetime, and test seams.
 
+## Privacy and usage data
+
+There is no BYOT account. Prompts, code and files travel between your iPhone
+and your own OpenCode server. byot can send six kinds of anonymous usage
+events (app opened, server connected, session started, turn requested, turn
+completed, error category) to PostHog, but only after you turn that on in
+the one-time question or in About byot → Privacy. It never sends prompts,
+code, server addresses, or project names; the full contract is in
+[docs/features/telemetry.md](docs/features/telemetry.md). Set
+`BYOT_TELEMETRY_DISABLED=1` or pass `--telemetry-disabled` to force it off.
+
 ## Status
 
 Early, and the surface is intentionally small. Expect rough edges — [issues](https://github.com/steventsao/byot/issues) welcome.

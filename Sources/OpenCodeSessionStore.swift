@@ -19,7 +19,9 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var questions: [OpenCodeQuestionRequest] = []
     @Published private(set) var diffs: [OpenCodeDiff] = []
     @Published private(set) var protocolCapabilities: OpenCodeProtocolCapabilities?
-    @Published private(set) var status: OpenCodeSessionStatus = .idle
+    @Published private(set) var status: OpenCodeSessionStatus = .idle {
+        didSet { recordTurnCompletionIfNeeded(from: oldValue) }
+    }
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false
     @Published private(set) var isSending = false
@@ -54,6 +56,9 @@ final class OpenCodeSessionStore: ObservableObject {
     @Published private(set) var modelErrorMessage: String?
     @Published private(set) var isStoppingTurn = false
     @Published private(set) var hasRecoverableUnansweredPrompt = false
+    /// The turn byot asked for most recently, for the anonymous
+    /// `turn_completed` event. Turns started elsewhere are not reported.
+    private var telemetryTurn: BYOTTelemetryTurn?
     @Published var errorMessage: String?
 
     @Published private(set) var session: OpenCodeSession
@@ -972,10 +977,12 @@ final class OpenCodeSessionStore: ObservableObject {
             guard revertMessageID == nil else { errorMessage = String(localized: "Redo the conversation before adding work to the computer queue."); return false }
             guard queuedPrompts.isEmpty else { errorMessage = String(localized: "Send or remove the existing local queued messages first."); return false }
             do {
-                try queue.enqueue(OpenCodeQueuedPrompt(text: trimmed, model: selectedModel, attachments: attachments,
+                let prompt = OpenCodeQueuedPrompt(text: trimmed, model: selectedModel, attachments: attachments,
                     agent: effectiveAgentID, variant: selectedVariant,
-                    command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands), remoteReferences: remoteReferences))
+                    command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands), remoteReferences: remoteReferences)
+                try queue.enqueue(prompt)
                 queueAnnouncementRevision &+= 1
+                BYOTTelemetry.shared.record(.turnRequested, BYOTTelemetryOpenCode.turnRequested(prompt, delivery: .computerQueue))
                 return true
             } catch { errorMessage = error.localizedDescription; return false }
         }
@@ -989,6 +996,7 @@ final class OpenCodeSessionStore: ObservableObject {
                command: OpenCodeCommandInvocation.parse(trimmed, catalog: composerCatalog.commands),
                remoteReferences: remoteReferences) {
             publishPromptQueue()
+            BYOTTelemetry.shared.record(.turnRequested, BYOTTelemetryOpenCode.turnRequested(prompt, delivery: .now))
             schedulePromptDispatch(prompt)
             return true
         }
@@ -1003,11 +1011,13 @@ final class OpenCodeSessionStore: ObservableObject {
         )
         publishPromptQueue()
         switch submission {
-        case .queued:
+        case .queued(let prompt):
             queueAnnouncementRevision &+= 1
             scheduleQueueRecoveryIfNeeded()
+            BYOTTelemetry.shared.record(.turnRequested, BYOTTelemetryOpenCode.turnRequested(prompt, delivery: .queued))
             return true
         case .dispatch(let prompt):
+            BYOTTelemetry.shared.record(.turnRequested, BYOTTelemetryOpenCode.turnRequested(prompt, delivery: .now))
             schedulePromptDispatch(prompt)
             return true
         }
@@ -1023,6 +1033,7 @@ final class OpenCodeSessionStore: ObservableObject {
         let local = OpenCodeLocalShell(id: UUID(), command: command, baselineMessageIDs: Set(transcript.messages.map(\.id)))
         localShell = local
         restoredShellCommand = nil
+        BYOTTelemetry.shared.record(.turnRequested, BYOTTelemetryOpenCode.shellRequested())
         errorMessage = nil
         dismissUnansweredPromptRecovery()
         let generation = lifecycleGeneration
@@ -1246,6 +1257,8 @@ final class OpenCodeSessionStore: ObservableObject {
             publishPromptQueue()
             finishPromptDispatch(dispatchID)
             if serverConfirmedActivity == false {
+                // Nothing reached the server, so there is no turn to report.
+                telemetryTurn = nil
                 clearOptimisticBusy()
             }
         } catch {
@@ -1255,8 +1268,11 @@ final class OpenCodeSessionStore: ObservableObject {
             publishPromptQueue()
             finishPromptDispatch(dispatchID)
             if serverConfirmedActivity == false {
+                // Nothing reached the server, so there is no turn to report.
+                telemetryTurn = nil
                 clearOptimisticBusy()
             }
+            BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.errorOccurred(error, surface: .send))
             errorMessage = prompt.command?.kind == .command
                 ? String(localized: "The command may have run before the connection failed. Review the session before choosing Run again. \(error.localizedDescription)")
                 : error.localizedDescription
@@ -1699,6 +1715,7 @@ final class OpenCodeSessionStore: ObservableObject {
         case "session.error":
             if let sessionError: OpenCodeMessageError = decode(event.properties["error"]) {
                 errorMessage = sessionError.displayMessage
+                BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.turnFailed(sessionError))
             }
             // OpenCode normally follows session.error with idle, but clients
             // cannot depend on that event arriving. Pause queued work before
@@ -1725,6 +1742,7 @@ final class OpenCodeSessionStore: ObservableObject {
         case "session.execution.failed", "session.execution.interrupted":
             if event.type == "session.execution.failed" {
                 errorMessage = OpenCodeFailure(message: String(localized: "The turn failed."), details: event.properties["error"]?.objectValue).message
+                BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.turnFailed(details: event.properties["error"]?.objectValue))
             }
             settleTurnLocally(dismissingUnansweredPrompt: false)
             scheduleMessageRefresh()
@@ -2193,6 +2211,24 @@ final class OpenCodeSessionStore: ObservableObject {
         isAwaitingFirstVisibleOutput = false
     }
 
+    /// Reports a byot-requested turn once it goes idle. A turn the view left
+    /// behind (`stop()`) may still be running on the server, so it is dropped
+    /// rather than guessed at.
+    private func recordTurnCompletionIfNeeded(from previous: OpenCodeSessionStatus) {
+        guard previous.isActive, status.isActive == false, let turn = telemetryTurn else { return }
+        telemetryTurn = nil
+        guard isRunning else { return }
+        let result = if isStoppingTurn {
+            "stopped"
+        } else if errorMessage != nil || BYOTTelemetryOpenCode.replyFailed(in: messages, after: turn.prompt.messageID) {
+            "failed"
+        } else {
+            "completed"
+        }
+        BYOTTelemetry.shared.record(.turnCompleted, BYOTTelemetryOpenCode.turnCompleted(
+            turn, result: result, messages: messages, now: .now))
+    }
+
     static func visibleAssistantActivityIDs(
         in messages: [OpenCodeMessageEnvelope]
     ) -> Set<String> {
@@ -2232,6 +2268,7 @@ final class OpenCodeSessionStore: ObservableObject {
         recoveryIdleUserMessageID = nil
         didStatusProbeFailWithFreshTranscript = false
         beginCurrentTurnActivityTracking()
+        telemetryTurn = BYOTTelemetryTurn(prompt: prompt, startedAt: .now)
         markOptimisticBusy()
         isSending = true
         let dispatchID = UUID()

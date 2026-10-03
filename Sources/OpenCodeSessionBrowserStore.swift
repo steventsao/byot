@@ -332,7 +332,9 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
             // The project's input snapshot answers only for its own directory;
             // worktree sessions are rechecked one by one when flagged.
             loaded.sessionIDs = Set(sessions.map(\.id))
-        case .failure(let error): errors.append(error.localizedDescription)
+        case .failure(let error):
+            errors.append(error.localizedDescription)
+            BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.errorOccurred(error, surface: .sessionList))
         }
         switch statuses {
         case .success(let statuses): loaded.group.statuses = statuses.merging(worktrees.statuses) { current, _ in current }

@@ -6,6 +6,7 @@ final class BYOTAppearanceUITests: XCTestCase {
     func testAppearanceChangesImmediatelyAndPersists() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments.append("--telemetry-disabled")  // No usage-data question over the real root view.
         app.launch()
         XCTAssertTrue(app.buttons["about-byot"].waitForExistence(timeout: 10))
         let systemIsDark = try backgroundIsDark(app)
@@ -33,6 +34,7 @@ final class BYOTAppearanceUITests: XCTestCase {
             app.buttons["Cancel"].tap()
 
             app.terminate()
+            app.launchArguments.append("--telemetry-disabled")  // No usage-data question over the real root view.
             app.launch()
             XCTAssertTrue(app.buttons["about-byot"].waitForExistence(timeout: 5))
             try assertAppearance(app, dark: isDark, name: "relaunch-\(name)")
@@ -48,6 +50,7 @@ final class BYOTAppearanceUITests: XCTestCase {
         app.buttons["Done"].tap()
         try assertAppearance(app, dark: systemIsDark, name: "home-System")
         app.terminate()
+        app.launchArguments.append("--telemetry-disabled")  // No usage-data question over the real root view.
         app.launch()
         XCTAssertTrue(app.buttons["about-byot"].waitForExistence(timeout: 5))
         try assertAppearance(app, dark: systemIsDark, name: "relaunch-System")

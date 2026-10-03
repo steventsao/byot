@@ -44,6 +44,14 @@ struct OpenCodeClient: Sendable {
         try await connection.probe()
     }
 
+    /// The negotiated adapter. The first success per saved server and app
+    /// launch records the anonymous `server_connected` event.
+    private func negotiatedAdapter() async throws -> any OpenCodeProtocolAdapting {
+        let adapter = try await connection.adapter()
+        BYOTTelemetry.shared.recordServerConnected(profile: profile, serverProtocol: adapter.serverProtocol)
+        return adapter
+    }
+
     func health() async throws -> OpenCodeHealth {
         try await transport.get(["global", "health"], query: [])
     }
@@ -85,33 +93,36 @@ struct OpenCodeClient: Sendable {
     }
 
     func capabilities() async throws -> OpenCodeProtocolCapabilities {
-        try await connection.adapter().capabilities
+        try await negotiatedAdapter().capabilities
     }
 
     func featureContext() async throws -> OpenCodeFeatureContext {
-        let adapter = try await connection.adapter()
+        let adapter = try await negotiatedAdapter()
         return OpenCodeFeatureContext(
             serverProtocol: adapter.serverProtocol, schema: adapter.apiSchema,
             transport: transport, profile: profile)
     }
 
     func listProjects() async throws -> [OpenCodeProject] {
-        try await connection.adapter().listProjects()
+        try await negotiatedAdapter().listProjects()
     }
 
     func listSessions(directory: String) async throws -> [OpenCodeSession] {
-        try await connection.adapter().listSessions(directory: directory)
+        try await negotiatedAdapter().listSessions(directory: directory)
     }
 
     func createSession(directory: String, title: String?) async throws -> OpenCodeSession {
-        try await connection.adapter().createSession(directory: directory, title: title)
+        let adapter = try await negotiatedAdapter()
+        let session = try await adapter.createSession(directory: directory, title: title)
+        BYOTTelemetry.shared.record(.sessionStarted, ["server_protocol": adapter.serverProtocol.rawValue])
+        return session
     }
 
     func connectedProviderModels(
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodeProviderModels] {
-        try await connection.adapter().connectedProviderModels(directory: directory, workspace: workspace)
+        try await negotiatedAdapter().connectedProviderModels(directory: directory, workspace: workspace)
     }
 
     func messages(
@@ -119,7 +130,7 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodeMessageEnvelope] {
-        try await connection.adapter().messages(
+        try await negotiatedAdapter().messages(
             sessionID: sessionID, directory: directory, workspace: workspace)
     }
 
@@ -132,7 +143,7 @@ struct OpenCodeClient: Sendable {
         attachments: [OpenCodePromptAttachment] = [],
         promptID: UUID = UUID()
     ) async throws {
-        try await connection.adapter().sendMessage(
+        try await negotiatedAdapter().sendMessage(
             sessionID: sessionID, directory: directory, workspace: workspace, model: model, text: text,
             attachments: attachments, promptID: promptID)
     }
@@ -143,7 +154,7 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws -> Bool {
-        try await connection.adapter().abortSession(
+        try await negotiatedAdapter().abortSession(
             sessionID: sessionID, directory: directory, workspace: workspace)
     }
 
@@ -152,24 +163,24 @@ struct OpenCodeClient: Sendable {
         directory: String,
         workspace: String? = nil
     ) async throws -> [OpenCodeDiff] {
-        try await connection.adapter().diffs(sessionID: sessionID, directory: directory, workspace: workspace)
+        try await negotiatedAdapter().diffs(sessionID: sessionID, directory: directory, workspace: workspace)
     }
 
     func sessionStatuses(
         directory: String,
         workspace: String? = nil
     ) async throws -> [String: OpenCodeSessionStatus] {
-        try await connection.adapter().sessionStatuses(directory: directory, workspace: workspace)
+        try await negotiatedAdapter().sessionStatuses(directory: directory, workspace: workspace)
     }
 
     func permissions(directory: String, workspace: String? = nil) async throws -> [OpenCodePermissionRequest]
     {
-        if try await connection.adapter().serverProtocol == .v2 { return [] }
+        if try await negotiatedAdapter().serverProtocol == .v2 { return [] }
         return try await actions.permissions(directory: directory, workspace: workspace)
     }
 
     func questions(directory: String, workspace: String? = nil) async throws -> [OpenCodeQuestionRequest] {
-        if try await connection.adapter().serverProtocol == .v2 { return [] }
+        if try await negotiatedAdapter().serverProtocol == .v2 { return [] }
         return try await actions.questions(directory: directory, workspace: workspace)
     }
 
@@ -178,7 +189,7 @@ struct OpenCodeClient: Sendable {
     }
 
     func v2Questions(sessionID: String) async throws -> [OpenCodeQuestionRequest] {
-        let usesForms = try await connection.adapter().usesForms
+        let usesForms = try await negotiatedAdapter().usesForms
         return try await actions.v2Questions(sessionID: sessionID, usesForms: usesForms)
     }
 
@@ -216,7 +227,7 @@ struct OpenCodeClient: Sendable {
     /// session with the pending request IDs. Nil on v2 servers that list
     /// requests per session only.
     func pendingInputRequests(directory: String) async throws -> [String: Set<String>]? {
-        let adapter = try await connection.adapter()
+        let adapter = try await negotiatedAdapter()
         if adapter.serverProtocol == .v2 {
             guard adapter.listsPendingRequestsByLocation else { return nil }
             return try await actions.v2PendingRequests(directory: directory)
@@ -233,14 +244,14 @@ struct OpenCodeClient: Sendable {
     /// One session's pending request IDs on v2, for sessions no directory
     /// listing covered; v1 answers per directory instead.
     func pendingInputRequests(sessionID: String) async throws -> Set<String>? {
-        guard try await connection.adapter().serverProtocol == .v2 else { return nil }
+        guard try await negotiatedAdapter().serverProtocol == .v2 else { return nil }
         async let permissions = v2Permissions(sessionID: sessionID)
         async let questions = v2Questions(sessionID: sessionID)
         return Set(try await permissions.map(\.id)).union(try await questions.map(\.id))
     }
 
     func parentSessionID(of sessionID: String, directory: String?) async throws -> String? {
-        try await connection.adapter().session(id: sessionID, directory: directory).parentID
+        try await negotiatedAdapter().session(id: sessionID, directory: directory).parentID
     }
 
     private static func unlessUnsupported<Value: Sendable>(
@@ -257,7 +268,7 @@ struct OpenCodeClient: Sendable {
             continuation in
             let task = Task {
                 do {
-                    let route = try await route(connection.adapter())
+                    let route = try await route(negotiatedAdapter())
                     for try await event in transport.events(path: route.path, query: route.query) {
                         try Task.checkCancellation()
                         guard try OpenCodeEventStream.yieldEvent(event, to: continuation) else { return }
