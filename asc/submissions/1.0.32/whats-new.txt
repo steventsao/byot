@@ -1,0 +1,5 @@
+Optional anonymous usage data, and a way to say thanks:
+
+- Usage data is off until you turn it on. BYOT asks once after you add a server, and the switch is in About byot under Privacy. It sends only which features you use and whether turns finish, never your prompts, code, server addresses, or project names. Details at byot.app/privacy.
+- After a few finished turns, BYOT may ask for a star on GitHub, and later for a rating. Later hides the card for six days.
+- About byot has a Support section with Star byot on GitHub and Rate byot on the App Store.

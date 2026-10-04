@@ -7,11 +7,19 @@ struct BYOTApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("byot.appearance") private var appearance: BYOTAppearance = .system
 
+    init() {
+        // Sends nothing until the person opts in; see docs/features/telemetry.md.
+        BYOTTelemetry.shared.start()
+    }
+
     var body: some Scene {
         WindowGroup {
             appRoot
                 .task(id: scenePhase) {
-                    if scenePhase == .active { await BYOTPushNotifications.shared.refreshAuthorization() }
+                    if scenePhase == .active {
+                        BYOTTelemetry.shared.applicationDidBecomeActive()
+                        await BYOTPushNotifications.shared.refreshAuthorization()
+                    }
                 }
                 .tint(BYOTBrand.interactionTint)
                 .environment(\.font, .cleanBody)
@@ -59,6 +67,7 @@ struct BYOTApp: App {
 private struct BYOTRootView: View {
     @Binding var appearance: BYOTAppearance
     @State private var isShowingAbout = false
+    @State private var isAskingForUsageData = false
     @State private var pairingLink: URL?
     @ObservedObject private var push = BYOTPushNotifications.shared
     @ObservedObject private var shares = BYOTShareCenter.shared
@@ -89,20 +98,37 @@ private struct BYOTRootView: View {
             .task(id: scenePhase) {
                 // A share saved while byot couldn't be opened waits in the inbox.
                 if scenePhase == .active, !BYOTLaunch.isAutomated { shares.refresh() }
+                await askForUsageDataIfNeeded()
             }
             .sheet(isPresented: $isShowingAbout) {
                 AboutView(appearance: $appearance)
+            }
+            .background {
+                // Its own presenter, so it never competes with the About sheet.
+                Color.clear.sheet(isPresented: $isAskingForUsageData) { BYOTTelemetryConsentSheet() }
             }
             .task {
                 // Server names in "Ask OpenCode on <server>" phrases.
                 if !BYOTLaunch.isAutomated { BYOTAppShortcuts.updateAppShortcutParameters() }
             }
     }
+
+    /// Asks once, after the first server exists and the screen is free. A
+    /// person who has nothing to connect to has no usage to share yet.
+    private func askForUsageDataIfNeeded() async {
+        guard scenePhase == .active, BYOTTelemetry.shared.shouldAskForConsent,
+              !OpenCodeProfileStore.savedProfiles().isEmpty else { return }
+        try? await Task.sleep(for: .seconds(1.5))
+        guard scenePhase == .active, BYOTTelemetry.shared.shouldAskForConsent, !isShowingAbout,
+              pairingLink == nil, push.pendingDestination == nil, shares.incoming == nil else { return }
+        isAskingForUsageData = true
+    }
 }
 
 private struct AboutView: View {
     @Binding var appearance: BYOTAppearance
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @AppStorage(BYOTLiveActivityController.enabledKey) private var showsLiveActivities = true
 
     private var version: String {
@@ -146,6 +172,22 @@ private struct AboutView: View {
                     Text("Siri & Shortcuts")
                 } footer: {
                     Text("Say “Ask OpenCode in byot” to start a session, or “What needs me in byot” to hear which sessions are waiting on you. byot’s actions are also in the Shortcuts app.")
+                }
+                BYOTTelemetryPrivacySection()
+                Section {
+                    Button {
+                        // Opening the repo counts as starred; later asks go to Apple's prompt.
+                        BYOTNudgeGate().recordStarred()
+                        openURL(BYOTNudgeGate.repoURL)
+                    } label: {
+                        Label("Star byot on GitHub", systemImage: "star")
+                    }
+                    .accessibilityIdentifier("about-star-byot")
+                    Link(destination: BYOTNudgeGate.reviewURL) {
+                        Label("Rate byot on the App Store", systemImage: "hand.thumbsup")
+                    }
+                } header: {
+                    Text("Support byot")
                 }
                 Section {
                     LabeledContent("Version", value: version)

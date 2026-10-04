@@ -40,7 +40,7 @@ const BODY = `
           <a class="badge" href="${APP_STORE_URL}" aria-label="Download BYOT on the App Store">${APP_STORE_BADGE}</a>
           <a class="text-link" href="${REPO_URL}">View the source <span aria-hidden="true">→</span></a>
         </div>
-        <ul class="facts" aria-label="At a glance"><li>No account</li><li>No analytics</li><li>Open source · MIT</li></ul>
+        <ul class="facts" aria-label="At a glance"><li>No account</li><li>Opt-in usage data</li><li>Open source · MIT</li></ul>
       </div>
       <div class="stage">
         <div class="back">${shot("01-sessions", "Sessions across projects on a Mac mini server, with live Working and Idle status", true)}</div>
@@ -97,7 +97,7 @@ const BODY = `
           <h2 id="privacy-title">Direct to your server.</h2>
         </div>
         <div class="privacy-copy">
-          <p>There is no BYOT account and no analytics or tracking. Prompts and attachments go to your server and the model providers you enable there. Server passwords stay in the iOS Keychain.</p>
+          <p>There is no BYOT account and no tracking. Anonymous usage data is sent only if you turn it on, and it never includes prompts, code, server addresses, or project names. Prompts and attachments go to your server and the model providers you enable there. Server passwords stay in the iOS Keychain.</p>
           <p>Optional notifications and the computer queue use the BYOT relay for delivery and encrypted queued content. <a href="/privacy">Read the privacy policy</a>.</p>
         </div>
       </div>
@@ -107,7 +107,7 @@ export function renderLanding(): string {
   return renderPage({
     title: "BYOT — OpenCode client for iPhone and iPad",
     description:
-      "A native iOS client for OpenCode. Connect to the OpenCode server on your own computer and drive coding sessions from your iPhone or iPad. No account, no analytics, open source.",
+      "A native iOS client for OpenCode. Connect to the OpenCode server on your own computer and drive coding sessions from your iPhone or iPad. No account, opt-in anonymous usage data, open source.",
     path: "/",
     body: BODY,
   });

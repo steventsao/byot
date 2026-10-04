@@ -7,6 +7,7 @@ final class OpenCodeServerSetupUITests: XCTestCase {
     func testSetupShortcutsOpenScannerAndNearbyPages() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments.append("--telemetry-disabled")  // No usage-data question over the real root view.
         app.launch()
 
         let scan = app.buttons["scan-pairing-code"]
@@ -41,6 +42,7 @@ final class OpenCodeServerSetupUITests: XCTestCase {
     func testPairingLinkFillsTheForm() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments.append("--telemetry-disabled")  // No usage-data question over the real root view.
         app.launch()
         XCTAssertTrue(app.buttons["scan-pairing-code"].waitForExistence(timeout: 10))
 
@@ -58,6 +60,7 @@ final class OpenCodeServerSetupUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchArguments.append("--telemetry-disabled")  // No usage-data question over the real root view.
         app.launch()
         let scan = app.buttons["scan-pairing-code"]
         XCTAssertTrue(scan.waitForExistence(timeout: 10))

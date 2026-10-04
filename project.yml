@@ -6,7 +6,7 @@ options:
     iOS: "17.0"
 settings:
   base:
-    MARKETING_VERSION: 1.0.31
+    MARKETING_VERSION: 1.0.32
     CURRENT_PROJECT_VERSION: 1
     SWIFT_VERSION: 6.0
     DEVELOPMENT_TEAM: 449BD89VDV
@@ -23,6 +23,11 @@ packages:
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm
     exactVersion: 1.10.1
+  # Anonymous, opt-in usage events; see docs/features/telemetry.md. The SDK is
+  # set up with every automatic capture turned off (Sources/BYOTTelemetry.swift).
+  PostHog:
+    url: https://github.com/PostHog/posthog-ios
+    exactVersion: 3.89.0
 targets:
   BYOT:
     type: application
@@ -32,6 +37,7 @@ targets:
       - Shared
     dependencies:
       - package: SwiftTerm
+      - package: PostHog
       # Home-screen widget and Live Activity UI. Remove this entry (and the
       # App Group key in Sources/BYOT.entitlements) to ship without it; see
       # docs/releases/1.0.31-signing.md.
@@ -77,6 +83,12 @@ targets:
     settings:
       base:
         CODE_SIGN_STYLE: Automatic
+        # Empty in a normal build. scripts/asc-build-testflight.sh sets the
+        # user-defined BYOT_PROVISIONING_PROFILE_SPECIFIER for a manual release
+        # archive; only this target reads it. A plain PROVISIONING_PROFILE_SPECIFIER
+        # on the xcodebuild command line also hits package resource bundles
+        # (PostHog's), which refuse a profile and fail the archive.
+        PROVISIONING_PROFILE_SPECIFIER: "$(BYOT_PROVISIONING_PROFILE_SPECIFIER)"
         CODE_SIGN_ENTITLEMENTS: Sources/BYOT.entitlements
         PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot
         PRODUCT_NAME: byot

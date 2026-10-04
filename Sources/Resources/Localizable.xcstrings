@@ -1309,6 +1309,22 @@
         }
       }
     },
+    "A star on GitHub helps other OpenCode users find it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A star on GitHub helps other OpenCode users find it."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 GitHub 上点个星，能帮助更多 OpenCode 用户发现它。"
+          }
+        }
+      }
+    },
     "A worktree is a separate checkout of %@ on its own branch, for sessions that shouldn’t touch your main checkout." : {
       "localizations" : {
         "zh-Hans" : {
@@ -4881,6 +4897,22 @@
         }
       }
     },
+    "Help improve byot" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Help improve byot"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帮助改进 byot"
+          }
+        }
+      }
+    },
     "Hide keyboard" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5141,6 +5173,22 @@
         }
       }
     },
+    "Later" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Later"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "稍后"
+          }
+        }
+      }
+    },
     "Leave blank to list known projects." : {
       "localizations" : {
         "zh-Hans" : {
@@ -5187,6 +5235,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "浅色"
+          }
+        }
+      }
+    },
+    "Like byot?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Like byot?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "喜欢 byot 吗？"
           }
         }
       }
@@ -6366,6 +6430,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未连接"
+          }
+        }
+      }
+    },
+    "Not now" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not now"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂不"
           }
         }
       }
@@ -7672,6 +7752,22 @@
         }
       }
     },
+    "Privacy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Privacy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐私"
+          }
+        }
+      }
+    },
     "Privacy policy" : {
       "localizations" : {
         "zh-Hans" : {
@@ -7998,6 +8094,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "排队的消息正在等待会话状态：%@"
+          }
+        }
+      }
+    },
+    "Rate byot on the App Store" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Rate byot on the App Store"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 App Store 上为 byot 评分"
           }
         }
       }
@@ -9622,6 +9734,22 @@
         }
       }
     },
+    "Seven anonymous events: app opened, server connected, session started, turn requested, turn completed, error category, and whether byot asked for a star or a review. Never your prompts, code, server addresses, or project names." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Seven anonymous events: app opened, server connected, session started, turn requested, turn completed, error category, and whether byot asked for a star or a review. Never your prompts, code, server addresses, or project names."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "七种匿名事件：打开应用、连接服务器、开始会话、请求轮次、轮次完成、错误类别，以及 byot 是否请求过点星或评分。绝不包含您的提示词、代码、服务器地址或项目名称。"
+          }
+        }
+      }
+    },
     "Share" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9642,12 +9770,60 @@
         }
       }
     },
+    "Share anonymous usage data" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Share anonymous usage data"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享匿名使用数据"
+          }
+        }
+      }
+    },
+    "Share anonymous usage data?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Share anonymous usage data?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享匿名使用数据？"
+          }
+        }
+      }
+    },
     "Share link" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "分享链接"
+          }
+        }
+      }
+    },
+    "Share usage data" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Share usage data"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享使用数据"
           }
         }
       }
@@ -10098,6 +10274,38 @@
         }
       }
     },
+    "Star byot" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Star byot"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为 byot 点星"
+          }
+        }
+      }
+    },
+    "Star byot on GitHub" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Star byot on GitHub"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 GitHub 上为 byot 点星"
+          }
+        }
+      }
+    },
     "Start" : {
       "localizations" : {
         "zh-Hans" : {
@@ -10424,6 +10632,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "摘要"
+          }
+        }
+      }
+    },
+    "Support byot" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Support byot"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "支持 byot"
           }
         }
       }
@@ -12144,6 +12368,22 @@
         }
       }
     },
+    "Usage data is turned off for this build." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Usage data is turned off for this build."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此版本已关闭使用数据。"
+          }
+        }
+      }
+    },
     "Usage updates after the next reply." : {
       "localizations" : {
         "zh-Hans" : {
@@ -12798,6 +13038,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "byot 仅使用相机读取配对码。"
+          }
+        }
+      }
+    },
+    "byot would send which features you use and whether turns finish, plus your iOS version and device model. It never sends your prompts, code, server addresses, project names, or passwords. You can change this anytime in About byot." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "byot would send which features you use and whether turns finish, plus your iOS version and device model. It never sends your prompts, code, server addresses, project names, or passwords. You can change this anytime in About byot."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "byot 只会发送您使用了哪些功能、每轮是否完成，以及 iOS 版本和设备型号。绝不发送您的提示词、代码、服务器地址、项目名称或密码。您可以随时在“关于 byot”中更改。"
           }
         }
       }

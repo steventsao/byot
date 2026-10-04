@@ -11,6 +11,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.terminate()
+        app.launchArguments.append("--telemetry-disabled")  // No usage-data question over the real root view.
         app.launch()
         for (major, port) in [("v1", 4195), ("v2", 4199)] {
             connect(app, name: "Composer \(major)", port: port, directory: root + "/\(major)/project")
@@ -100,6 +101,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.terminate()
+        app.launchArguments.append("--telemetry-disabled")  // No usage-data question over the real root view.
         app.launch()
         for (major, port) in [("v1", 4195), ("v2", 4199)] {
             connect(app, name: "Recovery \(major)", port: port, directory: root + "/\(major)/retired")
@@ -163,6 +165,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         }
         let app = XCUIApplication()
         app.terminate()
+        app.launchArguments.append("--telemetry-disabled")  // No usage-data question over the real root view.
         app.launch()
         let v1Name = "OpenCode " + v1
         let v2Name = "V2 " + v2.replacingOccurrences(of: "opencode2 v", with: "").replacingOccurrences(of: "0.0.0-", with: "")
@@ -191,6 +194,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         // Relaunch exercises persisted server selection, grouping, and password retrieval.
         app.terminate()
         app.terminate()
+        app.launchArguments.append("--telemetry-disabled")  // No usage-data question over the real root view.
         app.launch()
         XCTAssertTrue(app.buttons["New session in project"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.buttons[v1Name].value as? String, "Selected server")

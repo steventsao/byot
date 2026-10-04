@@ -1,0 +1,30 @@
+BYOT 1.0.32 (20261003165115) is a native iPhone and iPad client for OpenCode running on the user's own computer. It uses OpenCode's public HTTP/SSE API. Commands execute on the configured server; BYOT renders responses and does not download or execute code on iOS. BYOT is independent and is not affiliated with OpenCode.
+
+There is no BYOT account, tracking, or in-app purchase. Anonymous usage data (PostHog) is off by default and starts only after the person turns it on; see USAGE DATA below. Server passwords are stored in the iOS Keychain. The dedicated review server has a scratch workspace and needs no VPN, Tailscale, browser sign-in, MFA, or invitation.
+
+REVIEW SERVER
+Name: App Review
+URL: https://testflight.byot.app
+Username: opencode
+Server password: use the secure demo-account password field in App Review Information.
+Working directory: /workspace
+
+REVIEW STEPS
+1. Launch BYOT and tap Add server (or the plus in the server bar). Enter the Name, URL, Username, and Server password above. The password is required. Enter /workspace under Working directory.
+2. Tap Test connection, then Save. Select App Review in the server bar.
+3. Tap compose/New session. Select App Review and /workspace. If /workspace is not listed, choose Other directory and enter /workspace. Tap Start session.
+4. In the composer, choose the connected OpenCode provider's Big Pickle model. Send: Reply exactly: BYOT App Review connection verified. Watch the response stream. To try tools, send: List the files in this scratch project and summarize the README without changing files. Answer any permission request with Allow once.
+5. Use the composer plus menu to attach a photo/document or choose Files to browse project files. Previewing an attachment preserves the draft. Send is disabled until imports finish.
+6. Type an unsent draft and attach a file, leave the session, reopen it, then relaunch BYOT. The draft is restored only in that session.
+7. Search, sort, group, or switch servers in the session browser. Swipe left and tap Archive to archive a session. The empty session screen has a readable New session button.
+
+CHANGES SINCE APP STORE 1.0.31
+Opt-in anonymous usage data, and a card that asks for a GitHub star after a finished turn (at most once every six days). Once the repository was opened, the gate uses Apple's SKStoreReviewController instead of a custom card.
+
+USAGE DATA
+About 1.5 seconds after a launch with a saved server, a half-sheet asks "Share anonymous usage data?" with Share usage data and Not now. Not now sends nothing. About byot (info button) > Privacy has the switch. With it on, BYOT sends seven event kinds to PostHog (US): app opened, server connected, session started, turn requested, turn completed, error category, star card shown. Fixed values and counts only; never prompts, replies, code, file or project names, server addresses, user names, passwords, or error messages. PrivacyInfo.xcprivacy and the App Privacy label declare Product Interaction, Other Diagnostic Data, Device ID (random install id) and Coarse Location, all Analytics, not linked, no tracking. Details: https://byot.app/privacy
+
+OPTIONAL COMPANION FEATURES
+Notifications and the computer queue are opt-in and not needed for the review flow above. Saved server menu > Notifications shows a one-time pairing code and the command for the OpenCode computer; Session actions > Message queue enables the computer queue after pairing. The relay stores APNs registration/preferences and encrypted queued prompts/attachments; direct-mode content goes to the configured OpenCode server. Local drafts use iOS file protection and are excluded from backups. No advertising or tracking is used; usage data is described above.
+
+OpenCode 1 and OpenCode 2 beta are supported; controls follow server capabilities. OpenCode 2 undo does not roll back workspace files. There is no offline demo; use the review server above.
