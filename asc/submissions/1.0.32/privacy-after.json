@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "dataUsages": [
+    {
+      "category": "COARSE_LOCATION",
+      "purposes": [
+        "ANALYTICS"
+      ],
+      "dataProtections": [
+        "DATA_NOT_LINKED_TO_YOU"
+      ]
+    },
+    {
+      "category": "DEVICE_ID",
+      "purposes": [
+        "ANALYTICS"
+      ],
+      "dataProtections": [
+        "DATA_NOT_LINKED_TO_YOU"
+      ]
+    },
+    {
+      "category": "DEVICE_ID",
+      "purposes": [
+        "APP_FUNCTIONALITY"
+      ],
+      "dataProtections": [
+        "DATA_LINKED_TO_YOU"
+      ]
+    },
+    {
+      "category": "OTHER_DIAGNOSTIC_DATA",
+      "purposes": [
+        "ANALYTICS"
+      ],
+      "dataProtections": [
+        "DATA_NOT_LINKED_TO_YOU"
+      ]
+    },
+    {
+      "category": "OTHER_USER_CONTENT",
+      "purposes": [
+        "APP_FUNCTIONALITY"
+      ],
+      "dataProtections": [
+        "DATA_LINKED_TO_YOU"
+      ]
+    },
+    {
+      "category": "PHOTOS_OR_VIDEOS",
+      "purposes": [
+        "APP_FUNCTIONALITY"
+      ],
+      "dataProtections": [
+        "DATA_LINKED_TO_YOU"
+      ]
+    },
+    {
+      "category": "PRODUCT_INTERACTION",
+      "purposes": [
+        "ANALYTICS"
+      ],
+      "dataProtections": [
+        "DATA_NOT_LINKED_TO_YOU"
+      ]
+    },
+    {
+      "category": "PRODUCT_INTERACTION",
+      "purposes": [
+        "APP_FUNCTIONALITY"
+      ],
+      "dataProtections": [
+        "DATA_LINKED_TO_YOU"
+      ]
+    }
+  ]
+}
