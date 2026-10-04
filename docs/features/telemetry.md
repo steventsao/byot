@@ -45,9 +45,12 @@ exception capture, no surveys. A `PostHogPropertiesSanitizer` drops any
 custom key outside the schema below and these context keys: `$device_name`,
 `$timezone`, `$locale`, `$screen_height`, `$screen_width`, `$network_wifi`,
 `$network_cellular`, `$set`, `$set_once`. PostHog derives a country from the
-request address; a "Filter Properties" transformation on project 476731
-drops the city, postal code, coordinates, subdivision and time-zone fields
-that its GeoIP step adds, so country and continent are the only location.
+request address, then discards the address: project 476731 has "Discard
+client IP data" on, so no `$ip` is stored, and a "Filter Properties"
+transformation drops the city, postal code, coordinates, subdivision and
+time-zone fields that the GeoIP step adds. Country and continent are the
+only location. Session and device continuity come from the install id and
+the SDK's `$session_id`, not from the address.
 
 The SDK context that remains on every event: `$app_version`, `$app_build`,
 `$app_name`, `$app_namespace`, `$os_name`, `$os_version`, `$device_model`,
@@ -106,7 +109,7 @@ The bar is "what OpenCode, T3 Code and Orca do, and not more", checked on
 | Per turn | n/a | provider, model, reasoning effort, permission mode, result, duration, token totals | agent kind, token counts, coarse error class | kind, provider, model, agent (build/plan/other), result, duration, token totals, counts |
 | Server or host | n/a | client surface, platform, arch | host OS, arch, glibc, Node major, local/WSL/SSH | address kind (tailnet/local/public), transport, protocol, `major.minor` version |
 | Device context | n/a | platform, arch, app version | version, OS, arch, coarse OS release, channel | app and OS versions, device model and type |
-| Location | n/a | PostHog default | Country only | Country only (city-level fields filtered at ingestion) |
+| Location | n/a | PostHog default (IP stored unless the project discards it) | Country only; GeoIP off in the client | Country only; IP discarded at ingestion, city fields filtered |
 | Star or review ask | None | None | Desktop star card: threshold, 3-day cooldown, doubled on dismiss; none on iOS | Star card: third turn, 6-day cooldown, doubled on Later; then Apple's prompt |
 | Mobile app | Desktop and web only | iOS and Android companions, events from the server | iOS and Android companion: no telemetry, no nag | The phone is the product |
 
