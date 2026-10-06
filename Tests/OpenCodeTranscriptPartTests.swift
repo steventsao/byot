@@ -91,11 +91,9 @@ struct OpenCodeTranscriptPartTests {
         #expect(!OpenCodeInlineImage.isInlineCandidate(make("d", "file", mime: "image/png", url: nil)))
     }
 
-    @Test(
-        "A short transcript fills its viewport so following never pushes it down",
-        .bug(id: "ASC-AAqE8eljRs3pWq5_qSfEZ0I"),
-        .bug(id: "ASC-AL-iOayl1hthD-usBql8OKE")
-    )
+    // Checks the height helper only, not that the view applies it, so it
+    // carries no feedback id.
+    @Test("A short transcript fills its viewport so following never pushes it down")
     func shortTranscriptFillsViewport() throws {
         // The reported screen: 431.55 pt of rows in a 541.7 pt viewport.
         let reported = try #require(OpenCodeTranscriptLayout.minimumContentHeight(viewportHeight: 541.7))
