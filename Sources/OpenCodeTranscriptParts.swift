@@ -60,6 +60,15 @@ enum OpenCodeTranscriptLayout {
         default: false
         }
     }
+
+    /// Whether a message draws anything. A step that has started with nothing
+    /// to show yet takes no row, so it adds no spacing above what follows.
+    static func rendersRow(_ message: OpenCodeMessageEnvelope) -> Bool {
+        let inPrompt = message.info.role == "user"
+        return message.parts.contains { isVisible($0, inPrompt: inPrompt) }
+            || message.info.error != nil
+            || OpenCodeStepSummary(reply: message) != nil
+    }
 }
 
 // MARK: - Compaction

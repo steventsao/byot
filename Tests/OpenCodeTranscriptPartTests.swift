@@ -91,6 +91,62 @@ struct OpenCodeTranscriptPartTests {
         #expect(!OpenCodeInlineImage.isInlineCandidate(make("d", "file", mime: "image/png", url: nil)))
     }
 
+    @Test(
+        "A reply with nothing to show yet takes no transcript row",
+        .bug(id: "ASC-AAqE8eljRs3pWq5_qSfEZ0I"),
+        .bug(id: "ASC-AL-iOayl1hthD-usBql8OKE")
+    )
+    func emptyMessagesTakeNoRow() throws {
+        var reducer = OpenCodeTranscriptReducer()
+        var sent = 0
+        func send(_ type: String, _ fields: String) throws {
+            sent += 1
+            let raw = #"{"id":"e\#(sent)","type":"session.next.\#(type)","data":{"sessionID":"s","timestamp":\#(sent),\#(fields)}}"#
+            #expect(reducer.applyV2(try JSONDecoder().decode(OpenCodeEvent.self, from: Data(raw.utf8))) == .changed)
+        }
+        func rows() -> [String] { OpenCodeShellTranscript.rows(for: reducer.messages).map(\.id) }
+        let model = #""agent":"build","model":{"id":"m","providerID":"p"}"#
+
+        try send("step.started", #""assistantMessageID":"msg_a",\#(model)"#)
+        try send("text.started", #""assistantMessageID":"msg_a","textID":"t""#)
+        #expect(reducer.messages.map(\.id) == ["msg_a"])
+        #expect(rows().isEmpty)
+        try send("text.delta", #""assistantMessageID":"msg_a","textID":"t","delta":"Cloning""#)
+        #expect(rows() == ["msg_a"])
+
+        // The reported session: a prompt, three settled steps, and a fourth
+        // that has only started.
+        reducer = OpenCodeTranscriptReducer()
+        try send("prompted", #""messageID":"msg_u","prompt":{"text":"Git clone the repo"}"#)
+        for step in 1...3 {
+            let message = #""assistantMessageID":"msg_\#(step)""#
+            try send("step.started", "\(message),\(model)")
+            try send("tool.called", #"\#(message),"callID":"call_\#(step)","name":"read","input":{"filePath":"/dev"}"#)
+            try send("tool.success", #"\#(message),"callID":"call_\#(step)","content":[{"type":"text","text":"byot/"}]"#)
+            try send("step.ended", #"\#(message),"finish":"tool-calls","tokens":{"input":8500,"output":20,"reasoning":0,"cache":{"read":0,"write":0}}"#)
+        }
+        try send("step.started", #""assistantMessageID":"msg_4",\#(model)"#)
+        #expect(reducer.messages.count == 5)
+        #expect(rows() == ["msg_u", "msg_1", "msg_2", "msg_3"])
+        try send("tool.called", #""assistantMessageID":"msg_4","callID":"call_4","name":"read","input":{"filePath":"/dev/byot"}"#)
+        #expect(rows() == ["msg_u", "msg_1", "msg_2", "msg_3", "msg_4"])
+
+        // v1 opens each step with a part that draws nothing.
+        func reply(_ id: String, parts: [OpenCodePart] = [], error: OpenCodeMessageError? = nil,
+                   tokens: OpenCodeTokenUsage? = nil) -> OpenCodeMessageEnvelope {
+            OpenCodeMessageEnvelope(
+                info: OpenCodeMessageInfo(id: id, sessionID: "s", role: "assistant",
+                                          time: OpenCodeMessageTime(created: 1, completed: nil), agent: nil, modelID: nil,
+                                          providerID: nil, finish: nil, error: error, tokens: tokens),
+                parts: parts)
+        }
+        #expect(OpenCodeShellTranscript.rows(for: [reply("m1", parts: [make("s1", "step-start"), make("t1", "text", text: "")])]).isEmpty)
+        let failed = reply("m2", error: OpenCodeMessageError(name: "APIError", data: ["message": .string("Overloaded")]))
+        #expect(OpenCodeShellTranscript.rows(for: [failed]) == [.message(failed)])
+        let counted = reply("m3", tokens: OpenCodeTokenUsage(input: 10, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0))
+        #expect(OpenCodeShellTranscript.rows(for: [counted]) == [.message(counted)])
+    }
+
     // MARK: Presentations
 
     @Test("Compaction explains why context was summarized")
