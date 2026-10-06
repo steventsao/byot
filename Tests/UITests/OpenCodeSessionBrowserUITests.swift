@@ -147,7 +147,7 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.staticTexts["Needs attention"].waitForExistence(timeout: 10))
         XCTAssertTrue(failure.exists)
-        app.buttons["Session list options"].tap()
+        app.buttons["root-menu"].tap()
         app.buttons["Session status"].tap()
         XCTAssertLessThan(idle.frame.minY, app.buttons["session-active"].frame.minY)
         attach("session-list-final-model-failure")
@@ -333,12 +333,11 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         XCTAssertTrue(compose.isHittable)
         XCTAssertGreaterThan(search.frame.minY, app.frame.height * 0.7)
         XCTAssertLessThan(abs(search.frame.midY - compose.frame.midY), 24)
-        app.buttons["OpenCode servers"].tap()
-        attach("server-picker-alignment")
-        try XCTUnwrap(app.buttons.matching(identifier: "Windows").allElementsBoundByIndex
-            .first(where: { $0.isHittable })).tap()
+        // The chips switch servers; the server's own actions are under Settings.
+        app.buttons["Windows"].tap()
         XCTAssertTrue(app.staticTexts["Windows build"].waitForExistence(timeout: 10))
-        app.buttons["OpenCode servers"].tap()
+        XCTAssertTrue(selectMenuItem(app.buttons["Settings"], opening: app.buttons["root-menu"]), app.debugDescription)
+        XCTAssertTrue(app.buttons["Edit server"].waitForExistence(timeout: 5), app.debugDescription)
         app.buttons["Edit server"].tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
@@ -347,6 +346,57 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
                        "https://windows.example.test")
         attach("edit-selected-server")
         app.buttons["Cancel"].tap()
+    }
+
+    // ASC-AHwZujtTEgWM5VoXJrN0T-I
+    @MainActor
+    func testRootHasOneTopRightMenu() throws {
+        try checkOneTopRightMenu(regularWidth: false)
+    }
+
+    @MainActor
+    func testSidebarHasOneTopRightMenuAtRegularWidth() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        addTeardownBlock { @MainActor in XCUIDevice.shared.orientation = .portrait }
+        try checkOneTopRightMenu(regularWidth: true)
+    }
+
+    /// The server menu, the list options, Terminal and Status were separate
+    /// controls in the top right. One menu there now holds all of them.
+    @MainActor
+    private func checkOneTopRightMenu(regularWidth: Bool) throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--session-browser-fixture", "--reset-browser"]
+        if regularWidth { app.launchArguments.append("--regular-width") }
+        app.launch()
+        XCTAssertTrue(app.buttons["session-active"].waitForExistence(timeout: 10), app.debugDescription)
+        for retired in ["OpenCode servers", "Session list options", "open-terminal", "open-status"] {
+            XCTAssertFalse(app.buttons[retired].exists, retired)
+        }
+        let bar = app.navigationBars["byot"]
+        let trailing = bar.buttons.allElementsBoundByIndex.filter { $0.frame.midX > bar.frame.midX }
+        // Beside a conversation, the system adds its own sidebar toggle after the menu.
+        XCTAssertEqual(trailing.map(\.label), regularWidth ? ["Menu", "Hide Sidebar"] : ["Menu"], bar.debugDescription)
+        XCTAssertEqual(trailing.first?.identifier, "root-menu")
+        let name = regularWidth ? "root-menu-regular-width" : "root-menu"
+        attach(name + "-closed")
+
+        app.buttons["root-menu"].tap()
+        let menu = app.collectionViews.containing(.button, identifier: "Settings").firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 5), app.debugDescription)
+        for item in ["Group by project", "Session status", "Terminal", "Status"] {
+            XCTAssertTrue(menu.buttons[item].exists, item + "\n" + app.debugDescription)
+        }
+        attach(name)
+        // The bar's own Add server button is outside the menu, so look inside it.
+        menu.buttons["Settings"].tap()
+        let settings = app.collectionViews.containing(.button, identifier: "Notifications").firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), app.debugDescription)
+        for item in ["Edit server", "Remove server", "Add server", "Scan pairing code"] {
+            XCTAssertTrue(settings.buttons[item].exists, item + "\n" + app.debugDescription)
+        }
+        attach(name + "-settings")
     }
 
     // ASC-AFYHRmAVeK5fOtdHnURLf6Q
@@ -402,13 +452,13 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Provider rate limit"].exists)
         attach("sessions-recent")
 
-        app.buttons["Session list options"].tap()
+        app.buttons["root-menu"].tap()
         app.buttons["Session status"].tap()
         let retry = app.buttons["session-retry"]
         XCTAssertLessThan(retry.frame.minY, active.frame.minY)
         attach("sessions-by-status")
 
-        app.buttons["Session list options"].tap()
+        app.buttons["root-menu"].tap()
         app.buttons["Group by project"].tap()
         // byot's count includes the session in its login-flow worktree.
         XCTAssertTrue(app.staticTexts["1 retrying · 3 sessions"].waitForExistence(timeout: 5))

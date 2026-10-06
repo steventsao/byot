@@ -5694,6 +5694,16 @@
         }
       }
     },
+    "Menu" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "菜单"
+          }
+        }
+      }
+    },
     "Message" : {
       "localizations" : {
         "zh-Hans" : {
@@ -7187,16 +7197,6 @@
       }
     },
     "OpenCode server" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OpenCode 服务器"
-          }
-        }
-      }
-    },
-    "OpenCode servers" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -9524,16 +9524,6 @@
         }
       }
     },
-    "Servers" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "服务器"
-          }
-        }
-      }
-    },
     "Session" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9590,16 +9580,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 中的会话"
-          }
-        }
-      }
-    },
-    "Session list options" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "会话列表选项"
           }
         }
       }
@@ -9700,6 +9680,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请先在此服务器的“通知”设置中设置电脑端配套程序。"
+          }
+        }
+      }
+    },
+    "Settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置"
           }
         }
       }

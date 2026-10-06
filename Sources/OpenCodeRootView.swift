@@ -146,7 +146,7 @@ struct OpenCodeRootView: View {
                         openSession: { path = NavigationPath([$0]) },
                         selection: isSplit ? $splitDetail : nil,
                         request: listRequest
-                    )
+                    ) { serverMenuItems }
                     .id("\(profileFingerprint(profile))|\(profileStore.connectionGeneration)")
                 } else {
                     // Scrolls so the setup choices stay reachable at accessibility text sizes.
@@ -207,12 +207,6 @@ struct OpenCodeRootView: View {
                     .accessibilityIdentifier("about-byot")
             }
             ToolbarItem(placement: .principal) { BYOTWordmark() }
-            if profileStore.activeProfile != nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    profileMenu
-                        .tint(BYOTBrand.chromeTint)
-                }
-            }
         }
     }
 
@@ -317,38 +311,24 @@ struct OpenCodeRootView: View {
             }
     }
 
-    private var profileMenu: some View {
-        Menu("OpenCode servers", systemImage: "server.rack") {
-            if profileStore.profiles.count > 1 {
-                Picker("Servers", selection: Binding(
-                    get: { profileStore.activeProfileID },
-                    set: { id in
-                        if let profile = profileStore.profiles.first(where: { $0.id == id }) {
-                            profileStore.select(profile)
-                        }
-                    }
-                )) {
-                    ForEach(profileStore.profiles) { profile in
-                        Text(profile.name).tag(Optional(profile.id))
-                    }
-                }
-                .pickerStyle(.inline)
+    /// The server actions under Settings in the session list's menu, the
+    /// only control in the top right. The chips above the list switch servers.
+    @ViewBuilder
+    private var serverMenuItems: some View {
+        if let profile = profileStore.activeProfile {
+            Button("Notifications", systemImage: "bell") { notificationProfile = profile }
+            Button("Edit server", systemImage: "pencil") {
+                edit(profile)
             }
-            if let profile = profileStore.activeProfile {
-                Button("Notifications", systemImage: "bell") { notificationProfile = profile }
-                Button("Edit server", systemImage: "pencil") {
-                    edit(profile)
-                }
-                Button("Remove server", systemImage: "trash", role: .destructive) {
-                    profilePendingRemoval = profile
-                }
+            Button("Remove server", systemImage: "trash", role: .destructive) {
+                profilePendingRemoval = profile
             }
-            Button("Add server", systemImage: "plus") {
-                edit(nil)
-            }
-            Button("Scan pairing code", systemImage: "qrcode.viewfinder") {
-                profileEditor = ProfileEditor(profile: nil, start: .scan)
-            }
+        }
+        Button("Add server", systemImage: "plus") {
+            edit(nil)
+        }
+        Button("Scan pairing code", systemImage: "qrcode.viewfinder") {
+            profileEditor = ProfileEditor(profile: nil, start: .scan)
         }
     }
 
