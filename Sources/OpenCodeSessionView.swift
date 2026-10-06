@@ -917,12 +917,10 @@ struct OpenCodeSessionScreen: View {
         }
     }
 
-    @ViewBuilder
     private var sessionStatus: some View {
-        if store.isStatusReady || store.status.isActive {
-            OpenCodeStatusLabel(status: store.status, eventConnected: store.isEventConnected)
-                .fixedSize()
-        }
+        OpenCodeStatusLabel(status: store.status, eventConnected: store.isEventConnected,
+                            isStatusKnown: store.isStatusReady || store.status.isActive)
+            .fixedSize()
     }
 
     private var isPresentingSheet: Bool {

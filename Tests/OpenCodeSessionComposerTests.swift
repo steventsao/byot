@@ -35,4 +35,18 @@ struct OpenCodeSessionComposerTests {
         #expect(OpenCodeSessionComposerView.showsExpandedControls(
             isFocused: false, text: "  \n ") == false)
     }
+
+    @Test(
+        "The conversation header names an unknown status so the composer needs no spinner",
+        .bug(id: "ASC-AEk0EYWkKW0QGxg8A34z3r0"),
+        .bug(id: "ASC-AJvs6pGkEt5k3xS1gTpvmDI")
+    )
+    func headerNamesUnknownStatus() {
+        #expect(OpenCodeStatusLabel.title(status: .idle, eventConnected: true, isStatusKnown: false) == "Connecting")
+        // A dropped event stream still comes first.
+        #expect(OpenCodeStatusLabel.title(status: .idle, eventConnected: false, isStatusKnown: false) == "Reconnecting")
+        #expect(OpenCodeStatusLabel.title(status: .busy, eventConnected: true, isStatusKnown: true) == "Working")
+        // Session list rows only draw a status they have.
+        #expect(OpenCodeStatusLabel.title(status: .idle, eventConnected: nil) == "Idle")
+    }
 }
