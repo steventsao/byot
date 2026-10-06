@@ -1,3 +1,4 @@
+import SwiftUI
 import Testing
 @testable import byot
 
@@ -50,6 +51,21 @@ struct OpenCodeSessionComposerTests {
         #expect(named == [[true, true, true], [true, false, false], [false, false, false]])
     }
 
+    @Test("Server-file context takes no room in the composer until there is a file to show")
+    @MainActor
+    func idleRemoteContextTakesNoRoom() {
+        let files = OpenCodeRemoteFileStore(service: IdleFileService())
+        // The composer stacks its rows 10 pt apart; an empty row would still claim that gap.
+        func height(_ references: [OpenCodePromptFileReference]) -> CGFloat {
+            UIHostingController(rootView: VStack(spacing: 10) {
+                OpenCodeRemoteContextView(text: .constant(""), references: .constant(references), files: files)
+                Color.clear.frame(width: 300, height: 44)
+            }).sizeThatFits(in: CGSize(width: 320, height: 800)).height
+        }
+        #expect(height([]) == 44)
+        #expect(height([files.reference(path: "Sources/App.swift")]) >= 44 + 10 + 44)
+    }
+
     @Test(
         "The conversation header names an unknown status so the composer needs no spinner",
         .bug(id: "ASC-AEk0EYWkKW0QGxg8A34z3r0"),
@@ -63,4 +79,18 @@ struct OpenCodeSessionComposerTests {
         // Session list rows only draw a status they have.
         #expect(OpenCodeStatusLabel.title(status: .idle, eventConnected: nil) == "Idle")
     }
+}
+
+private struct IdleFileService: OpenCodeRemoteFileServicing {
+    let scope = OpenCodeRemoteFileScope(serverID: UUID(), serverName: "Files", projectID: "pro_test",
+                                        directory: "/repo", workspaceID: nil)
+    func capabilities() async throws -> OpenCodeRemoteFileCapabilities {
+        .init(search: true, browse: true, read: true, changes: true, context: true)
+    }
+    func search(query: String) async throws -> [OpenCodeRemoteFileEntry] { [] }
+    func list(path: String) async throws -> [OpenCodeRemoteFileEntry] { [] }
+    func read(path: String) async throws -> OpenCodeRemoteFileContent {
+        .init(path: path, text: "", mimeType: "text/plain", byteCount: 0)
+    }
+    func changes() async throws -> [OpenCodeRemoteFileChange] { [] }
 }

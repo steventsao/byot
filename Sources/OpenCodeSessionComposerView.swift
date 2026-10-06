@@ -86,8 +86,7 @@ struct OpenCodeSessionComposerView: View {
             if inShellMode { shellModeHeader }
             else { slashSuggestions }
             if !inShellMode, let files = store.remoteFiles {
-                OpenCodeRemoteContextView(text: $text, references: $remoteReferences, files: files,
-                                          showingPicker: $isShowingRemoteFiles)
+                OpenCodeRemoteContextView(text: $text, references: $remoteReferences, files: files)
             }
             if !attachments.isEmpty {
                 ScrollView(dynamicTypeSize.isAccessibilitySize ? .vertical : .horizontal,
@@ -162,6 +161,14 @@ struct OpenCodeSessionComposerView: View {
                 }
             } message: { block in
                 Text(block.message)
+            }
+            // The file browser stays reachable with nothing attached, without a
+            // row of its own that would open a gap above the message.
+            .background {
+                if !inShellMode, let files = store.remoteFiles {
+                    OpenCodeRemoteContextHost(text: $text, references: $remoteReferences, files: files,
+                                              showingPicker: $isShowingRemoteFiles)
+                }
             }
 
             if isExpanded { controlRow }
