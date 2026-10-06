@@ -43,6 +43,21 @@ struct BYOTAppearanceTests {
         #expect(focus.green > focus.red)
     }
 
+    @Test(
+        "The selected server chip is neutral instead of mint",
+        .bug(id: "ASC-AFYHRmAVeK5fOtdHnURLf6Q"),
+        arguments: [false, true]
+    )
+    func selectedServerChipIsNeutral(dark: Bool) {
+        var environment = EnvironmentValues()
+        environment.colorScheme = dark ? .dark : .light
+        let selected = BYOTBrand.selectedChipSurface.resolve(in: environment)
+        #expect(abs(selected.red - selected.green) < 0.01)
+        #expect(abs(selected.green - selected.blue) < 0.01)
+        // The fill, with the checkmark, is what marks the selected server.
+        #expect(selected.opacity > BYOTBrand.chipSurface.resolve(in: environment).opacity)
+    }
+
     private func contrast(_ foreground: Color, _ background: Color, _ environment: EnvironmentValues) -> Double {
         func luminance(_ color: Color) -> Double {
             let resolved = color.resolve(in: environment)

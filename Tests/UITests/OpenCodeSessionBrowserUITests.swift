@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 final class OpenCodeSessionBrowserUITests: XCTestCase {
     @MainActor
@@ -346,6 +347,45 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
                        "https://windows.example.test")
         attach("edit-selected-server")
         app.buttons["Cancel"].tap()
+    }
+
+    // ASC-AFYHRmAVeK5fOtdHnURLf6Q
+    @MainActor
+    func testSelectedServerChipIsNeutralInLightAndDark() throws {
+        continueAfterFailure = false
+        for appearance in ["light", "dark"] {
+            let app = XCUIApplication()
+            app.launchArguments = ["--session-browser-fixture", "--reset-browser", "-byot.appearance", appearance]
+            app.launch()
+            XCTAssertTrue(app.buttons["session-active"].waitForExistence(timeout: 10), app.debugDescription)
+            let chip = app.buttons["Mac mini"]
+            XCTAssertEqual(chip.value as? String, "Selected server")
+            attach("server-chips-" + appearance)
+            // The mint chip's name and fill were green; a neutral chip is all grays.
+            XCTAssertLessThan(try channelSpread(of: chip), 0.05, appearance)
+            app.terminate()
+        }
+    }
+
+    /// The widest gap between the red, green and blue of any pixel of
+    /// `element`: 0 when every pixel is a gray, up to 1.
+    @MainActor
+    private func channelSpread(of element: XCUIElement) throws -> Double {
+        let image = try XCTUnwrap(element.screenshot().image.cgImage)
+        var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        try pixels.withUnsafeMutableBytes { buffer in
+            let context = try XCTUnwrap(CGContext(
+                data: buffer.baseAddress, width: image.width, height: image.height, bitsPerComponent: 8,
+                bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        }
+        var spread = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            let channels = pixels[i..<i + 3].map(Int.init)
+            spread = max(spread, (channels.max() ?? 0) - (channels.min() ?? 0))
+        }
+        return Double(spread) / 255
     }
 
     @MainActor
