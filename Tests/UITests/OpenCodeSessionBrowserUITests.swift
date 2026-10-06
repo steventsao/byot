@@ -399,6 +399,23 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         attach(name + "-settings")
     }
 
+    @MainActor
+    func testOfflineServerKeepsTheMenuAndItsSettings() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--session-browser-fixture", "--reset-browser", "--server-offline"]
+        app.launch()
+        // Nothing loads, so there are no projects to offer Terminal or Status for.
+        let menu = app.buttons["root-menu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(selectMenuItem(app.buttons["Settings"], opening: menu), app.debugDescription)
+        for item in ["Edit server", "Remove server"] {
+            XCTAssertTrue(app.buttons[item].waitForExistence(timeout: 5), item + "\n" + app.debugDescription)
+        }
+        XCTAssertFalse(app.buttons["Terminal"].exists)
+        attach("root-menu-offline")
+    }
+
     // ASC-AFYHRmAVeK5fOtdHnURLf6Q
     @MainActor
     func testSelectedServerChipIsNeutralInLightAndDark() throws {
