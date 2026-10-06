@@ -145,7 +145,6 @@ struct OpenCodeSessionComposerView: View {
                     }
                 if !isExpanded {
                     if showsDictation { dictationButton }
-                    sessionProgress
                     submitButton
                 }
             }
@@ -358,7 +357,6 @@ struct OpenCodeSessionComposerView: View {
             HStack(spacing: 4) {
                 shellToggle
                 Spacer(minLength: 8)
-                sessionProgress
                 submitButton
             }
         } else if dynamicTypeSize.isAccessibilitySize {
@@ -376,7 +374,6 @@ struct OpenCodeSessionComposerView: View {
                     if store.supportsShell { shellToggle }
                     Spacer(minLength: 8)
                     if showsDictation { dictationButton }
-                    sessionProgress
                     submitButton
                 }
             }
@@ -398,7 +395,6 @@ struct OpenCodeSessionComposerView: View {
                 .scrollIndicatorsFlash(onAppear: true)
                 .fixedSize(horizontal: false, vertical: true)
                 if showsDictation { dictationButton }
-                sessionProgress
                 submitButton
             }
         }
@@ -587,20 +583,6 @@ struct OpenCodeSessionComposerView: View {
         attachments.count >= OpenCodePromptAttachment.maximumCount
     }
 
-    @ViewBuilder
-    private var sessionProgress: some View {
-        if !store.canSubmitPrompt && !store.isLoadingTranscript && !store.canStopTurn {
-            ProgressView()
-                .controlSize(.small)
-                .tint(.secondary)
-                // The field row aligns to the bottom; center the spinner on the
-                // 44pt buttons beside it instead of dropping it to the baseline.
-                .frame(height: 44)
-                .accessibilityLabel("Checking session status")
-                .accessibilityIdentifier("composer-session-progress")
-        }
-    }
-
     private var submitButton: some View {
         Button {
             if showsStopControl { stopTurn() }
@@ -615,6 +597,9 @@ struct OpenCodeSessionComposerView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(showsStopControl ? "Stop the current turn" :
             (inShellMode ? "Run command" : (store.willQueueNextPrompt ? "Queue message" : "Send message")))
+        // The header shows why send is dimmed; VoiceOver hears it here. Shell
+        // mode already spells its reason out above the field.
+        .accessibilityHint(showsStopControl || inShellMode ? "" : (store.promptUnavailableReason ?? ""))
         .accessibilityIdentifier(showsStopControl ? "opencode-composer-stop" : "opencode-composer-send")
         // A shell draft waiting on the server's features must not send as a message.
         .disabled(!showsStopControl && (!hasSendableContent || isImportingAttachment || isShellMode != inShellMode

@@ -28,7 +28,7 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         XCTAssertTrue(loading.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertFalse(app.buttons["session-task-progress"].exists,
                        "Tasks must not float above an unloaded transcript")
-        XCTAssertFalse(app.descendants(matching: .any)["composer-session-progress"].firstMatch.exists,
+        XCTAssertFalse(app.activityIndicators.firstMatch.exists,
                        "Do not show a second spinner in the composer")
         let send = app.buttons["opencode-composer-send"]
         XCTAssertFalse(send.isEnabled)
@@ -53,6 +53,48 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
                               "message \(message.frame), header \(header.frame)")
         }
         attach(largeText ? "loaded-transcript-largest-text" : "loaded-transcript")
+    }
+
+    // TestFlight AEk0EYWkKW0QGxg8A34z3r0 and AJvs6pGkEt5k3xS1gTpvmDI: a session
+    // whose status hasn't arrived says so in the header, not with a spinner
+    // beside the send button.
+    @MainActor
+    func testUnknownStatusShowsNoComposerSpinner() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--session-browser-fixture", "--reset-browser", "--slow-status", "--dictation-fixture"]
+        app.launch()
+        defer { app.terminate() }
+        let session = app.buttons["session-idle"]
+        XCTAssertTrue(session.waitForExistence(timeout: 40))
+        session.tap()
+        XCTAssertTrue(app.staticTexts["Review this project"].waitForExistence(timeout: 10), app.debugDescription)
+        let connecting = app.staticTexts["Connecting"]
+        let send = app.buttons["opencode-composer-send"]
+        let microphone = app.buttons["opencode-dictation-toggle"]
+        attach("unknown-status")
+        XCTAssertFalse(app.activityIndicators.firstMatch.exists, "The composer must not show a spinner")
+        XCTAssertEqual(send.frame.minX - microphone.frame.maxX, 4, accuracy: 0.5,
+                       "Nothing sits between the microphone and send")
+        XCTAssertTrue(connecting.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(send.isEnabled)
+
+        // The row with the model and agent knobs, as it is while typing.
+        app.textFields["opencode-composer-message"].tap()
+        XCTAssertTrue(app.buttons["Choose model"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(app.activityIndicators.firstMatch.exists, "The composer must not show a spinner")
+        let sendFrame = send.frame
+        let microphoneFrame = microphone.frame
+        XCTAssertEqual(sendFrame.minX - microphoneFrame.maxX, 4, accuracy: 0.5,
+                       "Nothing sits between the microphone and send")
+        attach("unknown-status-focused")
+        XCTAssertTrue(connecting.exists, "The status arrived before the composer was measured")
+
+        // Neither control moves when the status arrives.
+        XCTAssertTrue(app.staticTexts["Idle"].waitForExistence(timeout: 30), app.debugDescription)
+        XCTAssertEqual(send.frame.minX, sendFrame.minX, accuracy: 0.5)
+        XCTAssertEqual(microphone.frame.minX, microphoneFrame.minX, accuracy: 0.5)
+        attach("known-status-focused")
     }
 
     @MainActor

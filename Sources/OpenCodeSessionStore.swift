@@ -249,6 +249,15 @@ final class OpenCodeSessionStore: ObservableObject {
         isRunning && (isStatusReady || durableQueue?.enabled == true) && isStoppingTurn == false && !isPerformingSessionAction && !didDeleteSession
     }
 
+    /// Why a message can't be sent right now, for the dimmed send button.
+    var promptUnavailableReason: String? {
+        guard !canSubmitPrompt else { return nil }
+        if isRunning, isStoppingTurn || isPerformingSessionAction {
+            return String(localized: "Wait for the current request to finish.")
+        }
+        return String(localized: "Wait for the session to connect.")
+    }
+
     var modelFailure: OpenCodeMessageError? {
         guard let userIndex = messages.lastIndex(where: { $0.info.role == "user" }),
               let assistant = messages.suffix(from: userIndex + 1).last(where: { $0.info.role == "assistant" }),

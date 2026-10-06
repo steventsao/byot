@@ -2197,16 +2197,6 @@
         }
       }
     },
-    "Checking session status" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在检查会话状态"
-          }
-        }
-      }
-    },
     "Checking the project layout and nearby documentation." : {
       "localizations" : {
         "zh-Hans" : {

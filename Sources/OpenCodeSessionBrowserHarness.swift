@@ -276,6 +276,10 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
             DispatchQueue.global().asyncAfter(deadline: .now() + 15) { [self] in
                 finishResponse(url, data: data, status: status)
             }
+        } else if url.path == "/session/status", ProcessInfo.processInfo.arguments.contains("--slow-status") {
+            DispatchQueue.global().asyncAfter(deadline: .now() + 12) { [self] in
+                finishResponse(url, data: data, status: status)
+            }
         } else {
             finishResponse(url, data: data, status: status)
         }
