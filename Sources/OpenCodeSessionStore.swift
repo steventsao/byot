@@ -24,6 +24,9 @@ final class OpenCodeSessionStore: ObservableObject {
     }
     @Published private(set) var isStatusReady = false
     @Published private(set) var isLoading = false
+    /// Message loading ends independently of slower status, permission and feature requests.
+    /// Start true so the first frame does not flash an empty conversation.
+    @Published private(set) var isLoadingTranscript = true
     @Published private(set) var isSending = false
     @Published private(set) var isEventConnected = false
     @Published private(set) var eventErrorMessage: String?
@@ -246,6 +249,15 @@ final class OpenCodeSessionStore: ObservableObject {
         isRunning && (isStatusReady || durableQueue?.enabled == true) && isStoppingTurn == false && !isPerformingSessionAction && !didDeleteSession
     }
 
+    /// Why a message can't be sent right now, for the dimmed send button.
+    var promptUnavailableReason: String? {
+        guard !canSubmitPrompt else { return nil }
+        if isRunning, isStoppingTurn || isPerformingSessionAction {
+            return String(localized: "Wait for the current request to finish.")
+        }
+        return String(localized: "Wait for the session to connect.")
+    }
+
     var modelFailure: OpenCodeMessageError? {
         guard let userIndex = messages.lastIndex(where: { $0.info.role == "user" }),
               let assistant = messages.suffix(from: userIndex + 1).last(where: { $0.info.role == "assistant" }),
@@ -361,6 +373,8 @@ final class OpenCodeSessionStore: ObservableObject {
         status = .idle
         refreshGeneration &+= 1
         eventTask?.cancel()
+        isLoading = false
+        isLoadingTranscript = false
         eventTask = nil
         reconciliationTask?.cancel()
         reconciliationTask = nil
@@ -408,9 +422,17 @@ final class OpenCodeSessionStore: ObservableObject {
         let diffBaseline = diffMutationGeneration
         let statusBaseline = statusMutationGeneration
         async let featureRefresh: Void = refreshSessionFeatures()
-        if showLoading { isLoading = true }
+        if showLoading {
+            isLoading = true
+            // A background reconciliation must not bring the loader back
+            // over a session that has no messages yet.
+            isLoadingTranscript = true
+        }
         defer {
-            if generation == refreshGeneration { isLoading = false }
+            if generation == refreshGeneration {
+                isLoading = false
+                isLoadingTranscript = false
+            }
         }
         do {
             protocolCapabilities = try await service.capabilities()
@@ -457,21 +479,15 @@ final class OpenCodeSessionStore: ObservableObject {
                 )
             }
 
-            let results = await (
-                messageResult,
-                permissionResult,
-                v2PermissionResult,
-                questionResult,
-                v2QuestionResult,
-                diffResult,
-                statusResult
-            )
+            // Render the transcript as soon as it arrives. A slow auxiliary
+            // endpoint must not hold already downloaded messages behind a loader.
+            let loadedMessages = await messageResult
             try Task.checkCancellation()
             guard generation == refreshGeneration else { return }
 
             var coreErrors: [Error] = []
             var didApplyFreshMessages = false
-            switch results.0 {
+            switch loadedMessages {
             case .success(let messages):
                 if messageGeneration == messageRequestGeneration,
                    transcriptBaseline == transcriptMutationGeneration {
@@ -483,15 +499,28 @@ final class OpenCodeSessionStore: ObservableObject {
             case .failure(let error):
                 if messageGeneration == messageRequestGeneration {
                     coreErrors.append(error)
+                    errorMessage = error.localizedDescription
                 }
             }
-            switch results.5 {
+            isLoadingTranscript = false
+
+            let results = await (
+                permissionResult,
+                v2PermissionResult,
+                questionResult,
+                v2QuestionResult,
+                diffResult,
+                statusResult
+            )
+            try Task.checkCancellation()
+            guard generation == refreshGeneration else { return }
+            switch results.4 {
             case .success(let diffs):
                 if OpenCodeSessionDiffReconciliation.shouldApplyFetchedSnapshot(support: protocolCapabilities?.sessionDiff, mutationBaseline: diffBaseline, currentMutation: diffMutationGeneration) { self.diffs = diffs }
             case .failure(let error):
                 coreErrors.append(error)
             }
-            switch results.6 {
+            switch results.5 {
             case .success(let statuses):
                 if statusBaseline == statusMutationGeneration {
                     didStatusProbeFailWithFreshTranscript = false
@@ -514,10 +543,10 @@ final class OpenCodeSessionStore: ObservableObject {
             if actionGeneration == actionRequestGeneration,
                actionBaseline == actionMutationGeneration {
                 applyPendingActionResults(
-                    permissionResult: results.1,
-                    v2PermissionResult: results.2,
-                    questionResult: results.3,
-                    v2QuestionResult: results.4
+                    permissionResult: results.0,
+                    v2PermissionResult: results.1,
+                    questionResult: results.2,
+                    v2QuestionResult: results.3
                 )
             }
         } catch is CancellationError {
@@ -525,6 +554,7 @@ final class OpenCodeSessionStore: ObservableObject {
         } catch {
             guard generation == refreshGeneration else { return }
             errorMessage = error.localizedDescription
+            isLoadingTranscript = false
         }
         await featureRefresh
     }
@@ -2607,16 +2637,19 @@ final class OpenCodeSessionStore: ObservableObject {
 #if DEBUG
     /// Seeds the screenshot harness. `withCatalog` adds the agent and effort
     /// options a real server supplies, so the composer's single control row can
-    /// be checked with every knob present.
-    func prepareForAttachmentScreenshot(withCatalog: Bool = false) {
+    /// be checked with every knob present. `crowded` gives that row the most it
+    /// has to hold: a long model name and the shell toggle.
+    func prepareForAttachmentScreenshot(withCatalog: Bool = false, crowded: Bool = false) {
         isRunning = true
         isStatusReady = true
         status = .idle
         errorMessage = nil
         guard withCatalog else { return }
+        if crowded { sessionFeatures.shell = true }
         let model = OpenCodeModelOption(
             providerID: "byot", providerName: "BYOT Fixture", modelID: "muse-spark",
-            modelName: "Muse Spark 1.3", status: nil, variants: ["byot-careful"])
+            modelName: crowded ? "Muse Spark 1.3 Free Preview" : "Muse Spark 1.3", status: nil,
+            variants: ["byot-careful"])
         providerModels = [OpenCodeProviderModels(
             providerID: model.providerID, providerName: model.providerName, models: [model])]
         composerCatalog = OpenCodeComposerCatalog(

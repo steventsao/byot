@@ -36,6 +36,10 @@ enum BYOTBrand {
     static var elevatedSurface: Color { Color(uiColor: .tertiarySystemBackground) }
     static var controlSurface: Color { Color(uiColor: .secondarySystemBackground) }
     static var selectedSurface: Color { Color.primary.opacity(0.08) }
+    /// Server chips stay neutral: the selected one is told apart by its
+    /// checkmark and a stronger fill, not by the mint brand color.
+    static var chipSurface: Color { Color.secondary.opacity(0.1) }
+    static var selectedChipSurface: Color { Color.primary.opacity(0.18) }
     /// Native interaction color for insertion points, selection, and focused
     /// controls. Keep it separate from the mint brand color so typing follows
     /// the platform convention instead of coloring the keyboard flow green.

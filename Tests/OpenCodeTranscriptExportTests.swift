@@ -137,7 +137,9 @@ struct OpenCodeTranscriptExportTests {
         #expect(store.transcriptUnavailableReason != nil)
         await store.start()
         defer { store.stop() }
-        await store.reloadModels()
+        // start() loads the model catalog in the background, and reloadModels()
+        // returns at once while that load is in flight.
+        for _ in 0..<200 where store.providerModels.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
         #expect(store.transcriptUnavailableReason == nil)
         let export = store.transcriptExport
         #expect(export.messages.map(\.id) == store.messages.map(\.id))

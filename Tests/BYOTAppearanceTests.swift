@@ -30,7 +30,11 @@ struct BYOTAppearanceTests {
         #expect(contrast(BYOTBrand.accentInk, BYOTBrand.accent, environment) >= 4.5)
     }
 
-    @Test("Navigation chrome stays neutral while focused controls use system blue", arguments: [false, true])
+    @Test(
+        "Navigation chrome stays neutral while focused controls use system blue",
+        .bug(id: "ASC-ANHjl_nrRmGWquE3aMFaR6w"),
+        arguments: [false, true]
+    )
     func neutralInteractionColors(dark: Bool) {
         var environment = EnvironmentValues()
         environment.colorScheme = dark ? .dark : .light
@@ -41,6 +45,21 @@ struct BYOTAppearanceTests {
         let focus = BYOTBrand.interactionTint.resolve(in: environment)
         #expect(focus.blue > focus.green)
         #expect(focus.green > focus.red)
+    }
+
+    @Test(
+        "The selected server chip is neutral instead of mint",
+        .bug(id: "ASC-AFYHRmAVeK5fOtdHnURLf6Q"),
+        arguments: [false, true]
+    )
+    func selectedServerChipIsNeutral(dark: Bool) {
+        var environment = EnvironmentValues()
+        environment.colorScheme = dark ? .dark : .light
+        let selected = BYOTBrand.selectedChipSurface.resolve(in: environment)
+        #expect(abs(selected.red - selected.green) < 0.01)
+        #expect(abs(selected.green - selected.blue) < 0.01)
+        // The fill, with the checkmark, is what marks the selected server.
+        #expect(selected.opacity > BYOTBrand.chipSurface.resolve(in: environment).opacity)
     }
 
     private func contrast(_ foreground: Color, _ background: Color, _ environment: EnvironmentValues) -> Double {

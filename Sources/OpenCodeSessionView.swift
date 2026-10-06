@@ -205,7 +205,7 @@ struct OpenCodeSessionScreen: View {
                         }
                     }
 
-                    if store.todoProgress.totalCount > 0 {
+                    if store.todoProgress.totalCount > 0 && !showsTranscriptLoading {
                         Button { isShowingTasks = true } label: {
                             HStack {
                                 Label(store.todoProgress.summary, systemImage: "checklist")
@@ -250,7 +250,7 @@ struct OpenCodeSessionScreen: View {
                         .id("opencode-unanswered-prompt-recovery")
                     }
 
-                    if showsSessionActivity {
+                    if showsSessionActivity && !showsTranscriptLoading {
                         BYOTActivityView(
                             sessionActivityPhase,
                             title: sessionActivityTitle,
@@ -275,17 +275,9 @@ struct OpenCodeSessionScreen: View {
                         .id("opencode-queued-prompts")
                     }
 
-                    if store.isLoading && store.messages.isEmpty {
-                        BYOTActivityView(
-                            .loading,
-                            title: String(localized: "Loading transcript"),
-                            layout: .blocking
-                        )
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 48)
-                    } else if !store.isLoading,
-                              !hasConversationContent,
-                              let errorMessage = store.errorMessage {
+                    if !store.isLoadingTranscript,
+                       !hasConversationContent,
+                       let errorMessage = store.errorMessage {
                         ContentUnavailableView {
                             Label("Couldn’t load this session", systemImage: "exclamationmark.triangle")
                         } description: {
@@ -323,6 +315,24 @@ struct OpenCodeSessionScreen: View {
                 .padding(.top, 14)
                 .padding(.bottom, 24)
                 .frame(maxWidth: .infinity)
+                // A transcript shorter than the screen still fills it, so its rows
+                // always rest under the header.
+                .frame(
+                    minHeight: OpenCodeTranscriptLayout.minimumContentHeight(viewportHeight: transcriptViewportHeight),
+                    alignment: .top
+                )
+            }
+            .overlay {
+                if showsTranscriptLoading {
+                    BYOTActivityView(
+                        .loading,
+                        title: String(localized: "Loading transcript"),
+                        layout: .blocking
+                    )
+                    .multilineTextAlignment(.center)
+                    .padding(20)
+                    .accessibilityIdentifier("session-transcript-loading")
+                }
             }
             .scrollDismissesKeyboard(.interactively)
             .coordinateSpace(name: "transcript")
@@ -369,7 +379,7 @@ struct OpenCodeSessionScreen: View {
                 rememberAttention()
                 if !hasPositionedTranscript && !store.messages.isEmpty {
                     hasPositionedTranscript = true
-                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                    revealConversationBottom(proxy)
                     return
                 }
                 scrollToConversationBottomIfNeeded(proxy)
@@ -393,7 +403,7 @@ struct OpenCodeSessionScreen: View {
             .onChange(of: store.localShell) { _, newValue in
                 guard let newValue else { return }
                 // Follow a new command and its outcome, even from an older scroll position.
-                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                revealConversationBottom(proxy)
                 switch newValue.phase {
                 case .sending: break
                 case .failed(let message):
@@ -404,7 +414,7 @@ struct OpenCodeSessionScreen: View {
             }
             .onChange(of: store.queueAnnouncementRevision) { _, _ in
                 AccessibilityNotification.Announcement(String(localized: "Message queued")).post()
-                proxy.scrollTo("opencode-queued-prompts", anchor: .bottom)
+                proxy.scrollTo("opencode-queued-prompts")
             }
         }
         .background(BYOTBrand.canvas)
@@ -908,7 +918,8 @@ struct OpenCodeSessionScreen: View {
     }
 
     private var sessionStatus: some View {
-        OpenCodeStatusLabel(status: store.status, eventConnected: store.isEventConnected)
+        OpenCodeStatusLabel(status: store.status, eventConnected: store.isEventConnected,
+                            isStatusKnown: store.isStatusReady || store.status.isActive)
             .fixedSize()
     }
 
@@ -923,6 +934,10 @@ struct OpenCodeSessionScreen: View {
             || store.localShell != nil
             || !store.queuedPrompts.isEmpty
             || store.pendingActionCount > 0
+    }
+
+    private var showsTranscriptLoading: Bool {
+        store.isLoadingTranscript && !hasConversationContent
     }
 
     private func refreshSession() {
@@ -990,7 +1005,14 @@ struct OpenCodeSessionScreen: View {
         guard isAtBottom else { return }
         // Streaming can update faster than an animation completes. Follow immediately;
         // reserve animation for the user's explicit jump.
-        proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+        revealConversationBottom(proxy)
+    }
+
+    /// Scrolls only as far as it takes to show the end of the conversation.
+    /// Asking for the end to sit on the bottom edge instead would pull a
+    /// transcript that already fits on screen down to the composer.
+    private func revealConversationBottom(_ proxy: ScrollViewProxy) {
+        proxy.scrollTo(bottomAnchorID)
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
@@ -1196,4 +1218,3 @@ private struct OpenCodePartView: View {
         }
     }
 }
-

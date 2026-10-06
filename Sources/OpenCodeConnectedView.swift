@@ -19,7 +19,7 @@ struct OpenCodeNewSessionRoute: Hashable {
     var share: BYOTShareContent?
 }
 
-struct OpenCodeConnectedView: View {
+struct OpenCodeConnectedView<ServerMenu: View>: View {
     let openNewSession: () -> Void
     /// Shows a conversation in the iPhone stack, in place of whatever was
     /// pushed over the list.
@@ -28,6 +28,8 @@ struct OpenCodeConnectedView: View {
     /// instead of pushing; nil keeps the iPhone navigation stack.
     private let selection: Binding<OpenCodeSplitDetail?>?
     private let request: OpenCodeSessionListRequest?
+    /// The root's server actions, listed under Settings in the list's menu.
+    private let serverMenu: ServerMenu
     @State private var client: OpenCodeClient
     @StateObject private var workspace: OpenCodeWorkspaceStore
     @StateObject private var browser: OpenCodeSessionBrowserStore
@@ -49,11 +51,13 @@ struct OpenCodeConnectedView: View {
 
     init(client: OpenCodeClient, openNewSession: @escaping () -> Void,
          openSession: @escaping (OpenCodeSessionRoute) -> Void,
-         selection: Binding<OpenCodeSplitDetail?>? = nil, request: OpenCodeSessionListRequest? = nil) {
+         selection: Binding<OpenCodeSplitDetail?>? = nil, request: OpenCodeSessionListRequest? = nil,
+         @ViewBuilder serverMenu: () -> ServerMenu) {
         self.openNewSession = openNewSession
         self.openSession = openSession
         self.selection = selection
         self.request = request
+        self.serverMenu = serverMenu()
         _client = State(initialValue: client)
         _workspace = StateObject(wrappedValue: OpenCodeWorkspaceStore(service: client))
         _browser = StateObject(wrappedValue: OpenCodeSessionBrowserStore(service: client, cache: client.offlineCache))
@@ -229,14 +233,10 @@ struct OpenCodeConnectedView: View {
             .background(BYOTBrand.canvas)
         }
         .toolbar {
-            if canOpenStatus && !projects.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) { statusMenu }
-            }
-            if canOpenTerminal && !projects.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) { terminalMenu }
-            }
+            // The only control in the top right. It doesn't wait for the
+            // server, so Settings stays reachable while the server is offline.
             ToolbarItem(placement: .topBarTrailing) {
-                Menu("Session list options", systemImage: "line.3.horizontal.decrease") {
+                Menu("Menu", systemImage: "ellipsis.circle") {
                     Toggle("Group by project", isOn: $groupByProject)
                     Picker("Sort sessions", selection: $sort) {
                         ForEach(OpenCodeSessionSort.allCases) { sort in
@@ -252,8 +252,18 @@ struct OpenCodeConnectedView: View {
                             }
                         }
                     }
+                    if (canOpenTerminal || canOpenStatus) && !projects.isEmpty {
+                        Section {
+                            if canOpenTerminal { terminalMenu }
+                            if canOpenStatus { statusMenu }
+                        }
+                    }
+                    Section {
+                        Menu("Settings", systemImage: "gearshape") { serverMenu }
+                    }
                 }
                 .tint(BYOTBrand.chromeTint)
+                .accessibilityIdentifier("root-menu")
             }
         }
         .refreshable { await reload() }
@@ -295,7 +305,6 @@ struct OpenCodeConnectedView: View {
         let projects = projects.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
         if projects.count == 1, let project = projects.first {
             Button("Status", systemImage: "gauge.with.dots.needle.33percent") { openStatus(of: project) }
-                .tint(BYOTBrand.chromeTint)
                 .accessibilityHint("Shows MCP servers, language servers and settings for \(project.displayName)")
                 .accessibilityIdentifier("open-status")
         } else {
@@ -306,7 +315,6 @@ struct OpenCodeConnectedView: View {
                     }
                 }
             }
-            .tint(BYOTBrand.chromeTint)
             .accessibilityIdentifier("open-status")
         }
     }
@@ -321,7 +329,6 @@ struct OpenCodeConnectedView: View {
         let projects = projects.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
         if projects.count == 1, let project = projects.first {
             Button("Terminal", systemImage: "apple.terminal") { openTerminal(in: project) }
-                .tint(BYOTBrand.chromeTint)
                 .accessibilityHint("Opens a shell in \(project.displayName)")
                 .accessibilityIdentifier("open-terminal")
         } else {
@@ -332,7 +339,6 @@ struct OpenCodeConnectedView: View {
                     }
                 }
             }
-            .tint(BYOTBrand.chromeTint)
             .accessibilityIdentifier("open-terminal")
         }
     }

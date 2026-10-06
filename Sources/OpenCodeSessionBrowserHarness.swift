@@ -138,6 +138,9 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
             session("idle", "Update documentation", base + "/docs", 25),
             session("worktree", "Polish sign-in", worktreeRoot + "/login-flow", 40)
         ]
+        if ProcessInfo.processInfo.arguments.contains("--slow-transcript") {
+            sessions = sessions.filter { $0["id"] as? String == "idle" }
+        }
         let live = session("live", "Started from the terminal", base + "/byot", 0)
         let permission: [String: Any] = ["id": "per_live", "sessionID": "active", "permission": "bash",
                                          "patterns": ["git push"], "metadata": [:], "always": []]
@@ -219,6 +222,8 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
             body = ["active": ["type": "busy"], "retry": ["type": "retry", "attempt": 1, "message": "Provider rate limit", "next": now + 10_000]]
                 .filter { !aborted.contains($0.key) }
         case "/provider": body = ["all": [], "connected": [], "default": [:]] as [String: Any]
+        case "/session/idle/todo" where ProcessInfo.processInfo.arguments.contains("--slow-transcript"):
+            body = [["id": "task", "content": "Review project", "status": "completed", "priority": "medium"]]
         case "/session/idle/message":
             body = [
                 ["info": ["id": "user-fixture", "sessionID": "idle", "role": "user", "time": ["created": now - 1000]],
@@ -266,9 +271,25 @@ private final class OpenCodeBrowserFixtureProtocol: URLProtocol, @unchecked Send
     }
 
     private func respond(_ url: URL, body: Any, status: Int) {
+        let data = try! JSONSerialization.data(withJSONObject: body, options: .fragmentsAllowed)
+        if url.path == "/session/idle/message", ProcessInfo.processInfo.arguments.contains("--slow-transcript") {
+            DispatchQueue.global().asyncAfter(deadline: .now() + 15) { [self] in
+                finishResponse(url, data: data, status: status)
+            }
+        } else if url.path == "/session/status", ProcessInfo.processInfo.arguments.contains("--slow-status") {
+            DispatchQueue.global().asyncAfter(deadline: .now() + 12) { [self] in
+                finishResponse(url, data: data, status: status)
+            }
+        } else {
+            finishResponse(url, data: data, status: status)
+        }
+    }
+
+    private func finishResponse(_ url: URL, data: Data, status: Int) {
+        guard !stateLock.withLock({ isStopped }) else { return }
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body, options: .fragmentsAllowed))
+        client?.urlProtocol(self, didLoad: data)
         client?.urlProtocolDidFinishLoading(self)
     }
 }

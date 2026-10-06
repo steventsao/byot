@@ -46,7 +46,8 @@ struct OpenCodeShellRun: Identifiable, Equatable, Sendable {
 }
 
 /// Rows the conversation renders. User shell runs collapse their protocol
-/// messages into one terminal card; everything else stays a message.
+/// messages into one terminal card; every other message that draws something
+/// stays a message.
 enum OpenCodeTranscriptRow: Identifiable, Equatable, Sendable {
     case message(OpenCodeMessageEnvelope)
     case shell(OpenCodeShellRun)
@@ -116,7 +117,7 @@ enum OpenCodeShellTranscript {
                 }
                 // A marker whose tool part has not arrived renders nothing:
                 // it is server bookkeeping, never something the user typed.
-            } else {
+            } else if OpenCodeTranscriptLayout.rendersRow(message) {
                 rows.append(.message(message))
             }
             index = messages.index(after: index)
