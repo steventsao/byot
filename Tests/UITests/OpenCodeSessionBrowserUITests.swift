@@ -36,9 +36,22 @@ final class OpenCodeSessionBrowserUITests: XCTestCase {
         XCTAssertGreaterThan(loading.frame.minY, app.navigationBars.firstMatch.frame.maxY)
         XCTAssertLessThan(loading.frame.maxY, send.frame.minY)
         XCTAssertLessThanOrEqual(loading.frame.maxX, app.frame.maxX)
+        // The send button sits low in the taller largest-text composer, so only
+        // the regular size measures the vertical middle against it.
+        let header = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Server Mac mini")).firstMatch
+        if !largeText {
+            XCTAssertEqual(loading.frame.midY, (header.frame.maxY + send.frame.minY) / 2, accuracy: 32,
+                           "loader \(loading.frame), header \(header.frame), send \(send.frame)")
+        }
         attach(largeText ? "slow-transcript-largest-text" : "slow-transcript")
         XCTAssertTrue(loading.waitForNonExistence(timeout: 25), app.debugDescription)
         XCTAssertTrue(app.buttons["session-task-progress"].waitForExistence(timeout: 5))
+        if !largeText {
+            let message = app.staticTexts["Review this project"]
+            XCTAssertLessThan(message.frame.minY - header.frame.maxY, 40,
+                              "message \(message.frame), header \(header.frame)")
+        }
         attach(largeText ? "loaded-transcript-largest-text" : "loaded-transcript")
     }
 
