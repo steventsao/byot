@@ -5,7 +5,10 @@ import Testing
 @Suite("Transcript loading on slow connections")
 @MainActor
 struct OpenCodeTranscriptLoadingTests {
-    @Test("Messages render before a slow status request, while sending stays disabled")
+    @Test(
+        "Messages render before a slow status request, while sending stays disabled",
+        .bug(id: "ASC-AKWY7o8vHhCEjrJIhzCg0sM")
+    )
     func messagesArriveFirst() async throws {
         let service = TranscriptLoadingService(delayStatus: true)
         let store = makeStore(service)
@@ -22,7 +25,10 @@ struct OpenCodeTranscriptLoadingTests {
         #expect(!store.isLoading)
     }
 
-    @Test("A transcript error is visible before auxiliary requests finish")
+    @Test(
+        "A transcript error is visible before auxiliary requests finish",
+        .bug(id: "ASC-AKWY7o8vHhCEjrJIhzCg0sM")
+    )
     func transcriptFailureArrivesFirst() async throws {
         let service = TranscriptLoadingService(delayStatus: true, failMessages: true)
         let store = makeStore(service)
@@ -38,7 +44,10 @@ struct OpenCodeTranscriptLoadingTests {
         #expect(store.errorMessage != nil)
     }
 
-    @Test("A superseded message snapshot cannot replace a newer transcript")
+    @Test(
+        "A superseded message snapshot cannot replace a newer transcript",
+        .bug(id: "ASC-AKWY7o8vHhCEjrJIhzCg0sM")
+    )
     func supersededSnapshot() async throws {
         let service = TranscriptLoadingService(delayFirstMessages: true)
         let store = makeStore(service)
@@ -54,7 +63,10 @@ struct OpenCodeTranscriptLoadingTests {
         #expect(!store.isLoadingTranscript)
     }
 
-    @Test("Leaving during loading clears progress and ignores late messages")
+    @Test(
+        "Leaving during loading clears progress and ignores late messages",
+        .bug(id: "ASC-AKWY7o8vHhCEjrJIhzCg0sM")
+    )
     func stopDuringLoad() async throws {
         let service = TranscriptLoadingService(delayFirstMessages: true)
         let store = makeStore(service)
@@ -69,7 +81,10 @@ struct OpenCodeTranscriptLoadingTests {
         #expect(!store.canSubmitPrompt)
     }
 
-    @Test("Refreshing an existing transcript keeps its messages visible")
+    @Test(
+        "Refreshing an existing transcript keeps its messages visible",
+        .bug(id: "ASC-AKWY7o8vHhCEjrJIhzCg0sM")
+    )
     func keepsExistingMessages() async throws {
         let service = TranscriptLoadingService()
         let store = makeStore(service)
