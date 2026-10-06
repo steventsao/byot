@@ -348,7 +348,9 @@ struct OpenCodeSessionComposerView: View {
 
     // One row of knobs under the message, the way Codex arranges its composer:
     // add, model, agent, and effort lead; send stays at the trailing edge
-    // (TestFlight AP61hUE2AovmmO2zq7no_hg). Accessibility sizes keep stacking
+    // (TestFlight AP61hUE2AovmmO2zq7no_hg). The knobs trade their names for
+    // icons until every one of them fits beside the microphone and send
+    // (TestFlight AL92ozHEMfBSiCvNBmFR3KQ). Accessibility sizes keep stacking
     // because the labels cannot share a line at those widths.
     @ViewBuilder
     private var controlRow: some View {
@@ -365,9 +367,9 @@ struct OpenCodeSessionComposerView: View {
                 // keyboard at these sizes and were drawn over each other; the
                 // knobs come back once a command is picked.
                 if !isChoosingSlashCommand {
-                    if !store.composerCatalog.agents.isEmpty { agentToggle }
-                    if !store.availableVariants.isEmpty { variantMenu }
-                    modelButton
+                    if !store.composerCatalog.agents.isEmpty { agentToggle() }
+                    if !store.availableVariants.isEmpty { variantMenu() }
+                    modelButton()
                 }
                 HStack(spacing: 8) {
                     attachmentButton
@@ -379,24 +381,29 @@ struct OpenCodeSessionComposerView: View {
             }
         } else {
             HStack(spacing: 4) {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 4) {
-                        attachmentButton
-                        if store.supportsShell { shellToggle }
-                        modelButton
-                        if !store.composerCatalog.agents.isEmpty { agentToggle }
-                        if !store.availableVariants.isEmpty { variantMenu }
-                    }
+                // The first arrangement that fits is shown. Scrolling is left
+                // for a container too narrow for the icons alone.
+                ViewThatFits(in: .horizontal) {
+                    ForEach(OpenCodeComposerKnobDensity.allCases, id: \.self) { knobStrip($0) }
+                    ScrollView(.horizontal) { knobStrip(.icons) }
+                        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                 }
-                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-                // A long model name pushes the last knobs past the edge; flash the
-                // indicator when the row opens so they read as a scroll away.
-                .scrollIndicators(.automatic, axes: .horizontal)
-                .scrollIndicatorsFlash(onAppear: true)
-                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if showsDictation { dictationButton }
                 submitButton
             }
+        }
+    }
+
+    private func knobStrip(_ density: OpenCodeComposerKnobDensity) -> some View {
+        // Icons sit closer so five of them still fit a 375 pt phone beside the
+        // microphone and send.
+        HStack(spacing: density == .icons ? 2 : 4) {
+            attachmentButton
+            if store.supportsShell { shellToggle }
+            modelButton(density)
+            if !store.composerCatalog.agents.isEmpty { agentToggle(showsName: density.showsAgentName) }
+            if !store.availableVariants.isEmpty { variantMenu(showsName: density.showsVariantName) }
         }
     }
 
@@ -510,22 +517,35 @@ struct OpenCodeSessionComposerView: View {
         return terms.filter { !$0.isEmpty }
     }
 
-    private var modelButton: some View {
+    private func modelButton(_ density: OpenCodeComposerKnobDensity = .names) -> some View {
         Button(action: showModelPicker) {
-            HStack(spacing: 6) {
-                Text(store.selectedModel?.modelName ?? String(localized: "Automatic"))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .truncationMode(.tail)
-                Image(systemName: "chevron.down")
-                    .imageScale(.small)
+            Group {
+                if density.showsModelName {
+                    HStack(spacing: 6) {
+                        Text(store.selectedModel?.modelName ?? String(localized: "Automatic"))
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                            .truncationMode(.tail)
+                            // Beside icon-only knobs a long name ellipsizes in the
+                            // room that is left; asking for this little is what
+                            // lets that arrangement count as fitting.
+                            .frame(idealWidth: density == .compact ? 64 : nil)
+                        Image(systemName: "chevron.down")
+                            .imageScale(.small)
+                    }
+                    .font(.cleanCaptionBold)
+                    .padding(.horizontal, 8)
+                    .frame(minHeight: 44, alignment: .leading)
+                } else {
+                    Image(systemName: "cpu")
+                        .font(.cleanControlIcon)
+                        .frame(width: 44, height: 44)
+                }
             }
-            .font(.cleanCaptionBold)
-            .padding(.horizontal, 8)
-            .frame(minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Choose model")
+        .accessibilityIdentifier("opencode-model-picker")
         .accessibilityValue(store.selectedModel.map {
             "\($0.modelName), \($0.providerName)"
         } ?? "Automatic")
@@ -574,6 +594,7 @@ struct OpenCodeSessionComposerView: View {
         }
         .foregroundStyle(.primary)
         .accessibilityLabel("Add attachment")
+        .accessibilityIdentifier("opencode-composer-add")
         // The menu also opens the server file browser, so the attachment limit
         // disables the importing items instead of the whole control.
         .disabled(isImportingAttachment || (isAtAttachmentLimit && store.remoteFiles == nil))
@@ -744,12 +765,12 @@ struct OpenCodeSessionComposerView: View {
     // run. Touch and hold lists every agent; the sheet adds descriptions and
     // the inherit-the-session choice.
     @ViewBuilder
-    private var agentToggle: some View {
+    private func agentToggle(showsName: Bool = true) -> some View {
         Group {
             if store.composerCatalog.agents.count > 1 {
-                Menu { agentMenuContent } label: { agentToggleLabel } primaryAction: { cycleAgent(.forward) }
+                Menu { agentMenuContent } label: { agentToggleLabel(showsName: showsName) } primaryAction: { cycleAgent(.forward) }
             } else {
-                Menu { agentMenuContent } label: { agentToggleLabel }
+                Menu { agentMenuContent } label: { agentToggleLabel(showsName: showsName) }
             }
         }
         .foregroundStyle(.primary)
@@ -772,7 +793,7 @@ struct OpenCodeSessionComposerView: View {
         .accessibilityIdentifier("opencode-agent-picker")
     }
 
-    private var agentToggleLabel: some View {
+    private func agentToggleLabel(showsName: Bool) -> some View {
         Label {
             Text(store.currentAgentName)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
@@ -781,10 +802,7 @@ struct OpenCodeSessionComposerView: View {
             Image(systemName: OpenCodeAgentOption.systemImage(for: store.currentAgentID))
                 .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
         }
-        .font(.cleanCaptionBold)
-        .padding(.horizontal, 8)
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
+        .composerKnob(showsName: showsName)
         .animation(reduceMotion ? nil : .smooth(duration: BYOTBrand.Motion.quick), value: store.currentAgentID)
     }
 
@@ -814,7 +832,7 @@ struct OpenCodeSessionComposerView: View {
         isShowingAgentPicker = true
     }
 
-    private var variantMenu: some View {
+    private func variantMenu(showsName: Bool = true) -> some View {
         Menu {
             Button { store.selectVariant(nil) } label: {
                 Label("Default", systemImage: store.selectedVariant == nil ? "checkmark" : "circle")
@@ -826,10 +844,11 @@ struct OpenCodeSessionComposerView: View {
             }
         } label: {
             Label(store.variantLabel, systemImage: "slider.horizontal.3")
-                .font(.cleanCaptionBold)
                 .lineLimit(1)
-                .padding(.horizontal, 8)
-                .frame(minHeight: 44)
+                .composerKnob(showsName: showsName)
+                // Without its name, a chosen effort still reads as set.
+                .background(showsName || store.selectedVariant == nil ? .clear : BYOTBrand.selectedSurface,
+                            in: Circle())
         }
         // Composer knobs stay neutral; mint belongs to brand surfaces, not to
         // every control in the input (TestFlight AFLln8T3hkHG3FFblK9JN0k).
@@ -1049,6 +1068,29 @@ struct OpenCodeSessionComposerView: View {
                 data: try Data(contentsOf: url)
             )
         }.value
+    }
+}
+
+/// How much the control row's knobs spell out. The row shows the first of
+/// these that fits beside the microphone and send.
+enum OpenCodeComposerKnobDensity: CaseIterable, Sendable {
+    case names, compact, icons
+
+    var showsModelName: Bool { self != .icons }
+    var showsAgentName: Bool { self == .names }
+    var showsVariantName: Bool { self == .names }
+}
+
+private extension View {
+    /// A knob's label in the control row: its name and glyph, or the glyph
+    /// alone in the 44 pt slot the row's other icon buttons use.
+    @ViewBuilder
+    func composerKnob(showsName: Bool) -> some View {
+        if showsName {
+            font(.cleanCaptionBold).padding(.horizontal, 8).frame(minHeight: 44).contentShape(Rectangle())
+        } else {
+            labelStyle(.iconOnly).font(.cleanControlIcon).frame(width: 44, height: 44).contentShape(Rectangle())
+        }
     }
 }
 

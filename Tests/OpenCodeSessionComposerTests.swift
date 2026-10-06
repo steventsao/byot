@@ -37,6 +37,20 @@ struct OpenCodeSessionComposerTests {
     }
 
     @Test(
+        "Composer knobs trade their names for icons before the row can outgrow the input",
+        .bug(id: "ASC-AL92ozHEMfBSiCvNBmFR3KQ")
+    )
+    func knobDensityOrder() {
+        // The row shows the first of these that fits, so agent and effort give
+        // up their names before the model does.
+        #expect(OpenCodeComposerKnobDensity.allCases == [.names, .compact, .icons])
+        let named = OpenCodeComposerKnobDensity.allCases.map {
+            [$0.showsModelName, $0.showsAgentName, $0.showsVariantName]
+        }
+        #expect(named == [[true, true, true], [true, false, false], [false, false, false]])
+    }
+
+    @Test(
         "The conversation header names an unknown status so the composer needs no spinner",
         .bug(id: "ASC-AEk0EYWkKW0QGxg8A34z3r0"),
         .bug(id: "ASC-AJvs6pGkEt5k3xS1gTpvmDI")
