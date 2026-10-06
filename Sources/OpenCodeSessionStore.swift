@@ -413,8 +413,12 @@ final class OpenCodeSessionStore: ObservableObject {
         let diffBaseline = diffMutationGeneration
         let statusBaseline = statusMutationGeneration
         async let featureRefresh: Void = refreshSessionFeatures()
-        if showLoading { isLoading = true }
-        isLoadingTranscript = true
+        if showLoading {
+            isLoading = true
+            // A background reconciliation must not bring the loader back
+            // over a session that has no messages yet.
+            isLoadingTranscript = true
+        }
         defer {
             if generation == refreshGeneration {
                 isLoading = false

@@ -99,6 +99,24 @@ struct OpenCodeTranscriptLoadingTests {
         #expect(store.messages.first?.id == "message-2")
     }
 
+    @Test(
+        "A background refresh does not bring the loader back",
+        .bug(id: "ASC-AKWY7o8vHhCEjrJIhzCg0sM")
+    )
+    func backgroundRefreshStaysQuiet() async throws {
+        let service = TranscriptLoadingService()
+        let store = makeStore(service)
+        await store.refresh(showLoading: true)
+        await service.delayNextMessages()
+        let load = Task { await store.refresh() }
+        try await wait { await service.messageGate.isWaiting }
+        #expect(!store.isLoadingTranscript)
+        await service.messageGate.open()
+        await load.value
+        #expect(store.messages.first?.id == "message-2")
+        #expect(!store.isLoadingTranscript)
+    }
+
     private func makeStore(_ service: TranscriptLoadingService) -> OpenCodeSessionStore {
         OpenCodeSessionStore(service: service, serverID: UUID(), session: OpenCodeSession(
             id: "session", slug: "session", projectID: "project", workspaceID: nil,
