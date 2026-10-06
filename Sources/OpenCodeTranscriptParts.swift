@@ -69,6 +69,14 @@ enum OpenCodeTranscriptLayout {
             || message.info.error != nil
             || OpenCodeStepSummary(reply: message) != nil
     }
+
+    /// The least height the transcript takes: one viewport, once it has been
+    /// measured. A transcript shorter than the screen then fills it from the
+    /// top and leaves the scroll view no other place to rest it.
+    static func minimumContentHeight(viewportHeight: CGFloat) -> CGFloat? {
+        guard viewportHeight.isFinite, viewportHeight > 0 else { return nil }
+        return viewportHeight
+    }
 }
 
 // MARK: - Compaction

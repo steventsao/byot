@@ -315,6 +315,12 @@ struct OpenCodeSessionScreen: View {
                 .padding(.top, 14)
                 .padding(.bottom, 24)
                 .frame(maxWidth: .infinity)
+                // A transcript shorter than the screen still fills it, so its rows
+                // always rest under the header.
+                .frame(
+                    minHeight: OpenCodeTranscriptLayout.minimumContentHeight(viewportHeight: transcriptViewportHeight),
+                    alignment: .top
+                )
             }
             .overlay {
                 if showsTranscriptLoading {
@@ -373,7 +379,7 @@ struct OpenCodeSessionScreen: View {
                 rememberAttention()
                 if !hasPositionedTranscript && !store.messages.isEmpty {
                     hasPositionedTranscript = true
-                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                    revealConversationBottom(proxy)
                     return
                 }
                 scrollToConversationBottomIfNeeded(proxy)
@@ -397,7 +403,7 @@ struct OpenCodeSessionScreen: View {
             .onChange(of: store.localShell) { _, newValue in
                 guard let newValue else { return }
                 // Follow a new command and its outcome, even from an older scroll position.
-                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                revealConversationBottom(proxy)
                 switch newValue.phase {
                 case .sending: break
                 case .failed(let message):
@@ -408,7 +414,7 @@ struct OpenCodeSessionScreen: View {
             }
             .onChange(of: store.queueAnnouncementRevision) { _, _ in
                 AccessibilityNotification.Announcement(String(localized: "Message queued")).post()
-                proxy.scrollTo("opencode-queued-prompts", anchor: .bottom)
+                proxy.scrollTo("opencode-queued-prompts")
             }
         }
         .background(BYOTBrand.canvas)
@@ -1001,7 +1007,14 @@ struct OpenCodeSessionScreen: View {
         guard isAtBottom else { return }
         // Streaming can update faster than an animation completes. Follow immediately;
         // reserve animation for the user's explicit jump.
-        proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+        revealConversationBottom(proxy)
+    }
+
+    /// Scrolls only as far as it takes to show the end of the conversation.
+    /// Asking for the end to sit on the bottom edge instead would pull a
+    /// transcript that already fits on screen down to the composer.
+    private func revealConversationBottom(_ proxy: ScrollViewProxy) {
+        proxy.scrollTo(bottomAnchorID)
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {

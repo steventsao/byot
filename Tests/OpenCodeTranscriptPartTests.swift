@@ -92,6 +92,21 @@ struct OpenCodeTranscriptPartTests {
     }
 
     @Test(
+        "A short transcript fills its viewport so following never pushes it down",
+        .bug(id: "ASC-AAqE8eljRs3pWq5_qSfEZ0I"),
+        .bug(id: "ASC-AL-iOayl1hthD-usBql8OKE")
+    )
+    func shortTranscriptFillsViewport() throws {
+        // The reported screen: 431.55 pt of rows in a 541.7 pt viewport.
+        let reported = try #require(OpenCodeTranscriptLayout.minimumContentHeight(viewportHeight: 541.7))
+        #expect(reported == 541.7)
+        #expect(reported > 431.55)
+        // Until the viewport has been measured there is nothing to fill.
+        #expect(OpenCodeTranscriptLayout.minimumContentHeight(viewportHeight: .infinity) == nil)
+        #expect(OpenCodeTranscriptLayout.minimumContentHeight(viewportHeight: 0) == nil)
+    }
+
+    @Test(
         "A reply with nothing to show yet takes no transcript row",
         .bug(id: "ASC-AAqE8eljRs3pWq5_qSfEZ0I"),
         .bug(id: "ASC-AL-iOayl1hthD-usBql8OKE")
