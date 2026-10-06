@@ -22,6 +22,21 @@ struct OpenCodeSessionComposerTests {
     }
 
     @Test(
+        "A stop that is still in flight keeps the stop control instead of showing send",
+        .bug(id: "ASC-AEk0EYWkKW0QGxg8A34z3r0"),
+        .bug(id: "ASC-AJvs6pGkEt5k3xS1gTpvmDI")
+    )
+    func stopControlStaysWhileStopping() {
+        // With the composer spinner gone, the glyph is what says the stop was heard.
+        #expect(OpenCodeSessionComposerView.showsStopControl(canStop: false, isStopping: true, text: ""))
+        #expect(!OpenCodeSessionComposerView.showsStopControl(canStop: false, isStopping: false, text: ""))
+        // A typed steering message still takes the slot back.
+        #expect(!OpenCodeSessionComposerView.showsStopControl(canStop: false, isStopping: true, text: "steer it"))
+        #expect(!OpenCodeSessionComposerView.showsStopControl(
+            canStop: false, isStopping: true, text: "", hasAttachments: true))
+    }
+
+    @Test(
         "The composer only carries its knobs while it holds focus or a draft",
         .bug(id: "ASC-AOZmN-SID8Bh11kUI4sRAT0")
     )

@@ -629,9 +629,11 @@ struct OpenCodeSessionComposerView: View {
         // mode already spells its reason out above the field.
         .accessibilityHint(showsStopControl || inShellMode ? "" : (store.promptUnavailableReason ?? ""))
         .accessibilityIdentifier(showsStopControl ? "opencode-composer-stop" : "opencode-composer-send")
+        // A stop already on its way keeps its glyph, dimmed, until the server answers.
         // A shell draft waiting on the server's features must not send as a message.
-        .disabled(!showsStopControl && (!hasSendableContent || isImportingAttachment || isShellMode != inShellMode
-            || (inShellMode ? store.shellUnavailableReason != nil : !store.canSubmitPrompt)))
+        .disabled(showsStopControl ? !store.canStopTurn
+            : (!hasSendableContent || isImportingAttachment || isShellMode != inShellMode
+                || (inShellMode ? store.shellUnavailableReason != nil : !store.canSubmitPrompt)))
     }
 
     private func attachmentChip(_ attachment: OpenCodePromptAttachment) -> some View {
@@ -681,15 +683,19 @@ struct OpenCodeSessionComposerView: View {
     }
 
     private var showsStopControl: Bool {
-        Self.showsStopControl(canStop: store.canStopTurn, text: text,
+        Self.showsStopControl(canStop: store.canStopTurn,
+                              isStopping: store.isStoppingTurn && store.status.isActive, text: text,
                               hasAttachments: !attachments.isEmpty || !remoteReferences.isEmpty)
     }
 
     // The stop control takes the send slot only while the composer is empty;
     // typed text switches back to send/queue so a steering message is never
-    // blocked by the stop affordance.
-    nonisolated static func showsStopControl(canStop: Bool, text: String, hasAttachments: Bool = false) -> Bool {
-        canStop && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasAttachments
+    // blocked by the stop affordance. It stays while a stop is in flight, so
+    // the slot never reads as "send" for a turn that is still running.
+    nonisolated static func showsStopControl(
+        canStop: Bool, isStopping: Bool = false, text: String, hasAttachments: Bool = false
+    ) -> Bool {
+        (canStop || isStopping) && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasAttachments
     }
 
     /// ⌘↩ and ⌘. for the conversation on screen. A conversation covered by
