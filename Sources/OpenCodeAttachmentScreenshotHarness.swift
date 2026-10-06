@@ -58,10 +58,19 @@ struct OpenCodeAttachmentScreenshotHarness: View {
                 )
             }
         }
+        .frame(maxWidth: Self.screenWidth)
         .onAppear {
+            let arguments = ProcessInfo.processInfo.arguments
             store.prepareForAttachmentScreenshot(
-                withCatalog: ProcessInfo.processInfo.arguments.contains("--composer-catalog"))
+                withCatalog: arguments.contains("--composer-catalog"),
+                crowded: arguments.contains("--composer-crowded"))
         }
+    }
+
+    /// `-BYOTScreenWidth 393` lays the screen out as a narrower phone would.
+    private static var screenWidth: CGFloat? {
+        let width = UserDefaults.standard.double(forKey: "BYOTScreenWidth")
+        return width > 0 ? width : nil
     }
 
     private static var previewImage: Data {

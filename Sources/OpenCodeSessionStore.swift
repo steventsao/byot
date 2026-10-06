@@ -2637,16 +2637,19 @@ final class OpenCodeSessionStore: ObservableObject {
 #if DEBUG
     /// Seeds the screenshot harness. `withCatalog` adds the agent and effort
     /// options a real server supplies, so the composer's single control row can
-    /// be checked with every knob present.
-    func prepareForAttachmentScreenshot(withCatalog: Bool = false) {
+    /// be checked with every knob present. `crowded` gives that row the most it
+    /// has to hold: a long model name and the shell toggle.
+    func prepareForAttachmentScreenshot(withCatalog: Bool = false, crowded: Bool = false) {
         isRunning = true
         isStatusReady = true
         status = .idle
         errorMessage = nil
         guard withCatalog else { return }
+        if crowded { sessionFeatures.shell = true }
         let model = OpenCodeModelOption(
             providerID: "byot", providerName: "BYOT Fixture", modelID: "muse-spark",
-            modelName: "Muse Spark 1.3", status: nil, variants: ["byot-careful"])
+            modelName: crowded ? "Muse Spark 1.3 Free Preview" : "Muse Spark 1.3", status: nil,
+            variants: ["byot-careful"])
         providerModels = [OpenCodeProviderModels(
             providerID: model.providerID, providerName: model.providerName, models: [model])]
         composerCatalog = OpenCodeComposerCatalog(
