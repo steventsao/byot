@@ -1,5 +1,7 @@
 # TestFlight slow-connection rendering
 
+This work was written on September 28, 2026 and shipped in [1.0.33](releases/1.0.33.md). The validation below is from that date; the 1.0.33 record has the current results.
+
 Feedback `AKWY7o8vHhCEjrJIhzCg0sM`, submitted September 24, 2026 PDT on
 1.0.30 (`20260924002512`), shows completed task progress floating above an empty
 transcript loader and a second spinner in the composer. The implementation is
