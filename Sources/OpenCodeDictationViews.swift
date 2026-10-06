@@ -11,8 +11,7 @@ struct OpenCodeDictationButton: View {
         Button(action: action) {
             Group {
                 if dictation.phase == .preparing {
-                    ProgressView()
-                        .controlSize(.small)
+                    BYOTActivityGlyph(phase: .loading, size: 18, tint: .primary)
                 } else {
                     Image(systemName: dictation.isActive ? "mic.fill" : "mic")
                         .font(.cleanControlIcon)

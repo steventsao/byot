@@ -566,7 +566,7 @@ struct OpenCodeSessionComposerView: View {
 #endif
         } label: {
             Group {
-                if isImportingAttachment { ProgressView() }
+                if isImportingAttachment { BYOTActivityGlyph(phase: .loading, size: 18, tint: .secondary) }
                 else { Image(systemName: "plus").font(.cleanControlIcon) }
             }
             .frame(width: 44, height: 44)
