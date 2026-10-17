@@ -23,7 +23,8 @@ struct OpenCodeActions: Sendable {
         to permission: OpenCodePermissionRequest,
         directory: String,
         workspace: String? = nil,
-        reply: OpenCodePermissionReply
+        reply: OpenCodePermissionReply,
+        v2ReplyField: String = "reply"
     ) async throws {
         struct Body: Encodable { let reply: OpenCodePermissionReply }
         switch permission.resolvedAPIVersion {
@@ -36,7 +37,7 @@ struct OpenCodeActions: Sendable {
         case .v2:
             try await transport.postExpectingEmptyResponse(
                 ["api", "session", permission.sessionID, "permission", permission.id, "reply"],
-                body: Body(reply: reply)
+                body: OpenCodeJSONValue.object([v2ReplyField: .string(reply.rawValue)])
             )
         }
     }

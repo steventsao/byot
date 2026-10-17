@@ -197,7 +197,11 @@ struct OpenCodeClient: Sendable {
         to permission: OpenCodePermissionRequest, directory: String, workspace: String? = nil,
         reply: OpenCodePermissionReply
     ) async throws {
-        try await actions.reply(to: permission, directory: directory, workspace: workspace, reply: reply)
+        var field = "reply"
+        if permission.resolvedAPIVersion == .v2 {
+            field = OpenCodeV2Contract.permissionReplyField(try await negotiatedAdapter().apiSchema)
+        }
+        try await actions.reply(to: permission, directory: directory, workspace: workspace, reply: reply, v2ReplyField: field)
     }
 
     func answer(

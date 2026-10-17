@@ -76,7 +76,10 @@ struct OpenCodeOneTimePairingParsingTests {
         #expect(payload?.username == "opencode")
         #expect(payload?.password == "tok")
         #expect(payload?.allowsLocalHTTP == true)
+        #expect(payload?.name == nil)
         #expect(OpenCodePairingRedemption.expired.payload == nil)
+        let remote = OpenCodePairingRedemption.paired(url: URL(string: "https://r.t.opentunnel.xyz")!, token: "tok")
+        #expect(remote.payload?.name == "OpenCode remote")
     }
 }
 
@@ -185,8 +188,17 @@ struct OpenCodeOneTimePairingLiveTests {
     }
 }
 
-@Suite("OpenCode 2 form cancellation route")
+@Suite("OpenCode 2.0 route choices")
 struct OpenCodeFormCancelRouteTests {
+    @Test("2.0 releases take a permission reply as `decision`; betas as `reply`")
+    func permissionReplyField() throws {
+        let release = try decode(#"{"paths":{"/api/session/{sessionID}/permission/{requestID}/reply":{"post":{"requestBody":{"content":{"application/json":{"schema":{"type":"object","properties":{"decision":{},"message":{}}}}}}}}}}"#)
+        let beta = try decode(##"{"paths":{"/api/session/{sessionID}/permission/{requestID}/reply":{"post":{"requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Reply"}}}}}}},"components":{"schemas":{"Reply":{"properties":{"reply":{}}}}}}"##)
+        #expect(OpenCodeV2Contract.permissionReplyField(release) == "decision")
+        #expect(OpenCodeV2Contract.permissionReplyField(beta) == "reply")
+        #expect(OpenCodeV2Contract.permissionReplyField(nil) == "reply")
+    }
+
     @Test("2.0 releases publish DELETE …/form/{formID}")
     func releaseDeletes() throws {
         let schema = try decode(#"{"paths":{"/api/session/{sessionID}/form/{formID}":{"get":{},"delete":{}}}}"#)

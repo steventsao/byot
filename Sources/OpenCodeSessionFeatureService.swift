@@ -135,7 +135,11 @@ struct OpenCodeSessionFeatureService: Sendable {
     func fork(_ id: String, directory: String, workspace: String?, beforeMessageID: String?) async throws -> OpenCodeSession {
         try require(support.fork, String(localized: "Fork"))
         let value: OpenCodeJSONValue
-        if v2 {
+        if v2, context.composerSchemaProperties("/api/session/{sessionID}/fork")["before"] != nil {
+            // 2.0 releases: {before: messageID}; leaving it out forks the whole session.
+            struct Body: Encodable { let before: String? }
+            value = try await context.transport.post(path(id) + ["fork"], body: Body(before: beforeMessageID))
+        } else if v2 {
             struct Boundary: Encodable { let type: String; let messageID: String? }
             struct Body: Encodable { let boundary: Boundary }
             value = try await context.transport.post(path(id) + ["fork"], body: Body(boundary: Boundary(type: beforeMessageID == nil ? "through" : "before", messageID: beforeMessageID)))

@@ -71,7 +71,10 @@ enum OpenCodePairingRedemption: Equatable, Sendable {
 
     var payload: OpenCodePairingPayload? {
         guard case .paired(let url, let token) = self else { return nil }
-        return OpenCodePairingPayload(baseURL: url, username: OpenCodeOneTimePairing.username, password: token)
+        // A relay hostname is a random route and tunnel id, which makes a poor name.
+        let relay = url.host?.lowercased().hasSuffix(".opentunnel.xyz") == true
+        return OpenCodePairingPayload(baseURL: url, username: OpenCodeOneTimePairing.username, password: token,
+                                      name: relay ? String(localized: "OpenCode remote") : nil)
     }
 }
 

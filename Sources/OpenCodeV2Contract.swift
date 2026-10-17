@@ -28,6 +28,19 @@ struct OpenCodeV2Contract: Equatable, Sendable {
 
     /// OpenCode 2.0 releases cancel a form with `DELETE …/form/{formID}`; the
     /// betas used `POST …/form/{formID}/cancel`. Follow whichever the schema publishes.
+    /// OpenCode 2.0 releases take a permission reply as `decision`; the betas used `reply`.
+    static func permissionReplyField(_ schema: OpenCodeJSONValue?) -> String {
+        let body = schema?.objectValue?["paths"]?.objectValue?["/api/session/{sessionID}/permission/{requestID}/reply"]?
+            .objectValue?["post"]?.objectValue?["requestBody"]?.objectValue?["content"]?.objectValue?["application/json"]?
+            .objectValue?["schema"]?.objectValue
+        var properties = body?["properties"]?.objectValue
+        if properties == nil, let name = body?["$ref"]?.stringValue?.split(separator: "/").last {
+            properties = schema?.objectValue?["components"]?.objectValue?["schemas"]?.objectValue?[String(name)]?
+                .objectValue?["properties"]?.objectValue
+        }
+        return properties?["decision"] != nil && properties?["reply"] == nil ? "decision" : "reply"
+    }
+
     static func cancelsFormsWithDelete(_ schema: OpenCodeJSONValue?) -> Bool {
         guard let paths = schema?.objectValue?["paths"]?.objectValue,
               paths["/api/session/{sessionID}/form/{formID}/cancel"] == nil else { return false }

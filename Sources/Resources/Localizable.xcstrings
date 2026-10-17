@@ -7104,6 +7104,16 @@
         }
       }
     },
+    "OpenCode remote" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenCode 远程"
+          }
+        }
+      }
+    },
     "OpenCode reported an unhealthy status. Restart the server and try again." : {
       "localizations" : {
         "zh-Hans" : {
