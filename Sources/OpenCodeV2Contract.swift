@@ -25,4 +25,12 @@ struct OpenCodeV2Contract: Equatable, Sendable {
         pendingRequestLists = paths["/api/permission/request"] != nil && paths["/api/question/request"] != nil
         sessionTitle = paths["/api/session"]?.objectValue?["post"]?.objectValue?["requestBody"]?.objectValue?["content"]?.objectValue?["application/json"]?.objectValue?["schema"]?.objectValue?["properties"]?.objectValue?["title"] != nil
     }
+
+    /// OpenCode 2.0 releases cancel a form with `DELETE …/form/{formID}`; the
+    /// betas used `POST …/form/{formID}/cancel`. Follow whichever the schema publishes.
+    static func cancelsFormsWithDelete(_ schema: OpenCodeJSONValue?) -> Bool {
+        guard let paths = schema?.objectValue?["paths"]?.objectValue,
+              paths["/api/session/{sessionID}/form/{formID}/cancel"] == nil else { return false }
+        return paths["/api/session/{sessionID}/form/{formID}"]?.objectValue?["delete"] != nil
+    }
 }

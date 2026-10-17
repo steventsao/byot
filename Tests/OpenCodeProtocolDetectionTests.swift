@@ -69,6 +69,45 @@ struct OpenCodeProtocolDetectionTests {
         #expect(probe.protocol == .v2)
     }
 
+    @Test("OpenCode 2.0 release: no /api/health, so /api/info detects v2")
+    func detectsV2ReleaseFromServerInfo() async throws {
+        // Recorded from a real `opencode serve` 2.0.32: /global/health is the
+        // web UI, /api/health is 404, and server.info answers.
+        let (client, stub) = makeStubbedClient(responses: [
+            "/global/health": .html("<!doctype html><html><title>OpenCode</title></html>"),
+            "/api/info": .json(
+                #"{"version":"2.0.32","pid":17095,"urls":["http://127.0.0.1:4296"],"capabilities":{"persistentPty":true}}"#
+            ),
+        ])
+
+        let probe = try await client.probeServer()
+
+        #expect(probe.protocol == .v2)
+        #expect(probe.health == OpenCodeHealth(healthy: true, version: "2.0.32"))
+        #expect(stub.recordedPaths() == ["/global/health", "/api/health", "/api/info"])
+    }
+
+    @Test("OpenCode 2.0 release with a wrong password surfaces a credentials error")
+    func serverInfoAuthFailureSurfacesCredentialsError() async throws {
+        let (client, _) = makeStubbedClient(responses: [
+            "/global/health": .html("<!doctype html><html></html>"),
+            "/api/info": .json(
+                #"{"_tag":"UnauthorizedError","message":"Authentication required"}"#,
+                statusCode: 401
+            ),
+        ])
+
+        do {
+            _ = try await client.probeServer()
+            Issue.record("Expected httpStatus(401)")
+        } catch let error as OpenCodeConnectionError {
+            guard case .httpStatus(401, _) = error else {
+                Issue.record("Expected httpStatus(401), got \(error)")
+                return
+            }
+        }
+    }
+
     @Test("ambiguous /api/health without pid but healthy:true maps to v1 (mirrors desktop)")
     func ambiguousAPIHealthMapsToV1() async throws {
         let (client, _) = makeStubbedClient(responses: [

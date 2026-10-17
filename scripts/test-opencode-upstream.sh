@@ -24,7 +24,7 @@ trap 'exit 143' TERM
 echo "E2E run: $run_root"
 mkdir -p "$tools_root"
 if ! cmp -s "$repo/scripts/e2e/package-lock.json" "$tools_root/package-lock.json" ||
-   [ ! -x "$tools_root/node_modules/.bin/opencode" ] || [ ! -x "$tools_root/node_modules/.bin/opencode2" ]; then
+   [ ! -x "$tools_root/node_modules/opencode-ai/bin/opencode.exe" ] || [ ! -x "$tools_root/node_modules/@opencode/cli/bin/opencode.exe" ]; then
   cp "$repo/scripts/e2e/package.json" "$repo/scripts/e2e/package-lock.json" "$tools_root/"
   npm ci --prefix "$tools_root" --no-audit --no-fund
 fi

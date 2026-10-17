@@ -136,12 +136,17 @@ struct OpenCodeActions: Sendable {
     func reject(
         _ question: OpenCodeQuestionRequest,
         directory: String,
-        workspace: String? = nil
+        workspace: String? = nil,
+        cancelsFormWithDelete: Bool = false
     ) async throws {
         if question.form != nil {
-            let request = try transport.makeRequest(
-                path: ["api", "session", question.sessionID, "form", question.id, "cancel"], query: [],
-                method: "POST", body: nil)
+            let request = cancelsFormWithDelete
+                ? try transport.makeRequest(
+                    path: ["api", "session", question.sessionID, "form", question.id], query: [],
+                    method: "DELETE", body: nil)
+                : try transport.makeRequest(
+                    path: ["api", "session", question.sessionID, "form", question.id, "cancel"], query: [],
+                    method: "POST", body: nil)
             try await transport.performExpectingEmptyResponse(request)
             return
         }
