@@ -56,12 +56,17 @@ struct OpenCodeSessionFeatureSupport: Equatable, Sendable {
         let stage = context.supports("/api/session/{sessionID}/revert/stage", method: "post")
         let commit = context.supports("/api/session/{sessionID}/revert/commit", method: "post")
         return Self(details: details,
-                    rename: details && context.supports("/api/session/{sessionID}/rename", method: "post"),
+                    // Betas: POST …/rename. 2.0 releases: PATCH the session with a title.
+                    rename: details && (context.supports("/api/session/{sessionID}/rename", method: "post")
+                        || context.supports("/api/session/{sessionID}", method: "patch")),
                     delete: context.supports("/api/session/{sessionID}", method: "delete"),
                     children: context.supports("/api/session"),
                     todoSnapshot: false,
                     undo: details && inbox && stage && commit,
-                    redo: details && inbox && stage && commit && context.supports("/api/session/{sessionID}/revert/clear", method: "post"),
+                    // Betas: POST …/revert/clear. 2.0 releases: DELETE …/revert.
+                    redo: details && inbox && stage && commit
+                        && (context.supports("/api/session/{sessionID}/revert/clear", method: "post")
+                            || context.supports("/api/session/{sessionID}/revert", method: "delete")),
                     compact: context.supports("/api/session/{sessionID}/compact", method: "post"),
                     fork: context.supports("/api/session/{sessionID}/fork", method: "post"),
                     contextWindow: context.supports("/api/session/{sessionID}/context"),

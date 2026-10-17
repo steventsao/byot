@@ -2847,6 +2847,16 @@
         }
       }
     },
+    "Connecting to OpenCode…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在连接 OpenCode…"
+          }
+        }
+      }
+    },
     "Connecting…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5613,12 +5623,22 @@
         }
       }
     },
-    "Make a pairing code" : {
+    "Make a pairing code: OpenCode 1" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "生成配对码"
+            "value" : "生成配对码：OpenCode 1"
+          }
+        }
+      }
+    },
+    "Make a pairing code: OpenCode 2" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成配对码：OpenCode 2"
           }
         }
       }
@@ -7064,12 +7084,12 @@
         }
       }
     },
-    "OpenCode rejected the username or password." : {
+    "OpenCode rejected the username or password. If you paired with a code, scan a new one." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "OpenCode 拒绝了用户名或密码。"
+            "value" : "OpenCode 拒绝了用户名或密码。如果你是用配对码配对的，请扫描新的配对码。"
           }
         }
       }
@@ -8922,6 +8942,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在运行 OpenCode 服务器的电脑上运行它，并使用 iPhone 能访问的地址。它会读取 OPENCODE_SERVER_PASSWORD，而配对码中包含该密码，因此请勿分享。"
+          }
+        }
+      }
+    },
+    "Run it on your computer. With --remote, byot connects from anywhere through OpenCode’s end-to-end encrypted relay; leave it off to pair on the same network or Tailscale. Each code works once, within 5 minutes, and keeps this iPhone signed in for 30 days." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在你的电脑上运行它。加上 --remote 后，byot 可通过 OpenCode 的端到端加密中继从任何地方连接；不加则只能在同一网络或 Tailscale 中配对。每个配对码只能使用一次，须在 5 分钟内使用，并让这台 iPhone 保持登录 30 天。"
           }
         }
       }
@@ -11502,12 +11532,12 @@
         }
       }
     },
-    "This isn’t a byot pairing code. Show the code from byot-pair-qr.sh, or an HTTPS server address." : {
+    "This isn’t a pairing code. Scan the code from opencode pair or byot-pair-qr.sh, or paste an HTTPS server address." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这不是 byot 配对码。请显示 byot-pair-qr.sh 生成的配对码或 HTTPS 服务器地址。"
+            "value" : "这不是配对码。请扫描 opencode pair 或 byot-pair-qr.sh 生成的配对码，或粘贴 HTTPS 服务器地址。"
           }
         }
       }
@@ -11578,6 +11608,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此配对码需要更新版本的 byot。"
+          }
+        }
+      }
+    },
+    "This pairing code was already used or has expired. Run opencode pair again and scan the new code." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此配对码已被使用或已过期。请再次运行 opencode pair 并扫描新的配对码。"
           }
         }
       }
@@ -12998,6 +13038,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "byot 无法将你分享的内容添加到此会话的消息中。它会保留到你下次打开 byot 时。"
+          }
+        }
+      }
+    },
+    "byot couldn’t reach OpenCode at %@. Check that the computer is awake, or run opencode pair --remote to connect from anywhere." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "byot 无法连接到 %@ 上的 OpenCode。请确认电脑处于唤醒状态，或运行 opencode pair --remote 以便从任何地方连接。"
           }
         }
       }

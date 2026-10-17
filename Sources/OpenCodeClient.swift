@@ -208,9 +208,10 @@ struct OpenCodeClient: Sendable {
 
     func reject(_ question: OpenCodeQuestionRequest, directory: String, workspace: String? = nil) async throws
     {
-        let deletes = question.form != nil
-            ? OpenCodeV2Contract.cancelsFormsWithDelete(try await negotiatedAdapter().apiSchema)
-            : false
+        var deletes = false
+        if question.form != nil {
+            deletes = OpenCodeV2Contract.cancelsFormsWithDelete(try await negotiatedAdapter().apiSchema)
+        }
         try await actions.reject(question, directory: directory, workspace: workspace, cancelsFormWithDelete: deletes)
     }
 

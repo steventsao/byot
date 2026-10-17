@@ -150,7 +150,7 @@ struct OpenCodeProtocolDetectionTests {
                 Issue.record("Expected httpStatus(401), got \(error)")
                 return
             }
-            #expect(error.errorDescription == "OpenCode rejected the username or password.")
+            #expect(error.errorDescription == "OpenCode rejected the username or password. If you paired with a code, scan a new one.")
         }
     }
 

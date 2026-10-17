@@ -96,6 +96,15 @@ struct OpenCodePairingPayload: Equatable, Sendable {
         value.addingPercentEncoding(withAllowedCharacters: .pairingUnreserved) ?? ""
     }
 
+    /// One server address under the same rules as a pairing code's `url`:
+    /// HTTPS, or plain HTTP only for a numeric local-network address, with no
+    /// query, fragment or credentials.
+    static func validatedServerURL(_ raw: String) throws(OpenCodePairingError) -> URL {
+        let server = try serverAddress(raw)
+        guard server.username == nil, server.password == nil else { throw .invalidServerURL }
+        return server.url
+    }
+
     private struct ServerAddress {
         let url: URL
         let username: String?
@@ -134,7 +143,7 @@ enum OpenCodePairingError: LocalizedError, Equatable, Sendable {
     var errorDescription: String? {
         switch self {
         case .notPairingCode:
-            String(localized: "This isn’t a byot pairing code. Show the code from byot-pair-qr.sh, or an HTTPS server address.")
+            String(localized: "This isn’t a pairing code. Scan the code from opencode pair or byot-pair-qr.sh, or paste an HTTPS server address.")
         case .unsupportedVersion:
             String(localized: "This pairing code needs a newer version of byot.")
         case .missingServerURL:

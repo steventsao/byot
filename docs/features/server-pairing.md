@@ -10,6 +10,45 @@ first (#93, #10).
 - **Find nearby** lists OpenCode servers advertised on the local network by
   `opencode serve --mdns`.
 
+## OpenCode 2 pairing (`opencode pair`)
+
+OpenCode 2.0 has its own one-time pairing, and byot reads it in the same
+Scan pairing code page (camera, photo, or paste). Run on the computer:
+
+```bash
+opencode pair            # same network or Tailscale
+opencode pair --remote   # anywhere, through OpenCode's relay
+```
+
+The terminal prints links `https://<host>/auth/connect/<code>` and a QR code
+carrying `{"code":"…","urls":["…"]}`. byot accepts both. The code works once and
+expires after five minutes, so byot redeems it as soon as it is scanned:
+
+1. `GET <url>/auth/connect/<code>` with `Accept: application/json` on every
+   listed address at once. The server answers `{"token":"…"}`, or 401 when the
+   code was already used or has expired.
+2. The token is the Basic-auth password for user `opencode`. It lasts 30 days;
+   changing the server password signs every paired device out. When it stops
+   working, the 401 message tells the person to scan a new code.
+3. byot keeps the earliest-listed address that answered (the server lists the
+   address the person chose first), after checking the token works there with
+   `GET /api/info`, then fills the form exactly as a byot code would. Nothing
+   is saved until Save.
+
+Addresses follow the transport policy below: an `http://` address is kept
+only for a numeric local-network IP. With `--remote` the address is an
+[OpenTunnel](https://github.com/anomalyco/opentunnel) hostname
+(`<route>.<id>.opentunnel.xyz`) with a public certificate. The relay only routes
+by TLS server name; TLS ends on the person's computer, so it cannot read the
+traffic, and the phone needs nothing tunnel-specific. If opentunnel.xyz is
+down, `opencode pair` without `--remote` still works on the same network or
+Tailscale.
+
+The protocol mirrors upstream `packages/protocol/src/groups/server.ts`
+(`server.pair`, `server.connect`) and `packages/app/src/servers/connect/pairing.ts`.
+Code: `Sources/OpenCodeOneTimePairing.swift`; tests:
+`Tests/OpenCodeOneTimePairingTests.swift`.
+
 ## Pairing code format (v1)
 
 A pairing code is a URL, usually shown as a QR code:

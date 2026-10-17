@@ -56,14 +56,14 @@ final class OpenCodeLiveServerTests: XCTestCase {
         let questions = try await client.v2Questions(sessionID: session.id)
         let question = try XCTUnwrap(questions.first { $0.id == formID })
         try await client.answer(question, directory: directory, answers: [["fast"]])
-        let state = try await request("/api/session/\(session.id)/form/\(formID)/state")
-        XCTAssertEqual((state["data"] as? [String: Any])?["status"] as? String, "answered")
+        let answeredStatus = try await formStatus(sessionID: session.id, formID: formID)
+        XCTAssertEqual(answeredStatus, "answered")
         let cancelCreated = try await request("/api/session/\(session.id)/form", body: formBody)
         let cancelID = try XCTUnwrap((cancelCreated["data"] as? [String: Any])?["id"] as? String)
         let cancelQuestions = try await client.v2Questions(sessionID: session.id)
         try await client.reject(try XCTUnwrap(cancelQuestions.first { $0.id == cancelID }), directory: directory)
-        let cancelled = try await request("/api/session/\(session.id)/form/\(cancelID)/state")
-        XCTAssertEqual((cancelled["data"] as? [String: Any])?["status"] as? String, "cancelled")
+        let cancelledStatus = try await formStatus(sessionID: session.id, formID: cancelID)
+        XCTAssertEqual(cancelledStatus, "cancelled")
         let permissionCreated = try await request("/api/session/\(session.id)/permission", body: [
             "action": "byot_acceptance", "resources": ["fixture.txt"],
             "source": ["type": "tool", "messageID": "msg_fixture", "id": "call_fixture"]])
@@ -125,6 +125,13 @@ final class OpenCodeLiveServerTests: XCTestCase {
     private func fixtureDirectory(_ major: String) throws -> String {
         let root = try XCTUnwrap(ProcessInfo.processInfo.environment["BYOT_LIVE_ROOT"], "Run scripts/test-opencode-upstream.sh")
         return root + "/" + major + "/project"
+    }
+
+    /// 2.0 releases report a form's state inside `GET …/form/{formID}`; the betas had `…/state`.
+    private func formStatus(sessionID: String, formID: String) async throws -> String? {
+        let detail = try await request("/api/session/\(sessionID)/form/\(formID)")
+        let data = detail["data"] as? [String: Any]
+        return (data?["state"] as? [String: Any])?["status"] as? String
     }
 
     private func request(_ path: String, body: [String: Any]? = nil) async throws -> [String: Any] {

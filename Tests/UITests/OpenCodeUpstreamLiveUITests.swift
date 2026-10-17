@@ -298,6 +298,11 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
     private func focus(_ field: XCUIElement, in app: XCUIApplication) -> Bool {
         guard waitUntilHittable(field, timeout: 5) else { return false }
         for _ in 0..<2 {
+            // A field under the keyboard still reports hittable, but the tap lands on the keyboard.
+            let keyboard = app.keyboards.firstMatch
+            if keyboard.exists, field.frame.maxY > keyboard.frame.minY {
+                app.collectionViews.firstMatch.swipeUp()
+            }
             field.tap()
             let focused = app.descendants(matching: field.elementType)
                 .matching(NSPredicate(format: "hasKeyboardFocus == true"))

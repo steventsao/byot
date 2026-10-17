@@ -70,6 +70,10 @@ struct OpenCodePairingScanGate: Sendable {
 
     mutating func finish() { isFinished = true }
 
+    /// Accepts the next different code after a failed attempt; the code that
+    /// just failed stays ignored while the camera keeps seeing it.
+    mutating func reopen() { isFinished = false }
+
     mutating func reset() {
         lastCode = nil
         isFinished = false

@@ -116,7 +116,7 @@ struct BYOTIntentTests {
         }
         await fake.set(hangs: false, rejectsProbe: true)
         await #expect(throws: BYOTIntentError.failed(server: "Mac mini",
-                                                     detail: "OpenCode rejected the username or password.")) {
+                                                     detail: "OpenCode rejected the username or password. If you paired with a code, scan a new one.")) {
             try await service.ask(prompt: "Hi", serverID: nil, directory: "/repo")
         }
         await fake.set(rejectsProbe: false, rejectsPrompts: true)

@@ -82,7 +82,7 @@ struct OpenCodeWorkspaceStoreTests {
         #expect(service.steps == [.probe])
         #expect(store.compatibility == nil)
         #expect(store.projects.isEmpty)
-        #expect(store.errorMessage == "OpenCode rejected the username or password.")
+        #expect(store.errorMessage == "OpenCode rejected the username or password. If you paired with a code, scan a new one.")
     }
 
     @Test("A failed re-probe clears the previously published summary")

@@ -9,7 +9,10 @@ enum OpenCodeServerSetupRoute: Hashable {
 }
 
 enum OpenCodeServerSetupCommand {
-    /// Prints a pairing QR code in the terminal of the computer running OpenCode.
+    /// OpenCode 2's own pairing: a one-time code that works from anywhere
+    /// through OpenCode's end-to-end encrypted relay.
+    static let openCodePairing = "opencode pair --remote"
+    /// Prints a pairing QR code in the terminal of the computer running OpenCode 1.
     static let pairing = "curl -fsSL https://raw.githubusercontent.com/steventsao/byot/main/scripts/byot-pair-qr.sh | bash -s -- https://your-mac.example.ts.net"
     /// Advertises OpenCode on the local network for Find nearby.
     static let nearby = "OPENCODE_SERVER_PASSWORD=your-password opencode serve --mdns"
@@ -19,6 +22,7 @@ enum OpenCodeServerSetupCommand {
 
 struct OpenCodePairingScannerView: View {
     let onPayload: (OpenCodePairingPayload) -> Void
+    var redeemer = OpenCodePairingRedeemer()
 
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -28,8 +32,10 @@ struct OpenCodePairingScannerView: View {
     @State private var message: String?
     @State private var photo: PhotosPickerItem?
     @State private var isReadingPhoto = false
+    @State private var isRedeeming = false
     @State private var successes = 0
     @State private var copies = 0
+    @State private var openCodeCopies = 0
 
     var body: some View {
         Form {
@@ -41,6 +47,17 @@ struct OpenCodePairingScannerView: View {
                 Text(isCameraLive
                     ? "Point the camera at the pairing code shown on your computer. byot fills in the address and sign-in; nothing is saved until you tap Save."
                     : "byot fills in the address and sign-in from the code; nothing is saved until you tap Save.")
+            }
+
+            if isRedeeming {
+                Section {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Connecting to OpenCode…")
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("pairing-redeeming")
+                }
             }
 
             if let message {
@@ -73,6 +90,22 @@ struct OpenCodePairingScannerView: View {
             }
 
             Section {
+                Text(OpenCodeServerSetupCommand.openCodePairing)
+                    .font(.cleanMono)
+                    .textSelection(.enabled)
+                Button("Copy command", systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = OpenCodeServerSetupCommand.openCodePairing
+                    openCodeCopies += 1
+                }
+                .sensoryFeedback(.success, trigger: openCodeCopies)
+                .accessibilityIdentifier("pairing-copy-opencode")
+            } header: {
+                Text("Make a pairing code: OpenCode 2")
+            } footer: {
+                Text("Run it on your computer. With --remote, byot connects from anywhere through OpenCode’s end-to-end encrypted relay; leave it off to pair on the same network or Tailscale. Each code works once, within 5 minutes, and keeps this iPhone signed in for 30 days.")
+            }
+
+            Section {
                 Text(OpenCodeServerSetupCommand.pairing)
                     .font(.cleanMono)
                     .textSelection(.enabled)
@@ -82,7 +115,7 @@ struct OpenCodePairingScannerView: View {
                 }
                 .sensoryFeedback(.success, trigger: copies)
             } header: {
-                Text("Make a pairing code")
+                Text("Make a pairing code: OpenCode 1")
             } footer: {
                 Text("Run it on the computer with your OpenCode server, using the address your iPhone reaches. It reads OPENCODE_SERVER_PASSWORD, and the code contains that password, so don’t share it.")
             }
@@ -198,9 +231,14 @@ struct OpenCodePairingScannerView: View {
                 show(String(localized: "No QR code found in that photo. Crop it to the code and try again."))
                 return
             }
-            let code = codes.first { (try? OpenCodePairingPayload(code: $0)) != nil } ?? codes[0]
+            let code = codes.first { Self.isPairingCode($0) } ?? codes[0]
             handle(code, fromCamera: false)
         }
+    }
+
+    static func isPairingCode(_ code: String) -> Bool {
+        if (try? OpenCodeOneTimePairing.parse(code)) != nil { return true }
+        return (try? OpenCodePairingPayload(code: code)) != nil
     }
 
     private func handle(_ code: String, fromCamera: Bool) {
@@ -210,6 +248,10 @@ struct OpenCodePairingScannerView: View {
             guard !gate.isFinished else { return }
         }
         do {
+            if let pairing = try OpenCodeOneTimePairing.parse(code) {
+                redeem(pairing)
+                return
+            }
             let payload = try OpenCodePairingPayload(code: code)
             gate.finish()
             message = nil
@@ -217,6 +259,31 @@ struct OpenCodePairingScannerView: View {
             onPayload(payload)
         } catch {
             show(error.localizedDescription)
+        }
+    }
+
+    /// OpenCode's code works once, so it is redeemed now; the form is filled
+    /// with the address and the token the server returns.
+    private func redeem(_ pairing: OpenCodeOneTimePairing) {
+        gate.finish()
+        isRedeeming = true
+        message = nil
+        Task { @MainActor in
+            let result = await redeemer.redeem(pairing)
+            isRedeeming = false
+            if let payload = result.payload {
+                successes += 1
+                onPayload(payload)
+                return
+            }
+            gate.reopen()
+            switch result {
+            case .expired:
+                show(String(localized: "This pairing code was already used or has expired. Run opencode pair again and scan the new code."))
+            default:
+                let hosts = pairing.urls.compactMap(\.host).joined(separator: ", ")
+                show(String(localized: "byot couldn’t reach OpenCode at \(hosts). Check that the computer is awake, or run opencode pair --remote to connect from anywhere."))
+            }
         }
     }
 
