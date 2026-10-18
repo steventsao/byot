@@ -1,17 +1,15 @@
-BYOT 1.0.34 — OpenCode 2.0 and its pairing codes
+BYOT 1.0.35 — Pairing messages and live updates that come back
 
-This build connects to OpenCode 2.0 releases and reads OpenCode's own pairing codes. Everything else is as in 1.0.33.
+This build polishes what people using OpenCode's own iPhone app have been reporting on GitHub. Everything else is as in 1.0.34.
 
 Please test:
 
-OpenCode 2.0 servers
-• Update a computer to OpenCode 2.0 (npm i -g @opencode/cli, 2.0.32 or later) and connect to it. Earlier builds stopped with an "unexpected content type" error; this one must connect, list sessions, and run a prompt.
-• Answer and cancel a question form the agent asks. Cancel must close the form without an error.
+Live updates after a network change
+• Open a conversation and start a long prompt. Switch the phone from Wi-Fi to mobile data, or put the computer to sleep for a minute and wake it. Within about a minute the conversation must say it is reconnecting, then pick up the reply without a pull to refresh.
+• Leave byot in the background for a few minutes while a reply runs, then come back. Live updates must resume right away instead of after a pause.
 
-Pairing with opencode pair
-• On the computer run: opencode pair --remote. In byot, Settings › Scan pairing code (or Add server › Scan pairing code), scan the QR code. byot shows "Connecting to OpenCode…", then fills the form. Tap Save. Try it on mobile data, away from your Wi-Fi.
-• Also try plain opencode pair (no --remote) on the same Wi-Fi or Tailscale, and paste one of the printed links with Paste instead of scanning.
-• Scan the same QR code twice. The second time must say the code was already used, and a new code must still work.
-• Run opencode pair again later and scan the new code for a saved server. It must update that server, not add a duplicate.
+Pairing codes that can't work from a phone
+• On a computer whose OpenCode only listens on 127.0.0.1 (the default), run opencode pair and paste the printed http://127.0.0.1 link into Scan pairing code › Paste. byot must say the address is the computer's own and suggest opencode pair --remote or opencode service set hostname 0.0.0.0, not that the computer is asleep.
+• If opencode pair --remote prints a code but the relay isn't working, byot must say the relay is the problem and suggest opencode service restart.
 
-OpenCode 1 servers and byot-pair-qr.sh codes must work as before. Also check the scan page in Simplified Chinese.
+Pairing with opencode pair and opencode pair --remote must still work as in 1.0.34. Also check these messages in Simplified Chinese.
