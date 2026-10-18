@@ -197,7 +197,11 @@ struct OpenCodeClient: Sendable {
         to permission: OpenCodePermissionRequest, directory: String, workspace: String? = nil,
         reply: OpenCodePermissionReply
     ) async throws {
-        try await actions.reply(to: permission, directory: directory, workspace: workspace, reply: reply)
+        var field = "reply"
+        if permission.resolvedAPIVersion == .v2 {
+            field = OpenCodeV2Contract.permissionReplyField(try await negotiatedAdapter().apiSchema)
+        }
+        try await actions.reply(to: permission, directory: directory, workspace: workspace, reply: reply, v2ReplyField: field)
     }
 
     func answer(
@@ -208,7 +212,11 @@ struct OpenCodeClient: Sendable {
 
     func reject(_ question: OpenCodeQuestionRequest, directory: String, workspace: String? = nil) async throws
     {
-        try await actions.reject(question, directory: directory, workspace: workspace)
+        var deletes = false
+        if question.form != nil {
+            deletes = OpenCodeV2Contract.cancelsFormsWithDelete(try await negotiatedAdapter().apiSchema)
+        }
+        try await actions.reject(question, directory: directory, workspace: workspace, cancelsFormWithDelete: deletes)
     }
 
     func events(

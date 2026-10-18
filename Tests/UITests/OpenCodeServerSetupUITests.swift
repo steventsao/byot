@@ -22,6 +22,12 @@ final class OpenCodeServerSetupUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["No camera available"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Choose from Photos"].exists)
         attach(app, "scanner")
+        // OpenCode 2's own pairing command leads the "Make a pairing code" sections.
+        let openCodePair = app.staticTexts["opencode pair --remote"]
+        if !openCodePair.exists { app.swipeUp() }
+        XCTAssertTrue(openCodePair.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["pairing-copy-opencode"].exists)
+        attach(app, "scanner-opencode-pair")
 
         app.navigationBars["Scan pairing code"].buttons.firstMatch.tap()
         XCTAssertTrue(app.navigationBars["OpenCode server"].waitForExistence(timeout: 5))

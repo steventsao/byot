@@ -1,6 +1,6 @@
 import Foundation
 
-/// Contract: OpenCode v1 1.18.29 and v2 beta 19242/19271 schema.
+/// Contract: OpenCode v1 1.18.29, v2 beta 19242/19271 and 2.0.32 schemas.
 /// Revert stages history reversibly. V2 explicitly excludes file rollback.
 struct OpenCodeSessionFeatureService: Sendable {
     let context: OpenCodeFeatureContext
@@ -18,8 +18,9 @@ struct OpenCodeSessionFeatureService: Sendable {
         guard let title = title.trimmedNonEmpty else { throw OpenCodeSessionFeatureError(message: String(localized: "Enter a session name.")) }
         struct Body: Encodable { let title: String }
         let body = try JSONEncoder().encode(Body(title: title))
-        let request = try context.transport.makeRequest(path: path(id) + (v2 ? ["rename"] : []),
-            query: query(directory, workspace), method: v2 ? "POST" : "PATCH", body: body)
+        let renameRoute = v2 && context.supports("/api/session/{sessionID}/rename", method: "post")
+        let request = try context.transport.makeRequest(path: path(id) + (renameRoute ? ["rename"] : []),
+            query: query(directory, workspace), method: renameRoute ? "POST" : "PATCH", body: body)
         if v2 {
             try await context.transport.performExpectingEmptyResponse(request)
             return try await details(id, directory: directory, workspace: workspace)
@@ -100,6 +101,12 @@ struct OpenCodeSessionFeatureService: Sendable {
     func clear(_ id: String, directory: String, workspace: String?) async throws {
         try require(support.redo, String(localized: "Redo"))
         if v2 { try await cancelPendingUsers(id) }
+        if v2, !context.supports("/api/session/{sessionID}/revert/clear", method: "post") {
+            let request = try context.transport.makeRequest(path: path(id) + ["revert"],
+                query: query(directory, workspace), method: "DELETE", body: nil)
+            try await context.transport.performExpectingEmptyResponse(request)
+            return
+        }
         try await context.transport.postWithoutBodyExpectingEmptyResponse(
             path(id) + (v2 ? ["revert", "clear"] : ["unrevert"]), query: query(directory, workspace))
     }
@@ -128,7 +135,11 @@ struct OpenCodeSessionFeatureService: Sendable {
     func fork(_ id: String, directory: String, workspace: String?, beforeMessageID: String?) async throws -> OpenCodeSession {
         try require(support.fork, String(localized: "Fork"))
         let value: OpenCodeJSONValue
-        if v2 {
+        if v2, context.composerSchemaProperties("/api/session/{sessionID}/fork")["before"] != nil {
+            // 2.0 releases: {before: messageID}; leaving it out forks the whole session.
+            struct Body: Encodable { let before: String? }
+            value = try await context.transport.post(path(id) + ["fork"], body: Body(before: beforeMessageID))
+        } else if v2 {
             struct Boundary: Encodable { let type: String; let messageID: String? }
             struct Body: Encodable { let boundary: Boundary }
             value = try await context.transport.post(path(id) + ["fork"], body: Body(boundary: Boundary(type: beforeMessageID == nil ? "through" : "before", messageID: beforeMessageID)))

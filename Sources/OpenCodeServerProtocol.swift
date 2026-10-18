@@ -72,7 +72,20 @@ struct OpenCodeProtocolDetector: Sendable {
                 health: OpenCodeHealth(healthy: healthy, version: version)
             )
         }
-        throw Self.probeFailure(legacy: legacyOutcome, current: currentOutcome)
+        // OpenCode 2.0 releases dropped /api/health (404) and answer
+        // /global/health with the web UI. Their own app checks server.info
+        // (/api/info), whose {version, pid, urls} reply proves a running v2
+        // server.
+        let infoOutcome = try await transport.probeJSON(["api", "info"])
+        if let info = infoOutcome.object.map(Self.unwrapDataEnvelope),
+           let version = info["version"] as? String,
+           info["pid"] is NSNumber || (OpenCodeServerVersion(parsing: version)?.major ?? 0) >= 2 {
+            return OpenCodeServerProbe(
+                protocol: .v2,
+                health: OpenCodeHealth(healthy: true, version: version)
+            )
+        }
+        throw Self.probeFailure(legacy: legacyOutcome, current: currentOutcome, info: infoOutcome)
     }
 
     // Newer OpenCode 2 builds wrap /api/health in the standard {data: ...}
@@ -90,9 +103,10 @@ struct OpenCodeProtocolDetector: Sendable {
     // declared non-JSON content type, then an undecodable body.
     static func probeFailure(
         legacy: OpenCodeProbeOutcome,
-        current: OpenCodeProbeOutcome
+        current: OpenCodeProbeOutcome,
+        info: OpenCodeProbeOutcome? = nil
     ) -> OpenCodeConnectionError {
-        let outcomes = [current, legacy]
+        let outcomes = [info, current, legacy].compactMap { $0 }
         for outcome in outcomes {
             if case .httpError(401) = outcome {
                 return .httpStatus(401, nil)

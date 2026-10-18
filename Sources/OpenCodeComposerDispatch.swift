@@ -85,7 +85,8 @@ struct OpenCodeComposerDispatch {
         }
         var body: [String: OpenCodeJSONValue] = ["delivery": .string("queue")]
         if let command {
-            body["command"] = .string(command.name)
+            // Betas named the field `command`; 2.0 releases name it `name`.
+            body[properties["name"] != nil ? "name" : "command"] = .string(command.name)
             // The shipped betas do not offer a command admission id. Never fabricate one.
         } else {
             body["id"] = .string(prompt.messageID)

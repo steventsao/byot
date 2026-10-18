@@ -120,7 +120,9 @@ def main():
         servers.append(model)
         threading.Thread(target=model.serve_forever, daemon=True).start()
         versions = {}
-        for major, binary, port, tls_port in [("v1", "opencode", 4196, 4195), ("v2", "opencode2", 4197, 4199)]:
+        # Both packages link a bin named `opencode`, so run each package's own binary.
+        for major, binary, port, tls_port in [("v1", "opencode-ai/bin/opencode.exe", 4196, 4195),
+                                              ("v2", "@opencode/cli/bin/opencode.exe", 4197, 4199)]:
             runtime = root / major
             project = runtime / "project"
             project.mkdir(parents=True)
@@ -168,8 +170,9 @@ def main():
             retired_config[provider_key]["fixture"]["models"]["retired"] = {
                 **model_config, "name": "Retired model fixture"}
             (retired_project / "opencode.json").write_text(json.dumps(retired_config, indent=2))
-            executable = str(args.tools.resolve() / "node_modules" / ".bin" / binary)
-            versions[major] = subprocess.check_output([executable, "--version"], env=env, text=True).strip().removeprefix("opencode2 v")
+            executable = str(args.tools.resolve() / "node_modules" / binary)
+            version = subprocess.check_output([executable, "--version"], env=env, text=True).strip()
+            versions[major] = version.removeprefix("opencode2 v").removeprefix("opencode v")
             with (runtime / "server.log").open("w") as log:
                 child = subprocess.Popen([executable, "serve", "--hostname", "127.0.0.1", "--port", str(port)],
                                          cwd=project, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -183,7 +186,8 @@ def main():
 
         trust = ssl.create_default_context(cafile=str(cert))
         auth = "Basic " + base64.b64encode(f"opencode:{PASSWORD}".encode()).decode()
-        for major, port, path in [("v1", 4195, "/global/health"), ("v2", 4199, "/api/health")]:
+        # OpenCode 2.0 releases have no /api/health; server.info is their health check.
+        for major, port, path in [("v1", 4195, "/global/health"), ("v2", 4199, "/api/info")]:
             for attempt in range(120):
                 if stop.is_set() or any(c.poll() is not None for c in children):
                     raise RuntimeError("An upstream server exited; inspect server.log")

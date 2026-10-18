@@ -278,7 +278,9 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         url.typeText("https://127.0.0.1:\(port)")
         let password = app.secureTextFields["Server password"]
         guard focus(password, in: app) else { XCTFail("Server password did not receive keyboard focus"); return }
-        password.typeText("byot-local-fixture-only")
+        // Return dismisses the keyboard, which otherwise covers the directory field below.
+        password.typeText("byot-local-fixture-only\n")
+        _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 3)
         let directory = app.textFields["/Users/me/project"]
         guard focus(directory, in: app) else { XCTFail("Project directory did not receive keyboard focus"); return }
         directory.typeText(workingDirectory)

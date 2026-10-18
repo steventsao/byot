@@ -274,12 +274,13 @@ private struct FileLocationResponse<Value: Decodable>: Decodable {
         struct Project: Decodable { let id: String }
         let directory: String
         let workspaceID: String?
-        let project: Project
+        /// Betas name the project; 2.0 releases return only the directory.
+        let project: Project?
     }
     let location: Location
     let data: Value
     func validate(_ scope: OpenCodeRemoteFileScope) throws {
-        guard location.directory == scope.directory, location.project.id == scope.projectID,
+        guard location.directory == scope.directory, location.project.map({ $0.id == scope.projectID }) ?? true,
               location.workspaceID == scope.workspaceID else { throw OpenCodeRemoteFileError.wrongLocation }
     }
 }

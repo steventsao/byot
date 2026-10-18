@@ -143,7 +143,7 @@ enum OpenCodeConnectionError: LocalizedError, Sendable {
             }
         case .unexpectedEventContentType:
             String(localized: "The OpenCode event endpoint did not return an event stream.")
-        case .httpStatus(401, _): String(localized: "OpenCode rejected the username or password.")
+        case .httpStatus(401, _): String(localized: "OpenCode rejected the username or password. If you paired with a code, scan a new one.")
         case .httpStatus(let status, let message):
             if let message, !message.isEmpty {
                 String(localized: "OpenCode returned \(String(status)): \(message)")

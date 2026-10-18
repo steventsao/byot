@@ -3,7 +3,7 @@
   "private": true,
   "description": "Pinned real upstream OpenCode servers for BYOT acceptance tests",
   "dependencies": {
-    "@opencode-ai/cli": "0.0.0-beta-19271",
+    "@opencode/cli": "2.0.32",
     "opencode-ai": "1.18.29"
   }
 }

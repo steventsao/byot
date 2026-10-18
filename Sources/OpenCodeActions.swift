@@ -23,7 +23,8 @@ struct OpenCodeActions: Sendable {
         to permission: OpenCodePermissionRequest,
         directory: String,
         workspace: String? = nil,
-        reply: OpenCodePermissionReply
+        reply: OpenCodePermissionReply,
+        v2ReplyField: String = "reply"
     ) async throws {
         struct Body: Encodable { let reply: OpenCodePermissionReply }
         switch permission.resolvedAPIVersion {
@@ -36,7 +37,7 @@ struct OpenCodeActions: Sendable {
         case .v2:
             try await transport.postExpectingEmptyResponse(
                 ["api", "session", permission.sessionID, "permission", permission.id, "reply"],
-                body: Body(reply: reply)
+                body: OpenCodeJSONValue.object([v2ReplyField: .string(reply.rawValue)])
             )
         }
     }
@@ -136,12 +137,17 @@ struct OpenCodeActions: Sendable {
     func reject(
         _ question: OpenCodeQuestionRequest,
         directory: String,
-        workspace: String? = nil
+        workspace: String? = nil,
+        cancelsFormWithDelete: Bool = false
     ) async throws {
         if question.form != nil {
-            let request = try transport.makeRequest(
-                path: ["api", "session", question.sessionID, "form", question.id, "cancel"], query: [],
-                method: "POST", body: nil)
+            let request = try cancelsFormWithDelete
+                ? transport.makeRequest(
+                    path: ["api", "session", question.sessionID, "form", question.id], query: [],
+                    method: "DELETE", body: nil)
+                : transport.makeRequest(
+                    path: ["api", "session", question.sessionID, "form", question.id, "cancel"], query: [],
+                    method: "POST", body: nil)
             try await transport.performExpectingEmptyResponse(request)
             return
         }
