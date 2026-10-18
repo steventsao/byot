@@ -281,10 +281,19 @@ struct OpenCodePairingScannerView: View {
             case .expired:
                 show(String(localized: "This pairing code was already used or has expired. Run opencode pair again and scan the new code."))
             default:
-                let hosts = pairing.urls.compactMap(\.host).joined(separator: ", ")
-                show(String(localized: "byot couldn’t reach OpenCode at \(hosts). Check that the computer is awake, or run opencode pair --remote to connect from anywhere."))
+                show(Self.unreachableMessage(for: pairing.urls))
             }
         }
+    }
+
+    static func unreachableMessage(for urls: [URL]) -> String {
+        if !urls.isEmpty, urls.allSatisfy(OpenCodeOneTimePairing.isRelay) {
+            // The relay had outages (anomalyco/opencode#54596, #55873); a
+            // restart makes the computer reconnect to it.
+            return String(localized: "byot couldn’t connect through the OpenCode relay. If your phone is online, run opencode service restart on the computer, then opencode pair --remote, and scan the new code. On the same Wi-Fi or Tailscale, opencode pair works without the relay.")
+        }
+        let hosts = urls.compactMap(\.host).joined(separator: ", ")
+        return String(localized: "byot couldn’t reach OpenCode at \(hosts). Check that the computer is awake, or run opencode pair --remote to connect from anywhere.")
     }
 
     private func show(_ text: String) {

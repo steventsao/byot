@@ -177,7 +177,7 @@ enum BYOTTelemetryOpenCode {
                 return OpenCodeFailure(message: message).isModelUnavailable ? "model_unavailable" : "server_message"
             case .invalidResponse, .unexpectedContentType, .unexpectedEventContentType, .emptyResponse:
                 return "invalid_response"
-            case .eventBufferOverflow, .eventLineTooLong, .eventRecordTooLarge:
+            case .eventBufferOverflow, .eventLineTooLong, .eventRecordTooLarge, .eventStreamStalled:
                 return "event_stream"
             }
         }

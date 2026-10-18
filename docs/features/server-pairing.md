@@ -42,7 +42,18 @@ only for a numeric local-network IP. With `--remote` the address is an
 by TLS server name; TLS ends on the person's computer, so it cannot read the
 traffic, and the phone needs nothing tunnel-specific. If opentunnel.xyz is
 down, `opencode pair` without `--remote` still works on the same network or
-Tailscale.
+Tailscale. When every listed address is a relay address and none answers,
+byot says the relay is the problem and suggests `opencode service restart`,
+then a new `opencode pair --remote` (OpenCode's own advice in
+anomalyco/opencode#54627), instead of asking whether the computer is awake.
+
+On a phone, loopback addresses (127.0.0.0/8, `::1`, `localhost`) are dropped:
+they point at the phone itself. Some 2.0 releases put `127.0.0.1` in the QR
+code (2.0.27 did), and the printed links still start with it
+(anomalyco/opencode#54871). A code that lists nothing else says so and suggests
+`opencode pair --remote` or `opencode service set hostname 0.0.0.0`. The
+simulator and the iPad app on a Mac share the computer's loopback, so they keep
+these addresses.
 
 The protocol mirrors upstream `packages/protocol/src/groups/server.ts`
 (`server.pair`, `server.connect`) and `packages/app/src/servers/connect/pairing.ts`.

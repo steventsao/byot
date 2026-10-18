@@ -354,8 +354,17 @@ final class OpenCodeSessionStore: ObservableObject {
 
     func refreshAfterForeground() {
         guard isRunning else { return }
+        // A stream that dropped while the app was away may be waiting out a
+        // backoff of up to 15 s; go back to live updates now.
+        if !isEventConnected { reconnectEvents() }
         // Reconcile missed events without interrupting an in-flight submission.
         scheduleReconciliation()
+    }
+
+    private func reconnectEvents() {
+        eventTask?.cancel()
+        eventTask = nil
+        connectEvents()
     }
 
     func stop() {

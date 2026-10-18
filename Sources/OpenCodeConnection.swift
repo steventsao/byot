@@ -129,6 +129,8 @@ enum OpenCodeConnectionError: LocalizedError, Sendable {
     case eventBufferOverflow
     case eventLineTooLong(maxBytes: Int)
     case eventRecordTooLarge(maxBytes: Int)
+    /// The stream had sent heartbeats, then went silent.
+    case eventStreamStalled
     case server(String)
 
     var errorDescription: String? {
@@ -157,6 +159,8 @@ enum OpenCodeConnectionError: LocalizedError, Sendable {
             String(localized: "The OpenCode event stream sent a line larger than the \(String(maxBytes))-byte safety limit.")
         case .eventRecordTooLarge(let maxBytes):
             String(localized: "The OpenCode event stream sent a record larger than the \(String(maxBytes))-byte safety limit.")
+        case .eventStreamStalled:
+            String(localized: "The connection to OpenCode went silent.")
         case .server(let message): message
         }
     }

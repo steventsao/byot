@@ -139,6 +139,8 @@ enum OpenCodePairingError: LocalizedError, Equatable, Sendable {
     case missingServerURL
     case invalidServerURL
     case insecureServerURL
+    /// Every address was the computer's own (127.0.0.1, localhost).
+    case loopbackServerURL
 
     var errorDescription: String? {
         switch self {
@@ -152,6 +154,8 @@ enum OpenCodePairingError: LocalizedError, Equatable, Sendable {
             String(localized: "The server address in this pairing code isn’t a complete HTTPS URL.")
         case .insecureServerURL:
             String(localized: "Plain HTTP pairing codes must use a local network IP address. Use an HTTPS address, such as one from Tailscale Serve.")
+        case .loopbackServerURL:
+            String(localized: "This code only lists 127.0.0.1, the computer’s own address, which your phone can’t reach. On the computer, run opencode pair --remote, or run opencode service set hostname 0.0.0.0 and then opencode pair.")
         }
     }
 }
