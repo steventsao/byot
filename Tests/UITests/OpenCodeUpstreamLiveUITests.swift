@@ -179,7 +179,7 @@ final class OpenCodeUpstreamLiveUITests: XCTestCase {
         XCTAssertEqual(app.buttons[v2Name].value as? String, "Selected server")
         attach("upstream-v2-session-browser")
 
-        app.buttons["Session list options"].tap()
+        app.buttons["root-menu"].tap()
         app.buttons["Group by project"].tap()
         XCTAssertTrue(app.buttons["New session in project"].waitForExistence(timeout: 5))
         attach("upstream-v2-grouped-sessions")

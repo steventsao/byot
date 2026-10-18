@@ -29,10 +29,13 @@ final class OpenCodePolishUITests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label CONTAINS 'Long conversation'")).firstMatch.tap()
         let lastMessage = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Update 24.'")).firstMatch
         XCTAssertTrue(lastMessage.waitForExistence(timeout: 10))
+        let jump = app.buttons["jump-to-latest"]
+        // A long transcript opens on its latest message.
+        XCTAssertTrue(lastMessage.isHittable)
+        XCTAssertFalse(jump.exists)
         let transcript = app.scrollViews.firstMatch
         transcript.swipeDown()
         transcript.swipeDown()
-        let jump = app.buttons["jump-to-latest"]
         XCTAssertTrue(jump.waitForExistence(timeout: 5))
         XCTAssertEqual(jump.label, "Jump to latest")
         screenshot(app, name: "jump-to-latest")
@@ -82,6 +85,66 @@ final class OpenCodePolishUITests: XCTestCase {
         XCTAssertTrue(updated.waitForExistence(timeout: 5))
         XCTAssertTrue(updated.isHittable)
         XCTAssertTrue(jump.waitForNonExistence(timeout: 5))
+    }
+
+    /// A turn that fits on one screen stays under the header while it
+    /// streams, with no slot left for a step that has nothing to show yet.
+    @MainActor
+    func testShortTranscriptStaysUnderHeaderWhileStreaming() {
+        let app = launch(["--short-streaming", "-byot.appearance", "dark"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Short conversation'")).firstMatch.tap()
+        let prompt = app.staticTexts["Clone the project into the dev folder"].firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 10))
+        let header = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Server UI tests")).firstMatch
+        let reply = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Cloning the project.'")).firstMatch
+        let transcript = app.scrollViews.containing(.staticText, identifier: "Clone the project into the dev folder").firstMatch
+
+        // The fixture changes the reply every 300 ms for about six seconds.
+        let firstReply = reply.label
+        var tops: [CGFloat] = []
+        for _ in 0..<6 {
+            tops.append(prompt.frame.minY)
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+        XCTAssertNotEqual(reply.label, firstReply, "The reply should still be streaming while the prompt is sampled")
+        XCTAssertLessThanOrEqual(tops.max()! - tops.min()!, 3, "The prompt moved while streaming: \(tops)")
+        XCTAssertLessThan(tops[0] - header.frame.maxY, 40, "prompt \(prompt.frame), header \(header.frame)")
+
+        // The fixture's second step has started but has nothing to show.
+        let step = app.descendants(matching: .any).matching(identifier: "transcript-step-summary").firstMatch
+        let activity = transcript.descendants(matching: .any).matching(NSPredicate(format: "label == 'Working'")).firstMatch
+        XCTAssertLessThan(activity.frame.minY - step.frame.maxY, 40, "step \(step.frame), activity \(activity.frame)")
+        screenshot(app, name: "short-transcript-streaming")
+
+        // There is nothing to scroll, with or without the keyboard.
+        transcript.swipeUp()
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertEqual(prompt.frame.minY, tops[0], accuracy: 3)
+        app.descendants(matching: .any).matching(identifier: "opencode-composer-message").firstMatch.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertLessThanOrEqual(prompt.frame.minY, tops[0] + 3, "The keyboard must not push the prompt down")
+        screenshot(app, name: "short-transcript-keyboard")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertEqual(prompt.frame.minY, tops[0], accuracy: 3)
+    }
+
+    @MainActor
+    func testStreamingFollowsLatestMessage() {
+        let app = launch(["--streaming"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Long conversation'")).firstMatch.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Update 24.'")).firstMatch.waitForExistence(timeout: 10))
+        // The fixture grows the last message twelve seconds after the stream opens.
+        let updated = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Streaming update arrived.'")).firstMatch
+        XCTAssertTrue(updated.waitForExistence(timeout: 20))
+        XCTAssertFalse(app.buttons["jump-to-latest"].waitForExistence(timeout: 2), "The transcript should follow the reply")
+        XCTAssertLessThanOrEqual(updated.frame.maxY, app.buttons["opencode-composer-send"].frame.minY,
+                                 "The end of the reply should stay above the composer")
+        screenshot(app, name: "streaming-follows-latest")
     }
 
     @MainActor

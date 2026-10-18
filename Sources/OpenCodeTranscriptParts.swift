@@ -60,6 +60,23 @@ enum OpenCodeTranscriptLayout {
         default: false
         }
     }
+
+    /// Whether a message draws anything. A step that has started with nothing
+    /// to show yet takes no row, so it adds no spacing above what follows.
+    static func rendersRow(_ message: OpenCodeMessageEnvelope) -> Bool {
+        let inPrompt = message.info.role == "user"
+        return message.parts.contains { isVisible($0, inPrompt: inPrompt) }
+            || message.info.error != nil
+            || OpenCodeStepSummary(reply: message) != nil
+    }
+
+    /// The least height the transcript takes: one viewport, once it has been
+    /// measured. A transcript shorter than the screen then fills it from the
+    /// top and leaves the scroll view no other place to rest it.
+    static func minimumContentHeight(viewportHeight: CGFloat) -> CGFloat? {
+        guard viewportHeight.isFinite, viewportHeight > 0 else { return nil }
+        return viewportHeight
+    }
 }
 
 // MARK: - Compaction

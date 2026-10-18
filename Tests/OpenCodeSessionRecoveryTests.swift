@@ -109,6 +109,34 @@ struct OpenCodeSessionRecoveryTests {
     }
 
     @Test(
+        "A session with unknown status says why it can't send",
+        .bug(id: "ASC-AEk0EYWkKW0QGxg8A34z3r0"),
+        .bug(id: "ASC-AJvs6pGkEt5k3xS1gTpvmDI")
+    )
+    @MainActor
+    func unknownStatusExplainsDisabledSend() async {
+        let harness = OpenCodeRecoveryStub.register(
+            messages: Self.userOnlyMessages,
+            statusCode: 500,
+            statusBody: #"{"message":"Unexpected server error"}"#
+        )
+        defer { harness.unregister() }
+        let store = makeStore(client: harness.client, sessionID: harness.sessionID)
+        #expect(store.promptUnavailableReason == "Wait for the session to connect.")
+
+        await store.start()
+        defer { store.stop() }
+
+        #expect(store.isStatusReady == false)
+        #expect(store.promptUnavailableReason == "Wait for the session to connect.")
+
+        await store.stopTurn()
+
+        #expect(store.canSubmitPrompt)
+        #expect(store.promptUnavailableReason == nil)
+    }
+
+    @Test(
         "An idle user-only turn offers an explicit stop-and-retry path",
         .bug(id: "ASC-ANy3NA4eHNR2IR5fHp0S56U")
     )

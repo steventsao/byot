@@ -13,10 +13,13 @@ struct OpenCodeRemoteFileHarness: View {
             VStack {
                 Text(sent).accessibilityIdentifier("remote-file-sent")
                 Spacer()
-                OpenCodeRemoteContextView(text: $text, references: $references, files: files,
-                                          showingPicker: $showingPicker)
+                OpenCodeRemoteContextView(text: $text, references: $references, files: files)
                 TextField("Message", text: $text).textFieldStyle(.roundedBorder)
                     .accessibilityIdentifier("remote-file-draft")
+                    .background {
+                        OpenCodeRemoteContextHost(text: $text, references: $references, files: files,
+                                                  showingPicker: $showingPicker)
+                    }
                 OpenCodeRemoteFileButton { showingPicker = true }
                 Button("Send fixture context") {
                     sent = references.map(\.fileURL).joined(separator: "\n")

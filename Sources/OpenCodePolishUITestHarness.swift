@@ -74,6 +74,30 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
                     }
                 }
             }
+            if ProcessInfo.processInfo.arguments.contains("--short-streaming") {
+                eventLock.withLock {
+                    eventTask = Task { @Sendable [weak self] in
+                        // The reply keeps changing for about six seconds without growing.
+                        for tick in 1...20 {
+                            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+                            guard let self else { return }
+                            let event: [String: Any] = [
+                                "id": "evt_short_\(tick)",
+                                "type": "message.part.updated",
+                                "properties": ["part": [
+                                    "id": "short_reply_text", "sessionID": "ses_short", "messageID": "msg_short_reply",
+                                    "type": "text", "text": "Cloning the project. Checked \(tick) files.",
+                                ]],
+                            ]
+                            let data = try! JSONSerialization.data(withJSONObject: event)
+                            eventLock.withLock {
+                                guard !Task.isCancelled else { return }
+                                client?.urlProtocol(self, didLoad: Data("data: ".utf8) + data + Data("\n\n".utf8))
+                            }
+                        }
+                    }
+                }
+            }
             return
         }
 
@@ -109,6 +133,9 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             if ProcessInfo.processInfo.arguments.contains("--subagents") {
                 sessions.append(Self.session("ses_team", title: "Subagent review"))
             }
+            if ProcessInfo.processInfo.arguments.contains("--short-streaming") {
+                sessions.append(Self.session("ses_short", title: "Short conversation"))
+            }
             body = sessions
         case let path where ProcessInfo.processInfo.arguments.contains("--subagents")
             && (path.hasPrefix("/session/ses_team") || path.hasPrefix("/session/ses_sub_")):
@@ -117,11 +144,15 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             body = Self.richTranscript()
         case "/session/ses_usage/message":
             body = Self.usageTranscript()
+        case "/session/ses_short/message":
+            body = Self.shortTranscript()
         case "/session/ses_parts/diff":
             body = [["file": "Sources/App.swift", "additions": 3, "deletions": 1, "status": "modified",
                      "patch": "@@ -1,3 +1,5 @@\n import SwiftUI\n+// Guard the empty state.\n+let isEmpty = items.isEmpty\n"]]
         case "/session/status" where ProcessInfo.processInfo.arguments.contains("--subagents"):
             body = ["ses_sub_tests": ["type": "busy"]]
+        case "/session/status" where ProcessInfo.processInfo.arguments.contains("--short-streaming"):
+            body = ["ses_short": ["type": "busy"]]
         case "/session/status":
             body = [String: String]()
         case "/session/ses_history/message":
@@ -269,6 +300,32 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             message("msg_a2", role: "assistant", at: 4_000, cost: 0.4, parts: [
                 ["id": "a2_text", "type": "text", "text": "Added exponential backoff with jitter to `ChunkWriter`, capped at five attempts."],
                 step("a2_step", cost: 0.4, input: 12_000, output: 3_200, cacheRead: 128_800),
+            ]),
+        ]
+    }
+
+    /// A turn still running that fits on one screen: a prompt, one settled
+    /// step, and a second step that has started with nothing to show yet.
+    private static func shortTranscript() -> [[String: Any]] {
+        func message(_ id: String, role: String, time: [String: Int], _ parts: [[String: Any]]) -> [String: Any] {
+            ["info": ["id": id, "sessionID": "ses_short", "role": role, "agent": "build", "time": time],
+             "parts": parts.map { $0.merging(["sessionID": "ses_short", "messageID": id]) { $1 } }]
+        }
+        return [
+            message("msg_short_prompt", role: "user", time: ["created": 1_000], [
+                ["id": "short_prompt_text", "type": "text", "text": "Clone the project into the dev folder"],
+            ]),
+            message("msg_short_reply", role: "assistant", time: ["created": 2_000, "completed": 2_500], [
+                ["id": "short_reply_start", "type": "step-start"],
+                ["id": "short_reply_text", "type": "text", "text": "Cloning the project."],
+                ["id": "short_reply_read", "type": "tool", "callID": "call_short_read", "tool": "read",
+                 "state": ["status": "completed", "input": ["filePath": "/fixture/dev"], "title": "dev",
+                           "output": "byot/", "metadata": [:], "time": ["start": 2_100, "end": 2_200]]],
+                ["id": "short_reply_finish", "type": "step-finish", "reason": "tool-calls", "cost": 0,
+                 "tokens": ["input": 8_400, "output": 100, "reasoning": 0, "cache": ["read": 0, "write": 0]]],
+            ]),
+            message("msg_short_next", role: "assistant", time: ["created": 3_000], [
+                ["id": "short_next_start", "type": "step-start"],
             ]),
         ]
     }

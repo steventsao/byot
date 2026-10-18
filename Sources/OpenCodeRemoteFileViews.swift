@@ -18,14 +18,26 @@ struct OpenCodeRemoteFileButton: View {
     }
 }
 
+/// Attached server files and @-mention suggestions. With neither to show it
+/// draws nothing, so a stack keeps no gap for it; `OpenCodeRemoteContextHost`
+/// carries what has to stay on screen regardless.
 struct OpenCodeRemoteContextView: View {
     @Binding var text: String
     @Binding var references: [OpenCodePromptFileReference]
     @ObservedObject var files: OpenCodeRemoteFileStore
-    @Binding var showingPicker: Bool
     @State private var preview: OpenCodePromptFileReference?
 
     var body: some View {
+        if hasRows { rows }
+    }
+
+    private var hasRows: Bool {
+        if !references.isEmpty { return true }
+        return OpenCodeFileMention.query(in: text) != nil
+            && (files.suggestionErrorMessage != nil || !files.suggestions.isEmpty)
+    }
+
+    private var rows: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !references.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -66,16 +78,6 @@ struct OpenCodeRemoteContextView: View {
                 }
             }
         }
-        .onChange(of: files.contextToAdd) { _, reference in
-            guard let reference else { return }
-            add(reference)
-            files.contextToAdd = nil
-        }
-        .task { await files.loadCapabilities() }
-        .task(id: OpenCodeFileMention.query(in: text)) { await files.suggest(query: OpenCodeFileMention.query(in: text)) }
-        .sheet(isPresented: $showingPicker) {
-            OpenCodeRemoteFilePicker(files: files, initialQuery: OpenCodeFileMention.query(in: text) ?? "", add: add)
-        }
         .sheet(item: $preview) { reference in
             NavigationStack {
                 OpenCodeRemoteFileReader(files: files, path: reference.path, existingSelection: reference.selection) { updated in
@@ -89,10 +91,44 @@ struct OpenCodeRemoteContextView: View {
     }
 
     private func add(_ reference: OpenCodePromptFileReference) {
-        if !references.contains(where: { $0.fileURL == reference.fileURL && $0.serverID == reference.serverID && $0.workspaceID == reference.workspaceID }) {
-            references.append(reference)
+        Self.add(reference, to: $references, clearing: $text)
+    }
+
+    /// Attaches a file once and drops the @-mention that found it.
+    static func add(_ reference: OpenCodePromptFileReference, to references: Binding<[OpenCodePromptFileReference]>,
+                    clearing text: Binding<String>) {
+        if !references.wrappedValue.contains(where: { $0.fileURL == reference.fileURL && $0.serverID == reference.serverID && $0.workspaceID == reference.workspaceID }) {
+            references.wrappedValue.append(reference)
         }
-        text = OpenCodeFileMention.removingQuery(from: text)
+        text.wrappedValue = OpenCodeFileMention.removingQuery(from: text.wrappedValue)
+    }
+}
+
+/// What server files need whether or not one is attached: the browser, the
+/// @-mention search, and files sent over from a transcript. It has no size of
+/// its own; put it behind a view that is always there.
+struct OpenCodeRemoteContextHost: View {
+    @Binding var text: String
+    @Binding var references: [OpenCodePromptFileReference]
+    @ObservedObject var files: OpenCodeRemoteFileStore
+    @Binding var showingPicker: Bool
+
+    var body: some View {
+        Color.clear
+            .onChange(of: files.contextToAdd) { _, reference in
+                guard let reference else { return }
+                add(reference)
+                files.contextToAdd = nil
+            }
+            .task { await files.loadCapabilities() }
+            .task(id: OpenCodeFileMention.query(in: text)) { await files.suggest(query: OpenCodeFileMention.query(in: text)) }
+            .sheet(isPresented: $showingPicker) {
+                OpenCodeRemoteFilePicker(files: files, initialQuery: OpenCodeFileMention.query(in: text) ?? "", add: add)
+            }
+    }
+
+    private func add(_ reference: OpenCodePromptFileReference) {
+        OpenCodeRemoteContextView.add(reference, to: $references, clearing: $text)
     }
 }
 

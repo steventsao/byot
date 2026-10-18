@@ -8,7 +8,11 @@ final class BYOTPushNotificationUITests: XCTestCase {
         app.launchArguments = ["--session-browser-fixture", "--reset-browser"]
         app.launch()
         XCTAssertTrue(app.buttons["session-active"].waitForExistence(timeout: 10))
-        app.buttons["OpenCode servers"].tap()
+        // Server actions are under Settings in the list's one top-right menu.
+        app.buttons["root-menu"].tap()
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 5), app.debugDescription)
+        app.buttons["Settings"].tap()
+        XCTAssertTrue(app.buttons["Notifications"].waitForExistence(timeout: 5), app.debugDescription)
         app.buttons["Notifications"].tap()
         XCTAssertTrue(app.buttons["push-setup"].waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(app.staticTexts["Mac mini"].exists)

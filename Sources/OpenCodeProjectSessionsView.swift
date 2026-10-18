@@ -251,6 +251,8 @@ struct OpenCodeSessionRow: View {
 struct OpenCodeStatusLabel: View {
     let status: OpenCodeSessionStatus
     let eventConnected: Bool?
+    /// False until a conversation has heard its status from the server.
+    var isStatusKnown = true
     // Scales with the label: a fixed 7pt dot beside accessibility-size text
     // read as a stray “·” separator.
     @ScaledMetric(relativeTo: .footnote) private var scaledIndicator = 12.0
@@ -272,6 +274,8 @@ struct OpenCodeStatusLabel: View {
     private var statusIndicator: some View {
         if eventConnected == false {
             BYOTActivityGlyph(phase: .reconnecting, size: indicator, tint: .orange)
+        } else if !isStatusKnown {
+            BYOTActivityGlyph(phase: .connecting, size: indicator, tint: .secondary)
         } else {
             switch status {
             case .idle:
@@ -289,7 +293,16 @@ struct OpenCodeStatusLabel: View {
     }
 
     private var displayLabel: String {
-        eventConnected == false ? String(localized: "Reconnecting") : status.label
+        Self.title(status: status, eventConnected: eventConnected, isStatusKnown: isStatusKnown)
+    }
+
+    // A status that hasn't arrived is named here, never shown as idle, so the
+    // composer needs no spinner of its own (TestFlight AEk0EYWkKW0QGxg8A34z3r0).
+    nonisolated static func title(status: OpenCodeSessionStatus, eventConnected: Bool?,
+                                  isStatusKnown: Bool = true) -> String {
+        if eventConnected == false { return String(localized: "Reconnecting") }
+        if !isStatusKnown { return String(localized: "Connecting") }
+        return status.label
     }
 }
 

@@ -21,11 +21,11 @@ struct OpenCodeServerBar: View {
                             .font(.cleanCaptionBold)
                             .padding(.horizontal, 14)
                             .frame(minHeight: 44)
-                            .background(profile.id == selectedID ? BYOTBrand.accent.opacity(0.18) : Color.secondary.opacity(0.1), in: Capsule())
+                            .background(profile.id == selectedID ? BYOTBrand.selectedChipSurface : BYOTBrand.chipSurface, in: Capsule())
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(profile.id == selectedID ? BYOTBrand.accent : .primary)
+                        .foregroundStyle(.primary)
                         .accessibilityLabel(profile.name)
                         .accessibilityValue(profile.id == selectedID ? "Selected server" : "")
                         .accessibilityAddTraits(profile.id == selectedID ? .isSelected : [])
@@ -33,6 +33,7 @@ struct OpenCodeServerBar: View {
                     }
                     Button("Add server", systemImage: "plus", action: add)
                         .labelStyle(.iconOnly)
+                        .tint(BYOTBrand.chromeTint)
                         .frame(minWidth: 44, minHeight: 44)
                 }
                 .padding(.horizontal, 16)
