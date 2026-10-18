@@ -5,15 +5,18 @@ struct OpenCodeTransport: OpenCodeHTTPTransport {
     private let password: String
     private let session: URLSession
     private let redirectDelegate: OpenCodeRedirectDelegate
+    private let eventStallTimeout: Duration
 
     init(
         profile: OpenCodeServerProfile,
         password: String,
-        session: URLSession
+        session: URLSession,
+        eventStallTimeout: Duration = OpenCodeEventStallWatchdog.standardTimeout
     ) {
         self.profile = profile
         self.password = password
         self.session = session
+        self.eventStallTimeout = eventStallTimeout
         redirectDelegate = OpenCodeRedirectDelegate(baseURL: profile.normalizedURL)
     }
 
@@ -81,6 +84,8 @@ struct OpenCodeTransport: OpenCodeHTTPTransport {
             bufferingPolicy: .bufferingNewest(OpenCodeEventStream.bufferLimit)
         ) { continuation in
             let task = Task {
+                var watchdog: OpenCodeEventStallWatchdog?
+                defer { watchdog?.stop() }
                 do {
                     let decoder = JSONDecoder()
                     var request = try makeRequest(
@@ -96,19 +101,26 @@ struct OpenCodeTransport: OpenCodeHTTPTransport {
                         delegate: redirectDelegate
                     )
                     try OpenCodeEventStream.validateEventResponse(response)
+                    let stall = OpenCodeEventStallWatchdog(timeout: eventStallTimeout, cancelling: bytes.task)
+                    watchdog = stall
 
                     var lineFramer = OpenCodeSSELineFramer()
                     var parser = OpenCodeSSEParser()
+                    var unframedBytes = 0
                     for try await byte in bytes {
                         try Task.checkCancellation()
-                        guard let line = try lineFramer.ingest(byte: byte) else { continue }
+                        guard let line = try lineFramer.ingest(byte: byte) else {
+                            // A long record still counts as hearing from the server.
+                            unframedBytes &+= 1
+                            if unframedBytes & 0xFFFF == 0 { stall.heard() }
+                            continue
+                        }
+                        unframedBytes = 0
+                        stall.heard(heartbeat: line.hasPrefix(":") && line.contains("heartbeat"))
                         if let data = try parser.ingest(line: line) {
-                            guard
-                                try OpenCodeEventStream.yieldEvent(
-                                    decoder.decode(OpenCodeEvent.self, from: data),
-                                    to: continuation
-                                )
-                            else { return }
+                            let event = try decoder.decode(OpenCodeEvent.self, from: data)
+                            if event.type == "server.heartbeat" { stall.heard(heartbeat: true) }
+                            guard try OpenCodeEventStream.yieldEvent(event, to: continuation) else { return }
                         }
                     }
                     lineFramer.discardIncompleteLine()
@@ -117,7 +129,8 @@ struct OpenCodeTransport: OpenCodeHTTPTransport {
                 } catch is CancellationError {
                     continuation.finish()
                 } catch {
-                    continuation.finish(throwing: error)
+                    continuation.finish(throwing: watchdog?.stalled == true
+                        ? OpenCodeConnectionError.eventStreamStalled : error)
                 }
             }
             continuation.onTermination = { @Sendable _ in task.cancel() }

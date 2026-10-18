@@ -11052,6 +11052,16 @@
         }
       }
     },
+    "The connection to OpenCode went silent." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 OpenCode 的连接已无响应。"
+          }
+        }
+      }
+    },
     "The last turn failed." : {
       "localizations" : {
         "zh-Hans" : {

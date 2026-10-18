@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum OpenCodeEventStream {
     static let bufferLimit = 16
@@ -31,6 +32,59 @@ enum OpenCodeEventStream {
         }
     }
 
+}
+
+/// OpenCode 1 sends a `server.heartbeat` event every 10 s and OpenCode 2 a
+/// `: heartbeat` comment every 15 s. Once a stream has sent one, a silence of
+/// `timeout` means the connection died without closing (the computer slept,
+/// or the phone changed networks), so the request is cancelled and the caller
+/// reconnects instead of waiting out the day-long request timeout. A stream
+/// that never sends a heartbeat is left alone.
+final class OpenCodeEventStallWatchdog: Sendable {
+    static let standardTimeout: Duration = .seconds(45)
+
+    private struct State {
+        var lastHeard = ContinuousClock.now
+        var armed = false
+        var stalled = false
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
+    private let watcher: OSAllocatedUnfairLock<Task<Void, Never>?> = .init(initialState: nil)
+
+    init(timeout: Duration, cancelling request: URLSessionTask) {
+        let state = state
+        let task = Task.detached {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: timeout / 4)
+                let stalled = state.withLock { state in
+                    guard !Task.isCancelled, state.armed, ContinuousClock.now - state.lastHeard >= timeout
+                    else { return false }
+                    state.stalled = true
+                    return true
+                }
+                if stalled {
+                    request.cancel()
+                    return
+                }
+            }
+        }
+        watcher.withLock { $0 = task }
+    }
+
+    /// True once the watchdog cancelled the request.
+    var stalled: Bool { state.withLock { $0.stalled } }
+
+    func heard(heartbeat: Bool = false) {
+        state.withLock { state in
+            state.lastHeard = .now
+            if heartbeat { state.armed = true }
+        }
+    }
+
+    func stop() {
+        watcher.withLock { $0?.cancel() }
+    }
 }
 
 struct OpenCodeSSEParser: Sendable {
