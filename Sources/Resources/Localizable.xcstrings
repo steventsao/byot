@@ -11502,6 +11502,16 @@
         }
       }
     },
+    "This code only lists 127.0.0.1, the computer’s own address, which your phone can’t reach. On the computer, run opencode pair --remote, or run opencode service set hostname 0.0.0.0 and then opencode pair." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此配对码只列出了 127.0.0.1，即电脑自身的地址，手机无法访问。请在电脑上运行 opencode pair --remote，或先运行 opencode service set hostname 0.0.0.0，再运行 opencode pair。"
+          }
+        }
+      }
+    },
     "This field requires a newer byot version." : {
       "localizations" : {
         "zh-Hans" : {
@@ -13048,6 +13058,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "byot 无法将你分享的内容添加到此会话的消息中。它会保留到你下次打开 byot 时。"
+          }
+        }
+      }
+    },
+    "byot couldn’t connect through the OpenCode relay. If your phone is online, run opencode service restart on the computer, then opencode pair --remote, and scan the new code. On the same Wi-Fi or Tailscale, opencode pair works without the relay." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "byot 无法通过 OpenCode 中继连接。如果手机已联网，请在电脑上运行 opencode service restart，然后运行 opencode pair --remote，并扫描新的配对码。在同一 Wi-Fi 或 Tailscale 网络中，opencode pair 无需中继即可使用。"
           }
         }
       }

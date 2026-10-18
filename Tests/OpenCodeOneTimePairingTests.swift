@@ -55,6 +55,64 @@ struct OpenCodeOneTimePairingParsingTests {
         }
     }
 
+    @Test("On a phone, 127.0.0.1 and localhost are dropped in favour of the other addresses")
+    func loopbackDroppedOnPhone() throws {
+        let pairing = try #require(try OpenCodeOneTimePairing.parse(
+            #"{"code":"c","urls":["http://127.0.0.1:49374","http://localhost:49374","http://[::1]:49374","http://192.168.1.20:49374"]}"#,
+            allowsLoopback: false
+        ))
+        #expect(pairing.urls == [URL(string: "http://192.168.1.20:49374")!])
+    }
+
+    @Test("A code that lists only the computer's own address says how to reach it", .bug(id: "anomalyco/opencode#54871"),
+          arguments: [
+              #"{"code":"c","urls":["http://127.0.0.1:49374"]}"#,
+              "http://127.0.0.1:49374/auth/connect/abc",
+              "http://localhost:49374/auth/connect/abc",
+              "http://[::1]:49374/auth/connect/abc",
+          ])
+    func onlyLoopbackAddresses(code: String) {
+        #expect(throws: OpenCodePairingError.loopbackServerURL) {
+            try OpenCodeOneTimePairing.parse(code, allowsLoopback: false)
+        }
+        #expect(OpenCodePairingError.loopbackServerURL.errorDescription?.contains("opencode pair --remote") == true)
+    }
+
+    @Test("The simulator shares the computer's loopback, so 127.0.0.1 is kept there")
+    func loopbackKeptWhereItReachesTheComputer() throws {
+        let pairing = try #require(try OpenCodeOneTimePairing.parse(
+            "http://127.0.0.1:4196/auth/connect/abc", allowsLoopback: true
+        ))
+        #expect(pairing.urls == [URL(string: "http://127.0.0.1:4196")!])
+    }
+
+    @Test("Hosts that only look like loopback are kept")
+    func loopbackLookalikesKept() throws {
+        let pairing = try #require(try OpenCodeOneTimePairing.parse(
+            #"{"code":"c","urls":["https://localhost.example.ts.net","http://128.0.0.1:4096","https://127.example.ts.net"]}"#,
+            allowsLoopback: false
+        ))
+        #expect(pairing.urls == [
+            URL(string: "https://localhost.example.ts.net")!,
+            URL(string: "https://127.example.ts.net")!,
+        ])
+    }
+
+    @Test("A relay-only code that can't be reached points at the relay, not the computer",
+          .bug(id: "anomalyco/opencode#54627"))
+    func unreachableRelayMessage() {
+        let relay = OpenCodePairingScannerView.unreachableMessage(
+            for: [URL(string: "https://route.tunnel.opentunnel.xyz")!]
+        )
+        #expect(relay.contains("opencode service restart"))
+        #expect(!relay.contains("route.tunnel"))
+        let lan = OpenCodePairingScannerView.unreachableMessage(
+            for: [URL(string: "http://192.168.1.20:4096")!, URL(string: "https://route.tunnel.opentunnel.xyz")!]
+        )
+        #expect(lan.contains("192.168.1.20"))
+        #expect(!lan.contains("opencode service restart"))
+    }
+
     @Test("A malformed code is refused")
     func malformedCode() {
         #expect(throws: OpenCodePairingError.notPairingCode) {

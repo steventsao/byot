@@ -17,9 +17,22 @@ struct OpenCodeOneTimePairing: Equatable, Sendable {
     let urls: [URL]
     let code: String
 
+    /// 127.0.0.1 on a phone is the phone itself. The simulator and an iPad app
+    /// on a Mac share the computer's loopback, so there it reaches the server.
+    static let reachesComputerLoopback: Bool = {
+        #if targetEnvironment(simulator)
+        true
+        #else
+        ProcessInfo.processInfo.isiOSAppOnMac
+        #endif
+    }()
+
     /// Returns nil for text that isn't an OpenCode pairing code, so the caller
     /// can try byot's own formats; throws for an OpenCode code byot can't use.
-    static func parse(_ rawCode: String) throws(OpenCodePairingError) -> OpenCodeOneTimePairing? {
+    static func parse(
+        _ rawCode: String,
+        allowsLoopback: Bool = reachesComputerLoopback
+    ) throws(OpenCodePairingError) -> OpenCodeOneTimePairing? {
         let text = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.hasPrefix("{") {
             guard let data = text.data(using: .utf8),
@@ -27,7 +40,7 @@ struct OpenCodeOneTimePairing: Equatable, Sendable {
                   let code = object["code"] as? String,
                   let rawURLs = object["urls"] as? [String]
             else { return nil }
-            return try make(code: code, rawURLs: rawURLs)
+            return try make(code: code, rawURLs: rawURLs, allowsLoopback: allowsLoopback)
         }
         guard let components = URLComponents(string: text),
               let scheme = components.scheme?.lowercased(), scheme == "https" || scheme == "http",
@@ -38,16 +51,32 @@ struct OpenCodeOneTimePairing: Equatable, Sendable {
         var origin = components
         origin.path = ""
         guard let originText = origin.string else { throw .invalidServerURL }
-        return try make(code: String(parts[3]), rawURLs: [originText])
+        return try make(code: String(parts[3]), rawURLs: [originText], allowsLoopback: allowsLoopback)
     }
 
-    private static func make(code: String, rawURLs: [String]) throws(OpenCodePairingError) -> OpenCodeOneTimePairing {
+    /// The OpenCode relay (`opencode pair --remote`) rather than the computer itself.
+    static func isRelay(_ url: URL) -> Bool {
+        url.host?.lowercased().hasSuffix(".opentunnel.xyz") == true
+    }
+
+    private static func make(
+        code: String,
+        rawURLs: [String],
+        allowsLoopback: Bool
+    ) throws(OpenCodePairingError) -> OpenCodeOneTimePairing {
         guard !code.isEmpty,
               code.unicodeScalars.allSatisfy({ CharacterSet.pairingCode.contains($0) })
         else { throw .notPairingCode }
         var urls: [URL] = []
         var insecure = false
+        var loopback = false
         for raw in rawURLs {
+            // Older 2.0 releases put 127.0.0.1 in the QR code, and the printed
+            // links always start with it (anomalyco/opencode#54871).
+            if !allowsLoopback, isLoopback(raw) {
+                loopback = true
+                continue
+            }
             do throws(OpenCodePairingError) {
                 let url = try OpenCodePairingPayload.validatedServerURL(raw)
                 if !urls.contains(url) { urls.append(url) }
@@ -57,8 +86,27 @@ struct OpenCodeOneTimePairing: Equatable, Sendable {
                 if error == .insecureServerURL { insecure = true }
             }
         }
-        guard !urls.isEmpty else { throw insecure ? .insecureServerURL : .invalidServerURL }
+        guard !urls.isEmpty else {
+            throw loopback ? .loopbackServerURL : insecure ? .insecureServerURL : .invalidServerURL
+        }
         return OpenCodeOneTimePairing(urls: urls, code: code)
+    }
+
+    /// The computer's own address: 127.0.0.0/8, ::1 or a localhost name.
+    private static func isLoopback(_ raw: String) -> Bool {
+        guard var host = URLComponents(string: raw.trimmingCharacters(in: .whitespacesAndNewlines))?.host?
+            .lowercased()
+        else { return false }
+        while host.hasSuffix(".") { host.removeLast() }
+        if host == "localhost" || host.hasSuffix(".localhost") { return true }
+        if host.hasPrefix("["), host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+        var v6 = in6_addr()
+        if host.withCString({ inet_pton(AF_INET6, $0, &v6) }) == 1 {
+            return withUnsafeBytes(of: &v6) { $0.dropLast().allSatisfy { $0 == 0 } && $0.last == 1 }
+        }
+        var v4 = in_addr()
+        guard host.withCString({ inet_pton(AF_INET, $0, &v4) }) == 1 else { return false }
+        return UInt32(bigEndian: v4.s_addr) >> 24 == 127
     }
 }
 
@@ -72,9 +120,8 @@ enum OpenCodePairingRedemption: Equatable, Sendable {
     var payload: OpenCodePairingPayload? {
         guard case .paired(let url, let token) = self else { return nil }
         // A relay hostname is a random route and tunnel id, which makes a poor name.
-        let relay = url.host?.lowercased().hasSuffix(".opentunnel.xyz") == true
         return OpenCodePairingPayload(baseURL: url, username: OpenCodeOneTimePairing.username, password: token,
-                                      name: relay ? String(localized: "OpenCode remote") : nil)
+                                      name: OpenCodeOneTimePairing.isRelay(url) ? String(localized: "OpenCode remote") : nil)
     }
 }
 
