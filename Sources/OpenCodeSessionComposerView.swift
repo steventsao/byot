@@ -61,7 +61,7 @@ struct OpenCodeSessionComposerView: View {
         self.keyboardCommandsEnabled = keyboardCommandsEnabled
     }
 
-    var body: some View {
+    private var composerContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let draftErrorMessage {
                 Text(draftErrorMessage)
@@ -173,6 +173,10 @@ struct OpenCodeSessionComposerView: View {
 
             if isExpanded { controlRow }
         }
+    }
+
+    private var styledComposer: some View {
+        composerContent
         .animation(.smooth(duration: BYOTBrand.Motion.composerResize), value: isExpanded)
         .animation(reduceMotion ? nil : .smooth(duration: BYOTBrand.Motion.quick), value: dictation.isActive)
         .sensoryFeedback(trigger: dictation.phase) { old, new in
@@ -190,6 +194,10 @@ struct OpenCodeSessionComposerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(BYOTBrand.canvas)
+    }
+
+    private var draftAwareComposer: some View {
+        styledComposer
         .onAppear {
             loadDraft()
             isOnScreen = true
@@ -240,6 +248,10 @@ struct OpenCodeSessionComposerView: View {
             guard !Task.isCancelled else { return }
             isFocused = true
         }
+    }
+
+    var body: some View {
+        draftAwareComposer
         .sheet(item: $previewAttachment) { attachment in
             OpenCodeAttachmentPreview(attachment: attachment)
         }
