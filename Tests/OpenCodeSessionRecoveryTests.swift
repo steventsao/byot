@@ -4,6 +4,39 @@ import Testing
 
 @Suite("OpenCode session recovery")
 struct OpenCodeSessionRecoveryTests {
+    @Test("Removing paused prompts clears only the resolved queue warning", arguments: [false, true])
+    @MainActor
+    func removingPausedPromptsPreservesUnrelatedErrors(replaceWarning: Bool) async throws {
+        let harness = OpenCodeRecoveryStub.register(messages: "[]", statusCode: 200, statusBody: "{}")
+        defer { harness.unregister() }
+        let store = makeStore(client: harness.client, sessionID: harness.sessionID)
+        await store.start()
+        defer { store.stop() }
+
+        #expect(store.send("First turn"))
+        #expect(store.send("First follow-up"))
+        #expect(store.send("Second follow-up"))
+        let warning = String(localized: "Live session activity could not be confirmed. Your queued message is paused to avoid sending it twice.")
+        for _ in 0..<150 where store.errorMessage != warning {
+            try await Task.sleep(for: .milliseconds(40))
+        }
+        #expect(store.errorMessage == warning)
+        #expect(store.canRetryFirstQueuedPrompt)
+        let first = try #require(store.queuedPrompts.first)
+        store.removeQueuedPrompt(first.id)
+        #expect(store.queuedPrompts.map(\.text) == ["Second follow-up"])
+        #expect(store.errorMessage == warning)
+
+        if replaceWarning { store.errorMessage = "Provider failed" }
+        let last = try #require(store.queuedPrompts.first)
+        store.removeQueuedPrompt(last.id)
+        #expect(store.queuedPrompts.isEmpty)
+        #expect(store.errorMessage == (replaceWarning ? "Provider failed" : nil))
+        #expect(store.canSubmitPrompt)
+        #expect(harness.promptBodies.count == 1)
+        #expect(harness.abortCount == 0)
+    }
+
     @Test("Returning to foreground reconciles status without aborting or sending a prompt")
     @MainActor
     func foregroundRefresh() async throws {
