@@ -14,6 +14,8 @@ private struct OpenCodeRecoverablePrompt: Sendable {
 
 @MainActor
 final class OpenCodeSessionStore: ObservableObject {
+    private static let pausedQueueWarning = String(localized: "Live session activity could not be confirmed. Your queued message is paused to avoid sending it twice.")
+
     @Published private(set) var messages: [OpenCodeMessageEnvelope] = []
     @Published private(set) var permissions: [OpenCodePermissionRequest] = []
     @Published private(set) var questions: [OpenCodeQuestionRequest] = []
@@ -2055,6 +2057,9 @@ final class OpenCodeSessionStore: ObservableObject {
 
     private func publishPromptQueue() {
         queuedPrompts = promptQueue.prompts
+        if queuedPrompts.isEmpty, errorMessage == Self.pausedQueueWarning {
+            errorMessage = nil
+        }
     }
 
     private func markOptimisticBusy() {
@@ -2411,8 +2416,7 @@ final class OpenCodeSessionStore: ObservableObject {
                     promptQueue.pauseAwaitingActivity()
                     publishPromptQueue()
                     if hadQueuedFollowUps {
-                        errorMessage =
-                            String(localized: "Live session activity could not be confirmed. Your queued message is paused to avoid sending it twice.")
+                        errorMessage = Self.pausedQueueWarning
                     }
                     await refreshMessages()
                     guard isCurrentQueueRecovery(recoveryID), status.isActive == false

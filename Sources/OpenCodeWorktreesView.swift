@@ -23,72 +23,12 @@ struct OpenCodeWorktreesScreen<SessionView: View>: View {
     }
 
     var body: some View {
-        List {
-            if let message = store.actionError {
-                Section {
-                    Label(message.agentDisplayErrorText, systemImage: "exclamationmark.triangle")
-                        .font(.cleanCaption)
-                        .foregroundStyle(BYOTBrand.diffDeletion)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("worktrees-action-error")
-                }
-            }
-            if let message = store.refreshError {
-                Section {
-                    Label("Couldn’t refresh. \(message.agentDisplayErrorText)", systemImage: "exclamationmark.triangle")
-                        .font(.cleanCaption)
-                        .foregroundStyle(BYOTBrand.diffDeletion)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            if store.creation != nil || !store.worktrees.isEmpty {
-                Section {
-                    ForEach(store.worktrees) { worktree in
-                        OpenCodeWorktreeRow(
-                            worktree: worktree,
-                            branch: store.branch(of: worktree),
-                            summary: store.summaries[worktree.directory],
-                            operation: store.operations[worktree.directory],
-                            isPreparing: store.creation == .preparing(worktree),
-                            startSession: { startSession(in: worktree) },
-                            reset: { pendingReset = worktree },
-                            remove: { pendingRemoval = worktree }
-                        )
-                    }
-                    if case .creating(let name) = store.creation {
-                        OpenCodeWorktreeCreatingRow(name: name)
-                    }
-                } footer: {
-                    Text("Each worktree is a separate checkout of \(route.projectName) on its own branch, so its sessions can change files without touching your main checkout.")
-                        .font(.cleanCaption)
-                }
-            }
-        }
+        worktreeList
         .overlay { stateOverlay }
         .refreshable { await store.load() }
         .navigationTitle("Worktrees")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 0) {
-                    Text("Worktrees").font(.cleanBodySemibold)
-                    Text(route.projectName)
-                        .font(.cleanCaption)
-                        .foregroundStyle(.secondary)
-                }
-                .lineLimit(1)
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isHeader)
-            }
-            if store.availability == .available {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("New worktree", systemImage: "plus", action: askForName)
-                        .tint(BYOTBrand.chromeTint)
-                        .disabled(store.creation != nil)
-                        .accessibilityIdentifier("worktree-new")
-                }
-            }
-        }
+        .toolbar { worktreeToolbar }
         .alert("New worktree", isPresented: $isNaming) {
             TextField("Name (optional)", text: $newName)
                 .textInputAutocapitalization(.never)
@@ -131,6 +71,73 @@ struct OpenCodeWorktreesScreen<SessionView: View>: View {
             if phase == .active && isOnScreen { Task { await store.load() } }
         }
         .accessibilityIdentifier("worktrees")
+    }
+
+    private var worktreeList: some View {
+        List {
+            if let message = store.actionError {
+                Section {
+                    Label(message.agentDisplayErrorText, systemImage: "exclamationmark.triangle")
+                        .font(.cleanCaption)
+                        .foregroundStyle(BYOTBrand.diffDeletion)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("worktrees-action-error")
+                }
+            }
+            if let message = store.refreshError {
+                Section {
+                    Label("Couldn’t refresh. \(message.agentDisplayErrorText)", systemImage: "exclamationmark.triangle")
+                        .font(.cleanCaption)
+                        .foregroundStyle(BYOTBrand.diffDeletion)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if store.creation != nil || !store.worktrees.isEmpty {
+                Section {
+                    ForEach(store.worktrees) { worktree in
+                        OpenCodeWorktreeRow(
+                            worktree: worktree,
+                            branch: store.branch(of: worktree),
+                            summary: store.summaries[worktree.directory],
+                            operation: store.operations[worktree.directory],
+                            isPreparing: store.creation == .preparing(worktree),
+                            startSession: { startSession(in: worktree) },
+                            reset: { pendingReset = worktree },
+                            remove: { pendingRemoval = worktree }
+                        )
+                    }
+                    if case .creating(let name) = store.creation {
+                        OpenCodeWorktreeCreatingRow(name: name)
+                    }
+                } footer: {
+                    Text("Each worktree is a separate checkout of \(route.projectName) on its own branch, so its sessions can change files without touching your main checkout.")
+                        .font(.cleanCaption)
+                }
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var worktreeToolbar: some ToolbarContent {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text("Worktrees").font(.cleanBodySemibold)
+                    Text(route.projectName)
+                        .font(.cleanCaption)
+                        .foregroundStyle(.secondary)
+                }
+                .lineLimit(1)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
+            }
+            if store.availability == .available {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("New worktree", systemImage: "plus", action: askForName)
+                        .tint(BYOTBrand.chromeTint)
+                        .disabled(store.creation != nil)
+                        .accessibilityIdentifier("worktree-new")
+                }
+            }
     }
 
     @ViewBuilder private var stateOverlay: some View {

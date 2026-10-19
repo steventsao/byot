@@ -143,173 +143,177 @@ struct OpenCodeSessionScreen: View {
         )
     }
 
-    var body: some View {
+    private var transcriptRows: some View {
+        LazyVStack(alignment: .leading, spacing: 20) {
+            if let offline = store.offlineTranscript, let errorMessage = store.errorMessage {
+                // One notice covers the failed load and the dropped event stream.
+                OpenCodeOfflineNotice(
+                    subject: .transcript,
+                    savedAt: offline.savedAt,
+                    detail: errorMessage,
+                    isTruncated: offline.isTruncated,
+                    isRetrying: store.isLoading,
+                    retry: refreshSession
+                )
+            } else if let errorMessage = store.errorMessage, hasConversationContent {
+                ErrorBanner(
+                    message: errorMessage,
+                    actionTitle: String(localized: "Refresh"),
+                    action: refreshSession
+                )
+            }
+
+            if let eventErrorMessage = store.eventErrorMessage,
+               store.offlineTranscript == nil || store.errorMessage == nil,
+               eventErrorMessage != store.errorMessage {
+                ErrorBanner(
+                    message: eventErrorMessage,
+                    actionTitle: String(localized: "Refresh"),
+                    action: refreshSession
+                )
+            }
+
+            if let actionErrorMessage = store.actionErrorMessage,
+               actionErrorMessage != store.errorMessage,
+               actionErrorMessage != store.eventErrorMessage {
+                ErrorBanner(
+                    message: actionErrorMessage,
+                    actionTitle: String(localized: "Refresh"),
+                    action: refreshSession
+                )
+            }
+
+            if store.revertMessageID != nil {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Conversation rewound", systemImage: "arrow.uturn.backward")
+                        .font(.cleanBodySemibold)
+                    Text("Edit the restored prompt to take a different direction, or redo the turn. Queued prompts are paused for review.")
+                        .font(.cleanCaption).foregroundStyle(.secondary)
+                    Button("Redo turn") { Task { await store.performSessionAction(.redo) } }
+                        .disabled(store.actionUnavailableReason(.redo) != nil)
+                }
+                .padding(12)
+                .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
+            }
+
+            ForEach(OpenCodeShellTranscript.rows(for: store.messages, local: store.localShell)) { row in
+                switch row {
+                case .message(let message): messageRow(message).id(message.id)
+                case .shell(let run): shellRow(run).id(run.id)
+                }
+            }
+
+            if store.todoProgress.totalCount > 0 && !showsTranscriptLoading {
+                Button { isShowingTasks = true } label: {
+                    HStack {
+                        Label(store.todoProgress.summary, systemImage: "checklist")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                    }
+                    .font(.cleanCaptionBold)
+                    .padding(12)
+                    .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("session-task-progress")
+            }
+
+            if store.modelFailure != nil {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Choose an available model to continue.")
+                        .font(.cleanBodySemibold)
+                    Button("Choose another model", systemImage: "cpu") {
+                        isShowingRecoveryModelPicker = true
+                    }
+                    if store.canRetryWithSelectedModel {
+                        Button("Retry last message", systemImage: "arrow.clockwise") {
+                            store.retryWithSelectedModel()
+                        }
+                        .accessibilityIdentifier("retry-model-failure")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
+            }
+
+            if store.canRetryUnansweredPrompt {
+                ErrorBanner(
+                    message: String(localized: "OpenCode returned to idle without a reply. Choose another model if needed, then retry the last message."),
+                    actionTitle: String(localized: "Retry last message")
+                ) {
+                    Task { await store.retryUnansweredPrompt() }
+                }
+                .id("opencode-unanswered-prompt-recovery")
+            }
+
+            if showsSessionActivity && !showsTranscriptLoading {
+                BYOTActivityView(
+                    sessionActivityPhase,
+                    title: sessionActivityTitle,
+                    detail: sessionActivityDetail,
+                    layout: sessionActivityPhase == .thinking || sessionActivityPhase == .working ? .indicator : .inline,
+                    accessibilityLabel: sessionActivityAccessibilityLabel
+                )
+                .id("opencode-session-activity")
+            }
+
+            if let queue = store.durableQueue {
+                BYOTQueueSummary(queue: queue) { isShowingQueue = true }
+            }
+
+            if !store.queuedPrompts.isEmpty {
+                OpenCodeQueuedPromptsView(
+                    prompts: store.queuedPrompts,
+                    canRetryFirst: store.canRetryFirstQueuedPrompt,
+                    retry: retryQueuedPrompt,
+                    remove: store.removeQueuedPrompt
+                )
+                .id("opencode-queued-prompts")
+            }
+
+            if !store.isLoadingTranscript,
+               !hasConversationContent,
+               let errorMessage = store.errorMessage {
+                ContentUnavailableView {
+                    Label("Couldn’t load this session", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage.agentDisplayErrorText)
+                } actions: {
+                    Button("Try again", systemImage: "arrow.clockwise") {
+                        Task { await store.refresh(showLoading: true) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .foregroundStyle(BYOTBrand.accentInk)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 48)
+            }
+
+            if store.pendingActionCount > 0 {
+                pendingActions
+                    .id("opencode-pending-actions")
+            }
+
+            Color.clear
+                .frame(height: 1)
+                .id(bottomAnchorID)
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.preference(
+                            key: OpenCodeScrollMetricsKey.self,
+                            value: .init(bottomY: geometry.frame(in: .named("transcript")).maxY)
+                        )
+                    }
+                }
+        }
+    }
+
+    private var transcriptScrollView: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
-                    if let offline = store.offlineTranscript, let errorMessage = store.errorMessage {
-                        // One notice covers the failed load and the dropped event stream.
-                        OpenCodeOfflineNotice(
-                            subject: .transcript,
-                            savedAt: offline.savedAt,
-                            detail: errorMessage,
-                            isTruncated: offline.isTruncated,
-                            isRetrying: store.isLoading,
-                            retry: refreshSession
-                        )
-                    } else if let errorMessage = store.errorMessage, hasConversationContent {
-                        ErrorBanner(
-                            message: errorMessage,
-                            actionTitle: String(localized: "Refresh"),
-                            action: refreshSession
-                        )
-                    }
-
-                    if let eventErrorMessage = store.eventErrorMessage,
-                       store.offlineTranscript == nil || store.errorMessage == nil,
-                       eventErrorMessage != store.errorMessage {
-                        ErrorBanner(
-                            message: eventErrorMessage,
-                            actionTitle: String(localized: "Refresh"),
-                            action: refreshSession
-                        )
-                    }
-
-                    if let actionErrorMessage = store.actionErrorMessage,
-                       actionErrorMessage != store.errorMessage,
-                       actionErrorMessage != store.eventErrorMessage {
-                        ErrorBanner(
-                            message: actionErrorMessage,
-                            actionTitle: String(localized: "Refresh"),
-                            action: refreshSession
-                        )
-                    }
-
-                    if store.revertMessageID != nil {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Conversation rewound", systemImage: "arrow.uturn.backward")
-                                .font(.cleanBodySemibold)
-                            Text("Edit the restored prompt to take a different direction, or redo the turn. Queued prompts are paused for review.")
-                                .font(.cleanCaption).foregroundStyle(.secondary)
-                            Button("Redo turn") { Task { await store.performSessionAction(.redo) } }
-                                .disabled(store.actionUnavailableReason(.redo) != nil)
-                        }
-                        .padding(12)
-                        .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
-                    }
-
-                    ForEach(OpenCodeShellTranscript.rows(for: store.messages, local: store.localShell)) { row in
-                        switch row {
-                        case .message(let message): messageRow(message).id(message.id)
-                        case .shell(let run): shellRow(run).id(run.id)
-                        }
-                    }
-
-                    if store.todoProgress.totalCount > 0 && !showsTranscriptLoading {
-                        Button { isShowingTasks = true } label: {
-                            HStack {
-                                Label(store.todoProgress.summary, systemImage: "checklist")
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                            }
-                            .font(.cleanCaptionBold)
-                            .padding(12)
-                            .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("session-task-progress")
-                    }
-
-                    if store.modelFailure != nil {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Choose an available model to continue.")
-                                .font(.cleanBodySemibold)
-                            Button("Choose another model", systemImage: "cpu") {
-                                isShowingRecoveryModelPicker = true
-                            }
-                            if store.canRetryWithSelectedModel {
-                                Button("Retry last message", systemImage: "arrow.clockwise") {
-                                    store.retryWithSelectedModel()
-                                }
-                                .accessibilityIdentifier("retry-model-failure")
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
-                    }
-
-                    if store.canRetryUnansweredPrompt {
-                        ErrorBanner(
-                            message: String(localized: "OpenCode returned to idle without a reply. Choose another model if needed, then retry the last message."),
-                            actionTitle: String(localized: "Retry last message")
-                        ) {
-                            Task { await store.retryUnansweredPrompt() }
-                        }
-                        .id("opencode-unanswered-prompt-recovery")
-                    }
-
-                    if showsSessionActivity && !showsTranscriptLoading {
-                        BYOTActivityView(
-                            sessionActivityPhase,
-                            title: sessionActivityTitle,
-                            detail: sessionActivityDetail,
-                            layout: sessionActivityPhase == .thinking || sessionActivityPhase == .working ? .indicator : .inline,
-                            accessibilityLabel: sessionActivityAccessibilityLabel
-                        )
-                        .id("opencode-session-activity")
-                    }
-
-                    if let queue = store.durableQueue {
-                        BYOTQueueSummary(queue: queue) { isShowingQueue = true }
-                    }
-
-                    if !store.queuedPrompts.isEmpty {
-                        OpenCodeQueuedPromptsView(
-                            prompts: store.queuedPrompts,
-                            canRetryFirst: store.canRetryFirstQueuedPrompt,
-                            retry: retryQueuedPrompt,
-                            remove: store.removeQueuedPrompt
-                        )
-                        .id("opencode-queued-prompts")
-                    }
-
-                    if !store.isLoadingTranscript,
-                       !hasConversationContent,
-                       let errorMessage = store.errorMessage {
-                        ContentUnavailableView {
-                            Label("Couldn’t load this session", systemImage: "exclamationmark.triangle")
-                        } description: {
-                            Text(errorMessage.agentDisplayErrorText)
-                        } actions: {
-                            Button("Try again", systemImage: "arrow.clockwise") {
-                                Task { await store.refresh(showLoading: true) }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .foregroundStyle(BYOTBrand.accentInk)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 48)
-                    }
-
-                    if store.pendingActionCount > 0 {
-                        pendingActions
-                            .id("opencode-pending-actions")
-                    }
-
-                    Color.clear
-                        .frame(height: 1)
-                        .id(bottomAnchorID)
-                        .background {
-                            GeometryReader { geometry in
-                                Color.clear.preference(
-                                    key: OpenCodeScrollMetricsKey.self,
-                                    value: .init(bottomY: geometry.frame(in: .named("transcript")).maxY)
-                                )
-                            }
-                        }
-                }
+                transcriptRows
                 .frame(maxWidth: BYOTBrand.conversationMaxWidth)
                 .padding(.horizontal, 20)
                 .padding(.top, 14)
@@ -417,6 +421,10 @@ struct OpenCodeSessionScreen: View {
                 proxy.scrollTo("opencode-queued-prompts")
             }
         }
+    }
+
+    private var sessionChrome: some View {
+        transcriptScrollView
         .background(BYOTBrand.canvas)
         .navigationTitle(OpenCodeSubagentTitle.displayTitle(of: store.session))
         .navigationBarTitleDisplayMode(.inline)
@@ -559,6 +567,10 @@ struct OpenCodeSessionScreen: View {
                 }
             }
         }
+    }
+
+    private var sessionPresentations: some View {
+        sessionChrome
         .sheet(isPresented: $isShowingQueue) {
             if let queue = store.durableQueue { BYOTDurableQueueView(queue: queue) }
         }
@@ -638,6 +650,10 @@ struct OpenCodeSessionScreen: View {
             OpenCodeModelPickerView(store: store)
                 .task { await store.reloadModels() }
         }
+    }
+
+    var body: some View {
+        sessionPresentations
         .onAppear {
             push.activeRoute = BYOTPushRoute(serverID: client.profile.id, sessionID: store.session.id, directory: store.session.directory, workspace: store.session.workspaceID)
             visibleSessions?.update(visibility, OpenCodeSessionSelection(client: client, session: store.session, attention: attention))
