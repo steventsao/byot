@@ -495,7 +495,9 @@ struct OpenCodeConnectedView<ServerMenu: View>: View {
                 projectName: showProject ? projectName(for: session) : nil,
                 worktreeName: worktreeName(for: session),
                 attentionMessage: attentionIDs.contains(session.id) ? attention.failures[session.id] : nil,
-                needsInput: needsInputIDs.contains(session.id)
+                needsInput: needsInputIDs.contains(session.id),
+                missingStatus: OpenCodeMissingStatus(isPending: browser.pendingStatusIDs.contains(session.id),
+                                                     isOffline: offlineSavedAt != nil)
             )
             if selection != nil {
                 let isSelected = selection?.wrappedValue?.shows(session, on: client.profile.id) == true
