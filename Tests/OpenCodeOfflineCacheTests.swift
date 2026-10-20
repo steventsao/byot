@@ -212,6 +212,39 @@ struct OpenCodeOfflineCacheTests {
         #expect(Set(saved.groups.flatMap(\.sessions).map(\.id)) == ["kept", "new"])
     }
 
+    @Test(
+        "Saved sessions read as connecting until the server answers, and unavailable only after an error",
+        .bug(id: "ASC-AJd8dKpVdvbuffcbZ2FQRa0")
+    )
+    @MainActor
+    func savedSessionsAwaitStatus() async throws {
+        let cache = OpenCodeOfflineCache(root: root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scope = OpenCodeOfflineCacheScope(cache: cache, profile: profile())
+        scope.saveSessionList([.init(project: project("/one"), sessions: [session("saved", directory: "/one")])])
+        await cache.flush()
+        let service = OfflineBrowserService()
+        await service.set(["/one": [session("saved", directory: "/one")]])
+
+        let store = OpenCodeSessionBrowserStore(service: service, cache: scope)
+        #expect(store.statuses["saved"] == nil)
+        #expect(store.pendingStatusIDs == ["saved"])
+        await store.load(projects: [project("/one")])
+        #expect(store.statuses["saved"] == .idle)
+        #expect(store.pendingStatusIDs.isEmpty)
+
+        await service.setFailing(true)
+        let failed = OpenCodeSessionBrowserStore(service: service, cache: scope)
+        await failed.load(projects: [project("/one")])
+        #expect(failed.statuses["saved"] == nil)
+        #expect(failed.pendingStatusIDs.isEmpty)
+
+        #expect(OpenCodeMissingStatus(isPending: true, isOffline: false) == .checking)
+        #expect(OpenCodeMissingStatus(isPending: false, isOffline: false) == .unavailable)
+        // The offline notice already explains a saved list.
+        #expect(OpenCodeMissingStatus(isPending: true, isOffline: true) == .offline)
+    }
+
     @Test("Saved sessions stay while the server can't list them")
     @MainActor
     func browserKeepsSavedSessionsOnFailure() async throws {

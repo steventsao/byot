@@ -119,6 +119,20 @@ struct OpenCodeProjectSessionsView: View {
 
 }
 
+/// Why a session row has no status to show.
+enum OpenCodeMissingStatus: Equatable {
+    /// The server hasn't answered yet; named like the conversation header.
+    case checking
+    /// A saved list shown offline; the notice above it already says so.
+    case offline
+    /// The server answered with an error; the project's banner says why.
+    case unavailable
+
+    init(isPending: Bool, isOffline: Bool) {
+        self = isOffline ? .offline : isPending ? .checking : .unavailable
+    }
+}
+
 struct OpenCodeSessionRow: View {
     let session: OpenCodeSession
     let status: OpenCodeSessionStatus?
@@ -128,6 +142,8 @@ struct OpenCodeSessionRow: View {
     var attentionMessage: String? = nil
     /// Waiting on a permission or question; outranks every other status.
     var needsInput = false
+    /// What the row says while `status` is nil.
+    var missingStatus: OpenCodeMissingStatus = .unavailable
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -220,9 +236,16 @@ struct OpenCodeSessionRow: View {
         } else if let status {
             OpenCodeStatusLabel(status: status, eventConnected: nil)
         } else {
-            Label("Status unavailable", systemImage: "questionmark.circle")
-                .font(.cleanCaption)
-                .foregroundStyle(.secondary)
+            switch missingStatus {
+            case .checking:
+                OpenCodeStatusLabel(status: .idle, eventConnected: nil, isStatusKnown: false)
+            case .offline:
+                EmptyView()
+            case .unavailable:
+                Label("Status unavailable", systemImage: "questionmark.circle")
+                    .font(.cleanCaption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

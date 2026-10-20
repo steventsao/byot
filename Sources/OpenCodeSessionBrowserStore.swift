@@ -196,6 +196,18 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
         return result
     }
 
+    /// Listed sessions no project has answered a status for yet: a saved list
+    /// still reaching the server, or a project still loading. Their status is
+    /// unknown, not unavailable (TestFlight AJd8dKpVdvbuffcbZ2FQRa0).
+    var pendingStatusIDs: Set<String> {
+        let known = statuses
+        var result = Set<String>()
+        for group in groups where group.statuses == nil && group.error == nil {
+            for session in group.sessions where known[session.id] == nil { result.insert(session.id) }
+        }
+        return result
+    }
+
     func orderedGroups(by sort: OpenCodeSessionSort, attention: Set<String> = []) -> [OpenCodeSessionGroup] {
         uniqueGroups.sorted { lhs, rhs in
             let a = lhs.sessions.contains { attention.contains($0.id) } ? 0 : lhs.priority
