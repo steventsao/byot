@@ -170,6 +170,27 @@ struct BYOTTelemetryConsentTests {
         #expect(transport.names == ["app_opened", "app_opened", "server_connected", "server_connected"])
         #expect(transport.captured.map { $0.properties["launch"] as? String } == ["cold", "resume", nil, nil])
     }
+
+    @Test("A server connected before opting in is reported once the person opts in, and never on decline")
+    func connectionBeforeConsent() throws {
+        let (telemetry, transport, _) = try makeTelemetry()
+        telemetry.start()
+        let serverID = UUID()
+        telemetry.recordServerConnected(serverID: serverID, ["transport": "https", "host_kind": "tailscale"])
+        #expect(transport.names.isEmpty)
+        telemetry.setConsent(true)
+        #expect(transport.names == ["app_opened", "server_connected"])
+        #expect(transport.captured.last?.properties["host_kind"] as? String == "tailscale")
+        telemetry.recordServerConnected(serverID: serverID, ["transport": "https"])
+        #expect(transport.names == ["app_opened", "server_connected"])
+
+        let (declined, declinedTransport, _) = try makeTelemetry()
+        declined.start()
+        declined.recordServerConnected(serverID: UUID(), ["transport": "https"])
+        declined.setConsent(false)
+        declined.setConsent(true)
+        #expect(declinedTransport.names == ["app_opened"])
+    }
 }
 
 @Suite("Usage data vocabulary")
@@ -219,6 +240,8 @@ struct BYOTTelemetryVocabularyTests {
         #expect(cls(URLError(.cannotConnectToHost)) == "unreachable")
         #expect(cls(URLError(.secureConnectionFailed)) == "tls")
         #expect(cls(CancellationError()) == "cancelled")
+        // URLSession throws this, not CancellationError, when the task awaiting it is cancelled.
+        #expect(cls(URLError(.cancelled)) == "cancelled")
         #expect(BYOTTelemetryOpenCode.failureClass(OpenCodeMessageError(name: "MessageAbortedError", data: nil)) == "aborted")
         #expect(BYOTTelemetryOpenCode.failureClass(OpenCodeMessageError(name: "SomethingElse", data: nil)) == "turn_failed")
     }
