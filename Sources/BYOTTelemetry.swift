@@ -106,6 +106,7 @@ final class BYOTTelemetry: @unchecked Sendable {
     private var isTransportRunning = false
     private var skipsNextActivation = false
     private var connectedServers: Set<UUID> = []
+    private var pendingConnections: [UUID: Properties] = [:]
     private var droppedCount = 0
 
     init(defaults: UserDefaults = .standard, environment: Environment = .current,
@@ -163,13 +164,16 @@ final class BYOTTelemetry: @unchecked Sendable {
     }
 
     func setConsent(_ enabled: Bool) {
-        let startedNow: Bool = lock.withLock {
+        let (startedNow, connections): (Bool, [Properties]) = lock.withLock {
             consentValue = enabled ? .enabled : .disabled
             defaults.set(consentValue.rawValue, forKey: Self.consentKey)
+            let pending = pendingConnections
+            pendingConnections = [:]
             if enabled {
-                guard currentBlock == nil, isTransportRunning == false else { return false }
+                guard currentBlock == nil, isTransportRunning == false else { return (false, []) }
                 startTransportLocked()
-                return true
+                connectedServers.formUnion(pending.keys)
+                return (true, Array(pending.values))
             }
             if isTransportRunning {
                 transport.stop()
@@ -178,9 +182,11 @@ final class BYOTTelemetry: @unchecked Sendable {
             // Opting out forgets the identity; a later opt-in starts a new one.
             defaults.removeObject(forKey: Self.installIDKey)
             connectedServers = []
-            return false
+            return (false, [])
         }
-        if startedNow { recordLaunch("opt_in") }
+        guard startedNow else { return }
+        recordLaunch("opt_in")
+        for properties in connections { record(.serverConnected, properties) }
     }
 
     /// Validates against the event's schema and sends when allowed. Any key
@@ -201,10 +207,20 @@ final class BYOTTelemetry: @unchecked Sendable {
     }
 
     /// `server_connected` once per saved server and launch, however many
-    /// screens negotiate the same connection.
+    /// screens negotiate the same connection. A connection made while the
+    /// question is still open waits in memory and is sent only if the person
+    /// opts in during this launch, since the screen will not connect again.
     func recordServerConnected(serverID: UUID, _ properties: Properties) {
-        let isFirst: Bool = lock.withLock { connectedServers.insert(serverID).inserted }
-        if isFirst { record(.serverConnected, properties) }
+        let sendsNow: Bool = lock.withLock {
+            guard !connectedServers.contains(serverID) else { return false }
+            if currentBlock == .consentPending {
+                pendingConnections[serverID] = properties
+                return false
+            }
+            connectedServers.insert(serverID)
+            return true
+        }
+        if sendsNow { record(.serverConnected, properties) }
     }
 
     static func validate(_ event: BYOTTelemetryEvent, _ properties: Properties) -> [String: Any]? {

@@ -161,7 +161,7 @@ enum BYOTTelemetryOpenCode {
 
     /// A coarse class for a thrown error. Messages, hosts and paths stay out.
     static func errorClass(_ error: any Error) -> String {
-        if error is CancellationError { return "cancelled" }
+        if isCancellation(error) { return "cancelled" }
         if let error = error as? OpenCodeConnectionError {
             switch error {
             case .invalidProfile: return "invalid_profile"
@@ -208,6 +208,12 @@ enum BYOTTelemetryOpenCode {
         case "ContextOverflowError": return "context_overflow"
         default: return "turn_failed"
         }
+    }
+
+    /// URLSession throws `URLError(.cancelled)`, not `CancellationError`, when
+    /// the task awaiting it is cancelled.
+    static func isCancellation(_ error: any Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
     static func errorOccurred(_ error: any Error, surface: Surface) -> BYOTTelemetry.Properties {

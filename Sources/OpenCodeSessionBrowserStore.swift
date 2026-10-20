@@ -346,7 +346,11 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
             loaded.sessionIDs = Set(sessions.map(\.id))
         case .failure(let error):
             errors.append(error.localizedDescription)
-            BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.errorOccurred(error, surface: .sessionList))
+            // A superseded load, or the list leaving the screen, cancels every
+            // project's fetch at once. That is not a failure worth reporting.
+            if !Task.isCancelled, !BYOTTelemetryOpenCode.isCancellation(error) {
+                BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.errorOccurred(error, surface: .sessionList))
+            }
         }
         switch statuses {
         case .success(let statuses): loaded.group.statuses = statuses.merging(worktrees.statuses) { current, _ in current }

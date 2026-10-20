@@ -64,11 +64,11 @@ counted in `droppedEventCount`.
 | Event | Properties | When |
 | --- | --- | --- |
 | `app_opened` | `launch`: `cold`, `resume`, `opt_in` | Cold launch, return to the foreground, or the moment usage data is turned on |
-| `server_connected` | `transport`: `https` / `http` · `host_kind`: `tailscale` / `local_address` / `local_name` / `public` / `unknown` · `server_protocol`: `v1` / `v2` · `server_version`: `major.minor` or `unknown` · `compatibility`: `compatible` / `degraded` / `unsupported` / `unknown` | The first successful protocol negotiation per saved server per launch |
+| `server_connected` | `transport`: `https` / `http` · `host_kind`: `tailscale` / `local_address` / `local_name` / `public` / `unknown` · `server_protocol`: `v1` / `v2` · `server_version`: `major.minor` or `unknown` · `compatibility`: `compatible` / `degraded` / `unsupported` / `unknown` | The first successful protocol negotiation per saved server per launch. A negotiation before the person answers the question is held in memory and sent only if they opt in during that launch |
 | `session_started` | `server_protocol` | A session is created from byot (new session, worktree, Siri, share) |
 | `turn_requested` | `kind`: `prompt` / `command` / `skill` / `shell` · `delivery`: `now` / `queued` / `computer_queue` · `agent`: `build` / `plan` / `other` / `none` · `provider`: an OpenCode provider id or `other` / `none` · `model`: a catalog model id, or `other` under a custom provider, or `none` · `variant_set` · `attachment_count` · `file_reference_count` | The person sends a message, a slash command, a skill, or a shell command |
 | `turn_completed` | `result`: `completed` / `failed` / `stopped` · `duration_ms` · `agent` · `provider` · `model` · `input_tokens` · `output_tokens` · `reasoning_tokens` · `reply_count` | A turn byot requested goes idle while its conversation is open |
-| `error_occurred` | `error_class` (see below) · `surface`: `connection` / `session_list` / `send` / `turn` / `shell` | A session list fails to load, a send fails, or the server reports a failed turn |
+| `error_occurred` | `error_class` (see below) · `surface`: `connection` / `session_list` / `send` / `turn` / `shell` | A session list fails to load (not when the load is cancelled because the list left the screen or the app went inactive), a send fails, or the server reports a failed turn |
 | `nudge_outcome` | `kind`: `star_card` / `review_request` · `outcome`: `shown` / `starred` / `later` / `requested` · `completed_turns` · `threshold` | byot asks for a GitHub star or Apple's review prompt after a completed turn, and what the person chose; see [star-nudge.md](star-nudge.md) |
 
 `host_kind` classifies the address and never carries it: `*.ts.net` or a
