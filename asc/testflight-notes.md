@@ -1,11 +1,22 @@
-BYOT 1.0.36 — Session list says "Connecting" while it waits
+BYOT 1.0.37 — Reliable refresh when returning to the app
 
-This build answers the TestFlight question "Why status unavailable?". Everything else is as in 1.0.35.
+This build follows up on the connection-status feedback. Leaving the session
+list or switching apps during a refresh should no longer turn a cancelled
+request into a connection error. Optional usage diagnostics also stop counting
+cancelled session-list loads as network failures.
 
 Please test:
 
-Opening byot while a server is still answering
-• Quit byot, then open it on a server whose sessions you have seen before. While byot reaches the server, the saved sessions must say "Connecting", not "Status unavailable". Once the server answers, each row shows its real status (Idle, Working, Needs input).
-• Put that computer to sleep, or turn its OpenCode off, and open byot again. After the "Showing sessions saved …" notice appears at the top, the saved rows show no status at all, since none is known.
-
-"Status unavailable" is now kept for a server that answered with an error. That project's error appears in the list with the reason. Also check the list in Simplified Chinese.
+- Open a saved server, then quickly open a conversation or switch away from
+  byot while the list refreshes. Return to byot and confirm the sessions reload
+  without a "cancelled" error or a false offline notice.
+- Repeat on a slow connection. Existing sessions should remain available while
+  the new request finishes, and a newer refresh should win over an older one.
+- Put the server to sleep or turn off its network. A real connection failure
+  must still show its explanation, and saved sessions should remain readable.
+  Wake the server and use Retry to reconnect.
+- On a cold launch, saved sessions still say "Connecting" until their status
+  arrives; they should not say "Status unavailable" just because it is loading.
+- Open a conversation on a slow connection. Check that the loading indicator
+  stays centered, the first message starts near the top, and no empty message
+  rows appear while the reply streams. Please check these on iOS 27 as well.

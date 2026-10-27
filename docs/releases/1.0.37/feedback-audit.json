@@ -1,0 +1,15 @@
+{
+  "checkedAt": "2026-10-27",
+  "feedbackCount": 73,
+  "newFeedbackSinceBuild1_0_36": 0,
+  "latestFeedback": {
+    "createdDate": "2026-10-19T15:37:04.667Z",
+    "comment": "Why status unavailable?"
+  },
+  "latestFeedbackId": "AJd8dKpVdvbuffcbZ2FQRa0",
+  "submittedCrashCount": 2,
+  "latestCrashDate": "2026-07-15T17:43:18.09Z",
+  "baselineCommit": "6eaea56",
+  "previousTestFlightBuildId": "8ca54ac8-b49a-4e09-854b-e733aef3aa4a",
+  "scope": "Internal TestFlight; connection recovery hardening and previously merged diagnostics fixes"
+}
