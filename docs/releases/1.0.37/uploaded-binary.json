@@ -1,0 +1,27 @@
+{
+  "data": {
+    "type": "buildUploads",
+    "id": "043bf0e4-4202-4a63-973d-590bf9a063b3",
+    "attributes": {
+      "cfBundleShortVersionString": "1.0.37",
+      "cfBundleVersion": "20261027124118",
+      "platform": "IOS",
+      "createdDate": "2026-10-27T13:07:34-07:00",
+      "uploadedDate": "2026-10-27T13:07:37-07:00",
+      "state": {
+        "state": "COMPLETE"
+      }
+    },
+    "relationships": {
+      "buildUploadFiles": {
+        "links": {
+          "self": "https://api.appstoreconnect.apple.com/v1/buildUploads/043bf0e4-4202-4a63-973d-590bf9a063b3/relationships/buildUploadFiles",
+          "related": "https://api.appstoreconnect.apple.com/v1/buildUploads/043bf0e4-4202-4a63-973d-590bf9a063b3/buildUploadFiles"
+        }
+      }
+    },
+    "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/buildUploads/043bf0e4-4202-4a63-973d-590bf9a063b3"
+    }
+  }
+}

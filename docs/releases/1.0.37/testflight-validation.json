@@ -1,0 +1,13 @@
+{
+  "appId": "6782403920",
+  "buildId": "043bf0e4-4202-4a63-973d-590bf9a063b3",
+  "buildVersion": "20261027124118",
+  "summary": {
+    "errors": 0,
+    "warnings": 0,
+    "infos": 0,
+    "blocking": 0
+  },
+  "checks": [],
+  "strict": true
+}

@@ -1,0 +1,23 @@
+{
+  "status": "PASS",
+  "checkedAt": "2026-10-27T20:25:06.984375+00:00",
+  "appId": "6782403920",
+  "version": "1.0.37",
+  "buildNumber": "20261027124118",
+  "buildId": "043bf0e4-4202-4a63-973d-590bf9a063b3",
+  "sourceCommit": "25a87adbefb79d9ec554dd1316fb89a7ed45d212",
+  "ipaSHA256": "d95eb5a024559ffc684ca992b6a0a72bf0cb38a77f337420282afd31125b7f08",
+  "processingState": "VALID",
+  "internalBuildState": "IN_BETA_TESTING",
+  "internalGroupId": "a2c29c92-ddfd-4c22-9368-8563d9b756ea",
+  "groupCount": 1,
+  "notesExactMatch": true,
+  "notesSHA256": "4431f2227519da0d68af006eba1e2e60a39682b0d14f9174b2e0521cfc4b48ec",
+  "uploadedBinaryState": {
+    "state": "COMPLETE"
+  },
+  "withdrawnBuildGroupCount": 0,
+  "appStoreVersionId": "49c3f5b7-fdca-475c-b4f2-842e4f640b74",
+  "appStoreVersion": "1.0.35",
+  "appStoreState": "READY_FOR_SALE"
+}

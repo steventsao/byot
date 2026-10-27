@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "appStoreConnectAppId": "6782403920",
+  "bundleId": "com.steventsao.byot",
+  "marketingVersion": "1.0.37",
+  "buildNumber": "20261027124118",
+  "sourceCommit": "25a87adbefb79d9ec554dd1316fb89a7ed45d212",
+  "sourceTree": "7b832c7ff123f41fc25f2e40804674b780551553",
+  "sourceBranch": "codex/testflight-feedback-20261027",
+  "preparedAt": "2026-10-27T19:58:00Z",
+  "ipaSha256": "d95eb5a024559ffc684ca992b6a0a72bf0cb38a77f337420282afd31125b7f08",
+  "ascBuildId": "043bf0e4-4202-4a63-973d-590bf9a063b3",
+  "reviewSubmissionId": "TestFlight-only",
+  "appStoreVersionId": "TestFlight-only",
+  "reviewSubmissionState": "TestFlight-only",
+  "appStoreVersionState": "TestFlight-only",
+  "reviewItemState": "TestFlight-only",
+  "finalizedAt": "2026-10-27T20:25:43Z",
+  "releaseChannel": "Internal TestFlight",
+  "processingState": "VALID",
+  "internalBuildState": "IN_BETA_TESTING",
+  "internalGroupId": "a2c29c92-ddfd-4c22-9368-8563d9b756ea",
+  "internalGroupName": "Internal Testers",
+  "appleUploadedBinaryState": {
+    "state": "COMPLETE"
+  },
+  "validationErrors": 0,
+  "validationWarnings": 0,
+  "notesExactMatch": true,
+  "notesSHA256": "4431f2227519da0d68af006eba1e2e60a39682b0d14f9174b2e0521cfc4b48ec",
+  "independentlyVerifiedAt": "2026-10-27T20:25:06.984375+00:00",
+  "previousCandidate": {
+    "buildNumber": "20261027115114",
+    "ascBuildId": "1e7ec9ff-02ff-4532-9571-95334b27253c",
+    "testerGroupCount": 0,
+    "reason": "Withdrawn after Apple warning 90738; corrected explicit English permission strings in the released build."
+  },
+  "existingAppStoreRelease": {
+    "version": "1.0.35",
+    "versionId": "49c3f5b7-fdca-475c-b4f2-842e4f640b74",
+    "state": "READY_FOR_SALE"
+  },
+  "tag": null,
+  "remoteBranchPushed": false,
+  "githubRelease": null
+}
