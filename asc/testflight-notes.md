@@ -3,7 +3,9 @@ BYOT 1.0.37 — Reliable refresh when returning to the app
 This build follows up on the connection-status feedback. Leaving the session
 list or switching apps during a refresh should no longer turn a cancelled
 request into a connection error. Optional usage diagnostics also stop counting
-cancelled session-list loads as network failures.
+cancelled session-list loads as network failures. English camera, microphone,
+local-network and speech-recognition permission dialogs now show readable
+explanations instead of internal setting names.
 
 Please test:
 
@@ -20,3 +22,7 @@ Please test:
 - Open a conversation on a slow connection. Check that the loading indicator
   stays centered, the first message starts near the top, and no empty message
   rows appear while the reply streams. Please check these on iOS 27 as well.
+
+- On a device where permissions have not yet been granted, scan a pairing code
+  or start dictation. Permission dialogs should explain why byot needs access
+  in plain English, with no NSCameraUsageDescription or similar raw keys.
