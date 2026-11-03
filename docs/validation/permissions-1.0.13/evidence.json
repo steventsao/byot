@@ -1,0 +1,44 @@
+{
+  "releaseTag": "app-store/1.0.13",
+  "sourceCommit": "f81c49ebcb337243f09a62498edb4093d8c101c5",
+  "productionSourceChanged": false,
+  "server": "OpenCode 2 0.0.0-beta-19271",
+  "device": "iPhone 17 Pro simulator",
+  "os": "iOS 26.5 (23F77)",
+  "host": "Stevens-Mac-mini",
+  "result": "passed",
+  "testCount": 1,
+  "failures": 0,
+  "skipped": 0,
+  "xcresult": "/tmp/byot-upstream-e2e.p98Tv3/tests.xcresult",
+  "requestOrigin": "Created through the real upstream session permission API, not a model tool call",
+  "shellCommandsExecuted": false,
+  "screenshots": [
+    {
+      "file": "permission-no-reusable-scope.png",
+      "sha256": "c589d2b15f85a30e20bf226ecccf3a9a50b4f31b00e9083c40b54c2778154d7b",
+      "sourceAttachment": "607BCADA-9C95-4BA5-B106-D9B44329056A.png"
+    },
+    {
+      "file": "permission-always-remembered.png",
+      "sha256": "58411a1257ec9e53efc9c2fc6e619049effe5f3dc37bfbc265bf9d77060a16fb",
+      "sourceAttachment": "D2B51458-3013-4585-9CE1-26C827ECBD93.png"
+    },
+    {
+      "file": "permission-always-confirmation.png",
+      "sha256": "e6e6da977903581eec1c9ef607eba71d4fe38d431a770caad2b4faec4d192819",
+      "sourceAttachment": "C46662C7-DABE-4D55-9D45-583E76258524.png"
+    },
+    {
+      "file": "permission-card-reject.png",
+      "sha256": "d340c01f7d537655e672444937cf47ef985b0fe88667eefa196b676ab5b0a4b2",
+      "sourceAttachment": "976B0093-37A7-44D9-BA91-3EC5D2E29D64.png"
+    },
+    {
+      "file": "permission-card-allow-once.png",
+      "sha256": "d340c01f7d537655e672444937cf47ef985b0fe88667eefa196b676ab5b0a4b2",
+      "sourceAttachment": "004BB298-8944-41EA-A916-530ED27EA858.png"
+    }
+  ],
+  "initialDriverFailure": "/tmp/byot-upstream-e2e.7gBx8W/tests.xcresult: iOS 26 popover has no separate Cancel button; driver fixed to tap outside."
+}

@@ -22,3 +22,15 @@ The runner needs free loopback ports 4195–4199 and stops if they are occupied.
 The live tests are opt-in outside this runner. `BYOT_LIVE_ACCEPTANCE=1`, `BYOT_LIVE_ROOT`, and both version variables are injected into the `.xctestrun` environment. No production build changes are needed for this test setup.
 
 Screenshots are captured by XCTest from the running app and exported after the result bundle is finalized. Release evidence should use these originals, identify the exact upstream versions and app source, and disclose the deterministic model and simulator scope. This run does not establish physical-device, paid-provider, or every future release's compatibility.
+
+## Permission card acceptance
+
+Run the focused permission UI workflow with:
+
+```sh
+scripts/test-opencode-upstream.sh -only-testing:BYOTUITests/OpenCodePermissionLiveUITests
+```
+
+The test uses the production app's server editor, Keychain, event handling and permission card. It creates an isolated session and real upstream `shell` permission requests through the v2 API, then taps Allow once, Reject and Always allow in the simulator. It checks request removal, repeated requests after a one-time decision, confirmation cancellation, saved-rule evaluation and the absence of Always allow when the server provides no reusable scope.
+
+The fixture's `shell` ask rule is confined to its temporary project. Sample command strings are permission resources; this focused test does not execute shell commands or use model-generated requests. `permission-replies.jsonl` records only permission reply paths, reply bodies and upstream response codes. Screenshots remain in the xcresult attachments. Existing user servers and permission policies are not changed.
