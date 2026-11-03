@@ -1,0 +1,57 @@
+{
+  "status": "PASS",
+  "checked_at": "2026-10-27T19:55:58.830864+00:00",
+  "app": "/Volumes/ext-t7/byot-feedback-20261027/DerivedData/workspace-cancellation-20261027/Build/Products/Release-iphonesimulator/byot.app",
+  "version": "1.0.37",
+  "build": "20261027124118",
+  "architectures": "arm64",
+  "localizations": [
+    "en",
+    "zh-Hans"
+  ],
+  "permission_count": 4,
+  "compiled_purpose_value_count": 8,
+  "values": [
+    {
+      "key": "NSCameraUsageDescription",
+      "base": "byot uses the camera only to scan the pairing code for your OpenCode server.",
+      "en": "byot uses the camera only to scan the pairing code for your OpenCode server.",
+      "zh-Hans": "byot 仅使用相机扫描 OpenCode 服务器的配对码。",
+      "english_matches_base": true,
+      "compiled_values_match_catalog": true,
+      "nonempty_not_raw_keys": true
+    },
+    {
+      "key": "NSLocalNetworkUsageDescription",
+      "base": "byot finds OpenCode servers on your network and connects to the ones you add by local address.",
+      "en": "byot finds OpenCode servers on your network and connects to the ones you add by local address.",
+      "zh-Hans": "byot 会查找你网络中的 OpenCode 服务器，并连接你通过本地地址添加的服务器。",
+      "english_matches_base": true,
+      "compiled_values_match_catalog": true,
+      "nonempty_not_raw_keys": true
+    },
+    {
+      "key": "NSMicrophoneUsageDescription",
+      "base": "byot listens only while you dictate a message, and only after you tap the microphone.",
+      "en": "byot listens only while you dictate a message, and only after you tap the microphone.",
+      "zh-Hans": "byot 仅在你轻点麦克风并听写消息时收听。",
+      "english_matches_base": true,
+      "compiled_values_match_catalog": true,
+      "nonempty_not_raw_keys": true
+    },
+    {
+      "key": "NSSpeechRecognitionUsageDescription",
+      "base": "byot turns what you dictate into message text. Speech is transcribed on this device when your language supports it; otherwise Apple transcribes it.",
+      "en": "byot turns what you dictate into message text. Speech is transcribed on this device when your language supports it; otherwise Apple transcribes it.",
+      "zh-Hans": "byot 会将你的听写内容转换为消息文本。如果你的语言支持，语音会在本设备上转写；否则由 Apple 转写。",
+      "english_matches_base": true,
+      "compiled_values_match_catalog": true,
+      "nonempty_not_raw_keys": true
+    }
+  ],
+  "artifact_sha256": {
+    "/Volumes/ext-t7/byot-feedback-20261027/DerivedData/workspace-cancellation-20261027/Build/Products/Release-iphonesimulator/byot.app/Info.plist": "e8dd562f3653e63723603ae9a763349d1dc392f95d1770ace098dad53e0fae2b",
+    "/Volumes/ext-t7/byot-feedback-20261027/DerivedData/workspace-cancellation-20261027/Build/Products/Release-iphonesimulator/byot.app/en.lproj/InfoPlist.strings": "86a00a72c1b2f6aeba2a8837c785126bb946e1df6ed0e1d3cc2c02e147182cbf",
+    "/Volumes/ext-t7/byot-feedback-20261027/DerivedData/workspace-cancellation-20261027/Build/Products/Release-iphonesimulator/byot.app/zh-Hans.lproj/InfoPlist.strings": "c7675a68ccd4bd33adf565429a34e58f36c6a69c43b8fa130bfe38f1d33fc7b7"
+  }
+}

@@ -16,6 +16,7 @@ final class OpenCodeWorkspaceStore: ObservableObject {
     }
 
     func load() async {
+        guard !Task.isCancelled else { return }
         loadGeneration &+= 1
         let generation = loadGeneration
         isLoading = true
@@ -25,34 +26,38 @@ final class OpenCodeWorkspaceStore: ObservableObject {
         let summary: OpenCodeCompatibilitySummary
         do {
             summary = try await service.probeCompatibility()
-        } catch is CancellationError {
-            return
         } catch {
-            guard generation == loadGeneration else { return }
+            guard generation == loadGeneration, !Task.isCancelled, !Self.isCancellation(error) else { return }
             compatibility = nil
             errorMessage = error.localizedDescription
             return
         }
-        guard generation == loadGeneration else { return }
-        compatibility = summary
+        guard generation == loadGeneration, !Task.isCancelled else { return }
         guard summary.state != .unsupported else {
+            compatibility = summary
             projects = []
             errorMessage = summary.detail
                 ?? String(localized: "This OpenCode server version is not supported.")
             return
         }
+        // Keep the previous summary until project loading finishes, so cancellation
+        // at either request leaves the last known workspace state intact.
         do {
             let projects = try await service.listProjects().sorted {
                 $0.time.updated > $1.time.updated
             }
-            guard generation == loadGeneration else { return }
+            guard generation == loadGeneration, !Task.isCancelled else { return }
+            compatibility = summary
             self.projects = projects
             errorMessage = nil
-        } catch is CancellationError {
-            return
         } catch {
-            guard generation == loadGeneration else { return }
+            guard generation == loadGeneration, !Task.isCancelled, !Self.isCancellation(error) else { return }
+            compatibility = summary
             errorMessage = error.localizedDescription
         }
+    }
+
+    private static func isCancellation(_ error: any Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 }

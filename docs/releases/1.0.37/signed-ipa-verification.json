@@ -1,0 +1,65 @@
+{
+  "sourceCommit": "25a87adbefb79d9ec554dd1316fb89a7ed45d212",
+  "verifiedAt": "2026-10-27T20:06:23.945700+00:00",
+  "status": "PASS",
+  "metadata": {
+    "CFBundleShortVersionString": "1.0.37",
+    "CFBundleVersion": "20261027124118",
+    "CFBundleIdentifier": "com.steventsao.byot"
+  },
+  "archivePath": "/Volumes/ext-t7/byot-feedback-20261027/Archive-20261027124118/BYOT.xcarchive",
+  "ipaPath": "/Volumes/ext-t7/byot-feedback-20261027/Archive-20261027124118/BYOT.ipa",
+  "ipaSHA256": "d95eb5a024559ffc684ca992b6a0a72bf0cb38a77f337420282afd31125b7f08",
+  "ipaSizeBytes": 11074543,
+  "inspectionPath": "/tmp/byot-feedback-20261027/corrected-ipa-inspection-sgjsatbr",
+  "privacyPackagingGate": {
+    "status": "PASS",
+    "base": {
+      "NSCameraUsageDescription": "byot uses the camera only to scan the pairing code for your OpenCode server.",
+      "NSSpeechRecognitionUsageDescription": "byot turns what you dictate into message text. Speech is transcribed on this device when your language supports it; otherwise Apple transcribes it.",
+      "NSMicrophoneUsageDescription": "byot listens only while you dictate a message, and only after you tap the microphone.",
+      "NSLocalNetworkUsageDescription": "byot finds OpenCode servers on your network and connects to the ones you add by local address."
+    },
+    "localized": {
+      "en": {
+        "NSCameraUsageDescription": "byot uses the camera only to scan the pairing code for your OpenCode server.",
+        "NSSpeechRecognitionUsageDescription": "byot turns what you dictate into message text. Speech is transcribed on this device when your language supports it; otherwise Apple transcribes it.",
+        "NSMicrophoneUsageDescription": "byot listens only while you dictate a message, and only after you tap the microphone.",
+        "NSLocalNetworkUsageDescription": "byot finds OpenCode servers on your network and connects to the ones you add by local address."
+      },
+      "zh-Hans": {
+        "NSCameraUsageDescription": "byot 仅使用相机扫描 OpenCode 服务器的配对码。",
+        "NSSpeechRecognitionUsageDescription": "byot 会将你的听写内容转换为消息文本。如果你的语言支持，语音会在本设备上转写；否则由 Apple 转写。",
+        "NSMicrophoneUsageDescription": "byot 仅在你轻点麦克风并听写消息时收听。",
+        "NSLocalNetworkUsageDescription": "byot 会查找你网络中的 OpenCode 服务器，并连接你通过本地地址添加的服务器。"
+      }
+    }
+  },
+  "signature": {
+    "status": "PASS",
+    "certificateSHA1": "1D462C7D89B2F934CDB8255C2533A44BF02745DF",
+    "checks": {
+      "verify": {
+        "exitCode": 0,
+        "output": "/tmp/byot-feedback-20261027/corrected-ipa-inspection-sgjsatbr/Payload/byot.app: valid on disk\n/tmp/byot-feedback-20261027/corrected-ipa-inspection-sgjsatbr/Payload/byot.app: satisfies its Designated Requirement\n"
+      },
+      "details": {
+        "exitCode": 0,
+        "output": "Executable=/private/tmp/byot-feedback-20261027/corrected-ipa-inspection-sgjsatbr/Payload/byot.app/byot\nIdentifier=com.steventsao.byot\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20400 size=22135 flags=0x0(none) hashes=681+7 location=embedded\nVersionPlatform=2\nVersionMin=1114112\nVersionSDK=1705216\nHash type=sha256 size=32\nCandidateCDHash sha256=dcc39f3068b37f399141d2f97b1b8617df2aafda\nCandidateCDHashFull sha256=dcc39f3068b37f399141d2f97b1b8617df2aafda98051849c1743d27d42c9dd1\nHash choices=sha256\nCMSDigest=dcc39f3068b37f399141d2f97b1b8617df2aafda98051849c1743d27d42c9dd1\nCMSDigestType=2\nExecutable Segment base=0\nExecutable Segment limit=9895936\nExecutable Segment flags=0x1\nPage size=16384\nCDHash=dcc39f3068b37f399141d2f97b1b8617df2aafda\nSignature size=4760\nAuthority=iPhone Distribution: Steven Tsao (449BD89VDV)\nAuthority=Apple Worldwide Developer Relations Certification Authority\nAuthority=Apple Root CA\nSigned Time=Oct 27, 2026 at 1:05:32 PM\nInfo.plist entries=37\nTeamIdentifier=449BD89VDV\nSealed Resources version=2 rules=10 files=33\nInternal requirements count=1 size=184\n"
+      }
+    },
+    "profile": {
+      "name": "BYOT Queue App Store 20260920",
+      "uuid": "c24d9c62-70c2-4e42-9c1c-8ef665ec9fa2",
+      "expires": "2027-06-09T16:51:22",
+      "appIdentifier": "449BD89VDV.com.steventsao.byot"
+    },
+    "entitlements": {
+      "application-identifier": "449BD89VDV.com.steventsao.byot",
+      "aps-environment": "production",
+      "beta-reports-active": true,
+      "com.apple.developer.team-identifier": "449BD89VDV",
+      "get-task-allow": false
+    }
+  }
+}
