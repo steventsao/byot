@@ -6874,12 +6874,12 @@
         }
       }
     },
-    "OpenCode 2 beta. Some server features may be unavailable." : {
+    "OpenCode 2. Some server features may be unavailable." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "OpenCode 2 测试版。部分服务器功能可能不可用。"
+            "value" : "OpenCode 2。部分服务器功能可能不可用。"
           }
         }
       }
