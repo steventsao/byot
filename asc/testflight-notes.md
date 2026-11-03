@@ -1,17 +1,21 @@
-BYOT 1.0.39 — Cancelled loads stop showing false errors, and permission prompts read properly
+BYOT 1.0.40 — Finished turns fold to their answer, with a timer on every turn
 
-This build merges the 1.0.37 work back onto `main` alongside the 1.0.38 changes, so it is the first build that has all of it: the session-list wording, the workspace-screen fix, the usage-data corrections, and English permission explanations.
+Everything in 1.0.39 is here too. This build changes how a conversation reads: each turn now has a header that times it, a finished turn shows its answer and the files it changed with the steps folded away, and tool calls made back to back share one line.
 
 Please test:
 
-Leaving a screen while it is still loading
-• Open the projects/workspace screen on a server, then immediately switch away from byot or go back. Coming back must not show an error. Before this build, a cancelled request was treated as a real failure and could leave an error message and a blank workspace behind.
-• Do the same on the session list. Saved sessions say "Connecting" while byot reaches the server, not "Status unavailable". Once the server answers, each row shows its real status (Idle, Working, Needs input).
-• Put that computer to sleep, or turn its OpenCode off, and open byot again. After the "Showing sessions saved …" notice appears, the saved rows show no status at all, since none is known. "Status unavailable" is now kept for a server that answered with an error, and that project shows the reason.
+A turn while it runs
+• Send a prompt that makes OpenCode read files and run commands. A line under your message says "Working for 5s" and counts up every second. Every step stays in view while it works.
+• When OpenCode makes several tool calls in a row, they share one line such as "Read 3 files · Ran 2 commands". The newest of these lines opens by itself so you can watch it; tap it to close or reopen it.
 
-Permission prompts
-• Trigger the camera prompt (add a server by scanning a pairing code), the microphone and speech prompts (voice dictation in the composer), and the local-network prompt (find a server nearby). Each must show a sentence explaining why, not a blank prompt or a raw key name. Check in English and in Simplified Chinese.
+A finished turn
+• When the reply ends, the header changes to "Worked for 1m 20s" and the turn folds to its last paragraph, any files or images it produced, and one "Changed N files" list for the whole turn. Tap a file there to open its changes.
+• Tap "Worked for …" to see every step again: tool calls, reasoning, retries and the token and cost lines. Tap it again to fold.
+• Stop a reply part way with the stop button. Its header says "Stopped after …". A reply that ends in an error says "Failed after …" and still shows the error.
+• A reply that only answered, with no tools, shows "Worked for …" with no arrow, since there is nothing to open.
 
-Usage data, if you have it on
-• Leave and reopen the session list a few times, and switch away from byot while it is loading. Those cancelled loads are no longer counted as network errors.
-• On a launch where you answer "Share anonymous usage data?" with Share, the server you are connected to is counted once you opt in. Answering "Not now" still sends nothing.
+Things that should not change
+• Subagent cards stay visible in a folded turn and still open the subagent.
+• Commands you run yourself with ! still show as their own terminal card.
+• Long-press your own message for Undo and Fork, as before.
+• Check in English and in Simplified Chinese.
