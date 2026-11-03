@@ -4331,6 +4331,26 @@
         }
       }
     },
+    "Edited %lld files" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑了 %lld 个文件"
+          }
+        }
+      }
+    },
+    "Edited a file" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑了 1 个文件"
+          }
+        }
+      }
+    },
     "Effective configuration" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4561,12 +4581,42 @@
         }
       }
     },
+    "Failed after %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败，用时 %@"
+          }
+        }
+      }
+    },
     "Fetch webpage" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "获取网页"
+          }
+        }
+      }
+    },
+    "Fetched %lld pages" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "获取了 %lld 个网页"
+          }
+        }
+      }
+    },
+    "Fetched a page" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "获取了 1 个网页"
           }
         }
       }
@@ -8118,6 +8168,26 @@
         }
       }
     },
+    "Ran %lld commands" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行了 %lld 条命令"
+          }
+        }
+      }
+    },
+    "Ran a command" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行了 1 条命令"
+          }
+        }
+      }
+    },
     "Rate byot on the App Store" : {
       "localizations" : {
         "en" : {
@@ -8130,6 +8200,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 App Store 上为 byot 评分"
+          }
+        }
+      }
+    },
+    "Read %lld files" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取了 %lld 个文件"
+          }
+        }
+      }
+    },
+    "Read a file" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取了 1 个文件"
           }
         }
       }
@@ -9238,6 +9328,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索会话或项目"
+          }
+        }
+      }
+    },
+    "Searched %lld times" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索了 %lld 次"
+          }
+        }
+      }
+    },
+    "Searched once" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索了 1 次"
           }
         }
       }
@@ -10552,6 +10662,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已停止"
+          }
+        }
+      }
+    },
+    "Stopped after %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已停止，用时 %@"
           }
         }
       }
@@ -12388,6 +12508,16 @@
         }
       }
     },
+    "Updated tasks" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新了任务"
+          }
+        }
+      }
+    },
     "Updates" : {
       "localizations" : {
         "zh-Hans" : {
@@ -12460,6 +12590,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用“%@”"
+          }
+        }
+      }
+    },
+    "Used %lld tools" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用了 %lld 个工具"
+          }
+        }
+      }
+    },
+    "Used a tool" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用了 1 个工具"
           }
         }
       }
@@ -12710,6 +12860,16 @@
         }
       }
     },
+    "Worked for %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理用时 %@"
+          }
+        }
+      }
+    },
     "Working" : {
       "localizations" : {
         "zh-Hans" : {
@@ -12736,6 +12896,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "工作目录（可选）"
+          }
+        }
+      }
+    },
+    "Working for %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在处理，已用时 %@"
           }
         }
       }

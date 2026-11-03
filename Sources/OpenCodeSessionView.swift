@@ -71,6 +71,8 @@ struct OpenCodeSessionScreen: View {
     @State private var notificationError: String?
     @State private var isShowingRecoveryModelPicker = false
     @State private var isAtBottom = true
+    /// Finished turns opened to show their work; they open folded.
+    @State private var expandedTurnIDs: Set<String> = []
     @State private var transcriptViewportHeight = CGFloat.infinity
     @State private var hasPositionedTranscript = false
     @State private var isShowingDetails = false
@@ -198,9 +200,19 @@ struct OpenCodeSessionScreen: View {
                         .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
                     }
 
-                    ForEach(OpenCodeShellTranscript.rows(for: store.messages, local: store.localShell)) { row in
+                    let rows = OpenCodeConversationRow.rows(
+                        OpenCodeShellTranscript.rows(for: store.messages, local: store.localShell))
+                    let runningID = runningTurnID(in: rows)
+                    ForEach(rows) { row in
                         switch row {
-                        case .message(let message): messageRow(message).id(message.id)
+                        case .turn(let turn):
+                            messageRow(turn.prompt).id(turn.prompt.id)
+                            if !turn.replies.isEmpty || turn.id == runningID {
+                                OpenCodeTurnRepliesView(turn: turn, isRunning: turn.id == runningID,
+                                                        isExpanded: expansion(ofTurn: turn.id))
+                                    .id("replies:" + turn.id)
+                            }
+                        case .reply(let message): messageRow(message).id(message.id)
                         case .shell(let run): shellRow(run).id(run.id)
                         }
                     }
@@ -729,6 +741,22 @@ struct OpenCodeSessionScreen: View {
     /// A legacy session snapshot is reviewable even where negotiation found nothing else.
     private var isReviewChangesVisible: Bool { canReviewChanges || !store.diffs.isEmpty }
 
+    /// The latest turn while OpenCode is still on it; a shell run after it
+    /// means the session is busy with that instead.
+    private func runningTurnID(in rows: [OpenCodeConversationRow]) -> String? {
+        guard store.status != .idle || store.pendingActionCount > 0,
+              case .turn(let turn)? = rows.last else { return nil }
+        return turn.id
+    }
+
+    private func expansion(ofTurn id: String) -> Binding<Bool> {
+        Binding {
+            expandedTurnIDs.contains(id)
+        } set: { isExpanded in
+            if isExpanded { expandedTurnIDs.insert(id) } else { expandedTurnIDs.remove(id) }
+        }
+    }
+
     /// The user prompt an assistant reply answers: its declared parent, else the
     /// nearest earlier prompt in the transcript.
     private func turnMessageID(for message: OpenCodeMessageEnvelope) -> String? {
@@ -1122,6 +1150,154 @@ private struct OpenCodeMessageView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(isUser ? String(localized: "You") : message.info.agent ?? "OpenCode")
+    }
+}
+
+/// A turn's replies under one header that times them. While OpenCode works
+/// every step shows; once it finishes the turn folds to its answer and what
+/// it changed, and the header opens the rest.
+private struct OpenCodeTurnRepliesView: View {
+    let turn: OpenCodeTranscriptTurn
+    let isRunning: Bool
+    @Binding var isExpanded: Bool
+    @Environment(\.openCodeContextLimits) private var contextLimits
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let content = OpenCodeTurnContent(turn: turn)
+        let items = isRunning || isExpanded || !content.canFold ? content.items : content.folded
+        VStack(alignment: .leading, spacing: 12) {
+            if let header = OpenCodeTurnHeader(turn: turn, isRunning: isRunning) {
+                headerRow(header, canFold: !isRunning && content.canFold)
+            }
+            ForEach(items) { item in
+                itemView(item, isNewest: isRunning && item.id == items.last?.id)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(turn.replies.first?.info.agent ?? "OpenCode")
+    }
+
+    @ViewBuilder
+    private func headerRow(_ header: OpenCodeTurnHeader, canFold: Bool) -> some View {
+        if header.ending == nil {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                if let title = header.title(now: context.date) {
+                    headerLabel(title, canFold: false)
+                }
+            }
+        } else if let title = header.title() {
+            if canFold {
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick)) { isExpanded.toggle() }
+                } label: {
+                    headerLabel(title, canFold: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+                .accessibilityIdentifier("transcript-turn-header")
+            } else {
+                headerLabel(title, canFold: false)
+            }
+        }
+    }
+
+    private func headerLabel(_ title: String, canFold: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .monospacedDigit()
+                if canFold {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .accessibilityHidden(true)
+                }
+            }
+            .font(.cleanCaption)
+            .foregroundStyle(.secondary)
+            Rectangle()
+                .fill(BYOTBrand.hairline)
+                .frame(height: 1)
+                .accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func itemView(_ item: OpenCodeTurnItem, isNewest: Bool) -> some View {
+        switch item {
+        case .part(let entry):
+            OpenCodePartView(part: entry.part, isUser: false, contextLimit: entry.modelKey.flatMap { contextLimits[$0] },
+                             turnMessageID: turn.id)
+        case .images(let parts):
+            OpenCodeInlineImageGallery(parts: parts)
+        case .tools(let entries):
+            OpenCodeToolRunView(entries: entries, turnID: turn.id, opensByItself: isNewest)
+        case .replySummary(let reply):
+            let modelKey = reply.info.providerID.flatMap { provider in reply.info.modelID.map { "\(provider)/\($0)" } }
+            if let summary = OpenCodeStepSummary(reply: reply, contextLimit: modelKey.flatMap { contextLimits[$0] }) {
+                OpenCodeStepSummaryView(summary: summary)
+            }
+        case .error(_, let error):
+            Label(error.displayMessage, systemImage: "exclamationmark.triangle.fill")
+                .font(.cleanCaption)
+                .foregroundStyle(.red)
+        case .changes(let files):
+            OpenCodePatchPartView(files: files, turnMessageID: turn.id)
+        }
+    }
+}
+
+/// Tool calls made back to back, summed up in one line until opened. The
+/// newest run of a working turn opens by itself so the work stays in view,
+/// and folds again once later steps arrive, unless the user chose otherwise.
+private struct OpenCodeToolRunView: View {
+    let entries: [OpenCodeTurnPart]
+    let turnID: String
+    let opensByItself: Bool
+    @Environment(\.openCodeContextLimits) private var contextLimits
+    @State private var chosenExpansion: Bool?
+
+    var body: some View {
+        let summary = OpenCodeToolRunSummary(tools: entries.map(\.part).filter { $0.type == "tool" })
+        DisclosureGroup(isExpanded: Binding {
+            chosenExpansion ?? opensByItself
+        } set: {
+            chosenExpansion = $0
+        }) {
+            VStack(alignment: .leading, spacing: BYOTBrand.Space.sm) {
+                ForEach(entries) { entry in
+                    OpenCodePartView(part: entry.part, isUser: false,
+                                     contextLimit: entry.modelKey.flatMap { contextLimits[$0] }, turnMessageID: turnID)
+                }
+            }
+            .padding(.top, BYOTBrand.Space.xs)
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: BYOTBrand.Space.sm) {
+                Text(summary.title)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if summary.isRunning {
+                    BYOTActivityGlyph(phase: .working, size: 14, tint: .secondary)
+                        .frame(width: 14, height: 14)
+                } else if summary.hasFailure {
+                    Text("Failed")
+                        .foregroundStyle(.red)
+                        .fixedSize()
+                }
+            }
+            .font(.cleanMono)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(summary.accessibilityLabel)
+        }
+        .disclosureGroupStyle(OpenCodeInlineDisclosureStyle())
+        .accessibilityIdentifier("transcript-tool-run")
     }
 }
 

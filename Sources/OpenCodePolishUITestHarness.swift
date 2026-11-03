@@ -307,8 +307,11 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
     /// A turn still running that fits on one screen: a prompt, one settled
     /// step, and a second step that has started with nothing to show yet.
     private static func shortTranscript() -> [[String: Any]] {
+        // The prompt went out 20 seconds ago, so the turn's running timer reads as it would live.
+        let start = Int(Date().timeIntervalSince1970 * 1_000) - 20_000
         func message(_ id: String, role: String, time: [String: Int], _ parts: [[String: Any]]) -> [String: Any] {
-            ["info": ["id": id, "sessionID": "ses_short", "role": role, "agent": "build", "time": time],
+            ["info": ["id": id, "sessionID": "ses_short", "role": role, "agent": "build",
+                      "time": time.mapValues { start + $0 }],
              "parts": parts.map { $0.merging(["sessionID": "ses_short", "messageID": id]) { $1 } }]
         }
         return [

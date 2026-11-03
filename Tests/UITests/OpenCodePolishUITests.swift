@@ -115,6 +115,11 @@ final class OpenCodePolishUITests: XCTestCase {
         let step = app.descendants(matching: .any).matching(identifier: "transcript-step-summary").firstMatch
         let activity = transcript.descendants(matching: .any).matching(NSPredicate(format: "label == 'Working'")).firstMatch
         XCTAssertLessThan(activity.frame.minY - step.frame.maxY, 40, "step \(step.frame), activity \(activity.frame)")
+        // The running turn is timed from its prompt, and its work stays open.
+        let timer = transcript.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Working for '")).firstMatch
+        XCTAssertTrue(timer.exists)
+        XCTAssertGreaterThan(timer.frame.minY, prompt.frame.maxY)
+        XCTAssertFalse(app.buttons["transcript-turn-header"].exists)
         screenshot(app, name: "short-transcript-streaming")
 
         // There is nothing to scroll, with or without the keyboard.
@@ -153,7 +158,16 @@ final class OpenCodePolishUITests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label CONTAINS 'Rich transcript'")).firstMatch.tap()
         let compaction = app.descendants(matching: .any)["transcript-compaction"]
         XCTAssertTrue(compaction.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.descendants(matching: .any)["transcript-retry"].exists)
+        // The finished turn opens folded to its answer and the files it changed.
+        let turn = app.buttons["transcript-turn-header"]
+        XCTAssertTrue(turn.exists)
+        XCTAssertEqual(turn.label, "Worked for 2s")
+        XCTAssertTrue(app.descendants(matching: .any)["transcript-patch"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["transcript-retry"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["transcript-step-summary"].exists)
+        screenshot(app, name: "transcript-parts-folded")
+        turn.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["transcript-retry"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["transcript-step-summary"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["transcript-patch"].exists)
         XCTAssertTrue(app.staticTexts["Checkpoint · 9c1e2d4"].exists || app.otherElements["Workspace checkpoint 9c1e2d4"].exists)
@@ -201,6 +215,8 @@ final class OpenCodePolishUITests: XCTestCase {
         XCTAssertTrue(meter.waitForExistence(timeout: 10))
         XCTAssertEqual(meter.value as? String, "72 percent used, 144,000 of 200,000 tokens")
         XCTAssertTrue(meter.isHittable)
+        // Step footers sit with each finished turn's work.
+        for turn in app.buttons.matching(identifier: "transcript-turn-header").allElementsBoundByIndex { turn.tap() }
         XCTAssertGreaterThanOrEqual(app.descendants(matching: .any).matching(identifier: "transcript-step-summary").count, 2)
         screenshot(app, name: "context-meter")
 
