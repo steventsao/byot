@@ -498,3 +498,159 @@ struct OpenCodeTranscriptPartTests {
                      url: url, callID: nil, tool: nil, state: nil, files: nil, description: nil, agent: nil)
     }
 }
+
+@Suite("Transcript turns")
+struct OpenCodeTranscriptTurnTests {
+    @Test("Replies join the prompt they name, else the latest prompt before them")
+    func gathersReplies() throws {
+        let rows = OpenCodeConversationRow.rows([
+            .message(try message("early", role: "assistant", ["text": "Resumed mid-turn"])),
+            .message(try message("u1", role: "user", ["text": "Fix the crash"])),
+            .message(try message("a1", role: "assistant", parent: "u1", ["text": "Looking"])),
+            .message(try message("u2", role: "user", ["text": "Then add a test"])),
+            // A step of the first turn that lands after the newer prompt.
+            .message(try message("a1b", role: "assistant", parent: "u1", ["text": "Fixed"])),
+            .message(try message("a2", role: "assistant", ["text": "Added"])),
+            .message(try message("lost", role: "assistant", parent: "u0", ["text": "Prompt not loaded"])),
+            .shell(OpenCodeShellRun(id: "sh", command: "ls", output: "", status: .exited(code: 0), isTruncated: false)),
+            .message(try message("after", role: "assistant", ["text": "No prompt since the shell run"])),
+        ])
+        #expect(rows.map(\.id) == ["early", "u1", "u2", "lost", "sh", "after"])
+        guard case .turn(let first) = rows[1], case .turn(let second) = rows[2] else {
+            Issue.record("Expected two turns, got \(rows)")
+            return
+        }
+        #expect(first.replies.map(\.id) == ["a1", "a1b"])
+        #expect(second.replies.map(\.id) == ["a2"])
+    }
+
+    @Test("Tool calls made back to back fold into one line, across steps")
+    func groupsTools() throws {
+        let turn = try turn(replies: [
+            try message("a1", role: "assistant", ["text": "Looking around"], tool("t1", "read"), ["type": "step-finish", "tokens": tokens]),
+            try message("a2", role: "assistant", ["type": "reasoning", "text": "Run the tests"], tool("t2", "bash"),
+                        tool("t3", "bash"), ["type": "step-finish", "tokens": tokens]),
+            try message("a3", role: "assistant", ["text": "All green"]),
+        ])
+        let content = OpenCodeTurnContent(turn: turn)
+        #expect(content.items.map(\.id) == ["a1-0", "tools:t1", "a2-3", "a3-0"])
+        guard case .tools(let run) = content.items[1] else {
+            Issue.record("Expected a tool run, got \(content.items[1])")
+            return
+        }
+        // The run ends at its last call; the footer after it keeps its own row.
+        #expect(run.map(\.id) == ["t1", "a1-2", "a2-0", "t2", "t3"])
+        #expect(OpenCodeToolRunSummary(tools: run.map(\.part).filter { $0.type == "tool" }).title
+            == "Read a file · Ran 2 commands")
+    }
+
+    @Test("A lone tool call keeps its row, and a subagent task breaks a run")
+    func keepsSingleCalls() throws {
+        let task: [String: Any] = ["id": "task", "type": "tool", "tool": "task",
+                                   "state": ["status": "completed", "input": ["description": "Scan", "subagent_type": "explore"]]]
+        let content = OpenCodeTurnContent(turn: try turn(replies: [
+            try message("a1", role: "assistant", tool("t1", "grep"), ["text": "Found it"], tool("t2", "edit"), task, tool("t3", "glob")),
+        ]))
+        #expect(content.items.map(\.id) == ["t1", "a1-1", "t2", "task", "t3"])
+    }
+
+    @Test("Run summaries count each kind of call in the order it first ran")
+    func summarizesRuns() throws {
+        let calls = try ["grep", "edit", "glob", "mcp_linear", "webfetch", "webfetch", "todowrite"].enumerated().map { index, name in
+            try part(tool("t\(index)", name, status: index == 1 ? "error" : "completed"))
+        }
+        let summary = OpenCodeToolRunSummary(tools: calls)
+        #expect(summary.title == "Searched 2 times · Edited a file · Used a tool · Fetched 2 pages · Updated tasks")
+        #expect(summary.hasFailure)
+        #expect(!summary.isRunning)
+        #expect(OpenCodeToolRunSummary(tools: [try part(tool("r", "read", status: "running"))]).isRunning)
+    }
+
+    @Test("A finished turn folds to its answer, what it produced, the files it changed and its error")
+    func foldsFinishedTurn() throws {
+        let content = OpenCodeTurnContent(turn: try turn(replies: [
+            try message("a1", role: "assistant", ["text": "I'll check the list first"], tool("t1", "read"),
+                        ["type": "patch", "files": ["/repo/App.swift"]], ["type": "step-finish", "tokens": tokens]),
+            try message("a2", role: "assistant", ["text": "Guarded the empty list."],
+                        ["type": "file", "mime": "text/plain", "filename": "notes.txt", "url": "file:///repo/notes.txt"],
+                        ["type": "patch", "files": ["/repo/App.swift", "/repo/README.md"]],
+                        ["type": "step-finish", "tokens": tokens],
+                        error: "ProviderAuthError"),
+        ]))
+        #expect(content.canFold)
+        #expect(content.folded.map(\.id) == ["a2-0", "a2-1", "changes", "error:a2"])
+        #expect(content.folded.contains(.changes(["/repo/App.swift", "/repo/README.md"])))
+    }
+
+    @Test("The answer stays in view when the turn ends with more work")
+    func keepsAnswerBeforeTrailingWork() throws {
+        let content = OpenCodeTurnContent(turn: try turn(replies: [
+            try message("a1", role: "assistant", tool("t1", "bash"), ["text": "Shipped."], ["text": "Tests pass."],
+                        ["type": "step-finish", "tokens": tokens], tool("t2", "todowrite")),
+        ]))
+        #expect(content.folded.map(\.id) == ["a1-1", "a1-2"])
+    }
+
+    @Test("A turn that only answered has nothing to fold")
+    func plainAnswerDoesNotFold() throws {
+        let content = OpenCodeTurnContent(turn: try turn(replies: [try message("a1", role: "assistant", ["text": "Yes."])]))
+        #expect(!content.canFold)
+        #expect(content.folded == content.items)
+    }
+
+    @Test("The header times the turn from its prompt and names how it ended")
+    func headerTitles() throws {
+        let prompt = try message("u1", role: "user", created: 1_000, ["text": "Go"])
+        func finished(error: String?) throws -> OpenCodeTranscriptTurn {
+            OpenCodeTranscriptTurn(prompt: prompt, replies: [
+                try message("a1", role: "assistant", created: 2_000, completed: 30_000, ["text": "Step"]),
+                try message("a2", role: "assistant", created: 31_000, completed: 133_000, ["text": "Done"], error: error),
+            ])
+        }
+        #expect(OpenCodeTurnHeader(turn: try finished(error: nil), isRunning: false)?.title() == "Worked for 2m 12s")
+        #expect(OpenCodeTurnHeader(turn: try finished(error: "MessageAbortedError"), isRunning: false)?.title() == "Stopped after 2m 12s")
+        #expect(OpenCodeTurnHeader(turn: try finished(error: "APIError"), isRunning: false)?.title() == "Failed after 2m 12s")
+
+        let running = try #require(OpenCodeTurnHeader(turn: OpenCodeTranscriptTurn(prompt: prompt), isRunning: true))
+        #expect(running.title(now: running.startedAt.addingTimeInterval(21)) == "Working for 21s")
+        // A device clock days away from the server's leaves the running turn untimed.
+        #expect(running.title(now: running.startedAt.addingTimeInterval(3 * 86_400)) == nil)
+        #expect(OpenCodeTurnHeader(turn: OpenCodeTranscriptTurn(prompt: prompt), isRunning: false) == nil)
+    }
+
+    // MARK: Fixtures
+
+    private let tokens: [String: Any] = ["input": 900, "output": 40, "reasoning": 0, "cache": ["read": 0, "write": 0]]
+
+    private func tool(_ id: String, _ name: String, status: String = "completed") -> [String: Any] {
+        ["id": id, "type": "tool", "tool": name, "callID": "call_\(id)",
+         "state": ["status": status, "input": ["filePath": "/repo/App.swift"], "output": "ok"]]
+    }
+
+    private func turn(replies: [OpenCodeMessageEnvelope]) throws -> OpenCodeTranscriptTurn {
+        OpenCodeTranscriptTurn(prompt: try message("u1", role: "user", ["text": "Go"]), replies: replies)
+    }
+
+    /// Parts without an `id` get `<message>-<index>`.
+    private func message(_ id: String, role: String, parent: String? = nil, created: Double = 1_000,
+                         completed: Double? = nil, _ parts: [String: Any]..., error: String? = nil) throws -> OpenCodeMessageEnvelope {
+        var time: [String: Any] = ["created": created]
+        if let completed { time["completed"] = completed }
+        var info: [String: Any] = ["id": id, "sessionID": "s", "role": role, "time": time]
+        if let parent { info["parentID"] = parent }
+        if let error { info["error"] = ["name": error, "data": ["message": "Request ended"]] }
+        let parts = parts.enumerated().map { index, fields in
+            var part = fields
+            if part["type"] == nil { part["type"] = "text" }
+            part["id"] = part["id"] ?? "\(id)-\(index)"
+            return part.merging(["sessionID": "s", "messageID": id]) { $1 }
+        }
+        let raw = try JSONSerialization.data(withJSONObject: ["info": info, "parts": parts])
+        return try JSONDecoder().decode(OpenCodeMessageEnvelope.self, from: raw)
+    }
+
+    private func part(_ fields: [String: Any]) throws -> OpenCodePart {
+        let raw = try JSONSerialization.data(withJSONObject: fields.merging(["sessionID": "s", "messageID": "m"]) { $1 })
+        return try JSONDecoder().decode(OpenCodePart.self, from: raw)
+    }
+}

@@ -415,3 +415,324 @@ enum OpenCodeDataURL {
         return (mime, data)
     }
 }
+
+// MARK: - Turns
+
+/// A prompt and the replies that answer it.
+struct OpenCodeTranscriptTurn: Identifiable, Equatable, Sendable {
+    let prompt: OpenCodeMessageEnvelope
+    var replies: [OpenCodeMessageEnvelope] = []
+
+    var id: String { prompt.id }
+}
+
+/// What the conversation draws: turns, shell runs, and replies whose prompt
+/// is not in the transcript, as when the history starts mid-turn.
+enum OpenCodeConversationRow: Identifiable, Equatable, Sendable {
+    case turn(OpenCodeTranscriptTurn)
+    case reply(OpenCodeMessageEnvelope)
+    case shell(OpenCodeShellRun)
+
+    var id: String {
+        switch self {
+        case .turn(let turn): turn.id
+        case .reply(let message): message.id
+        case .shell(let run): run.id
+        }
+    }
+
+    /// A reply joins the prompt its `parentID` names, else the latest prompt
+    /// before it, so a step that lands after a newer prompt stays in its turn.
+    static func rows(_ rows: [OpenCodeTranscriptRow]) -> [OpenCodeConversationRow] {
+        enum Slot { case turn(Int), reply(OpenCodeMessageEnvelope), shell(OpenCodeShellRun) }
+        var slots: [Slot] = []
+        var turns: [OpenCodeTranscriptTurn] = []
+        var turnIndex: [String: Int] = [:]
+        var latest: Int?
+        for row in rows {
+            switch row {
+            case .shell(let run):
+                slots.append(.shell(run))
+                latest = nil
+            case .message(let message) where message.info.role == "user":
+                turnIndex[message.id] = turns.count
+                latest = turns.count
+                slots.append(.turn(turns.count))
+                turns.append(OpenCodeTranscriptTurn(prompt: message))
+            case .message(let message):
+                // A named parent that is not in the transcript leaves the reply on its own.
+                let target: Int? = if let parentID = message.info.parentID { turnIndex[parentID] } else { latest }
+                if let target {
+                    turns[target].replies.append(message)
+                } else {
+                    slots.append(.reply(message))
+                }
+            }
+        }
+        return slots.map { slot in
+            switch slot {
+            case .turn(let index): .turn(turns[index])
+            case .reply(let message): .reply(message)
+            case .shell(let run): .shell(run)
+            }
+        }
+    }
+}
+
+/// The line above a turn's replies: how long OpenCode has been working, or
+/// how long it worked and how the turn ended.
+struct OpenCodeTurnHeader: Equatable, Sendable {
+    enum Ending: Equatable, Sendable { case completed, stopped, failed }
+
+    /// Nil while the turn runs.
+    let ending: Ending?
+    let startedAt: Date
+    let finishedAt: Date?
+
+    /// Nil for a finished turn with no reply to time.
+    init?(turn: OpenCodeTranscriptTurn, isRunning: Bool) {
+        startedAt = Date(timeIntervalSince1970: turn.prompt.info.time.created / 1_000)
+        if isRunning {
+            ending = nil
+            finishedAt = nil
+            return
+        }
+        guard let end = turn.replies.map({ $0.info.time.completed ?? $0.info.time.created }).max(),
+              let last = turn.replies.last else { return nil }
+        finishedAt = Date(timeIntervalSince1970: end / 1_000)
+        ending = switch last.info.error?.name {
+        case nil: .completed
+        case "MessageAbortedError": .stopped
+        default: .failed
+        }
+    }
+
+    /// The running header counts from the prompt on this device's clock, so
+    /// a server clock a day or more away shows no time rather than a wrong
+    /// one; a running turn then has no header, as the activity row says it works.
+    func title(now: Date = .now) -> String? {
+        let elapsed = (finishedAt ?? now).timeIntervalSince(startedAt)
+        guard elapsed < 86_400 else {
+            return switch ending {
+            case nil: nil
+            case .completed: String(localized: "Done")
+            case .stopped: String(localized: "Stopped")
+            case .failed: String(localized: "Failed")
+            }
+        }
+        let duration = OpenCodeSubagentCardPresentation.durationText(elapsed)
+        return switch ending {
+        case nil: String(localized: "Working for \(duration)")
+        case .completed: String(localized: "Worked for \(duration)")
+        case .stopped: String(localized: "Stopped after \(duration)")
+        case .failed: String(localized: "Failed after \(duration)")
+        }
+    }
+}
+
+/// A reply part and the model that wrote it, so a step footer measures
+/// against that model's context window.
+struct OpenCodeTurnPart: Identifiable, Equatable, Sendable {
+    let part: OpenCodePart
+    let modelKey: String?
+
+    var id: String { part.id }
+}
+
+/// One row under a turn's header.
+enum OpenCodeTurnItem: Identifiable, Equatable, Sendable {
+    case part(OpenCodeTurnPart)
+    case images([OpenCodePart])
+    /// Tool calls made back to back, with the reasoning and step footers between them.
+    case tools([OpenCodeTurnPart])
+    /// Accounting for a reply that sent no step-finish parts.
+    case replySummary(OpenCodeMessageEnvelope)
+    case error(messageID: String, OpenCodeMessageError)
+    /// Every file a folded turn changed, in one list.
+    case changes([String])
+
+    var id: String {
+        switch self {
+        case .part(let entry): entry.id
+        case .images(let parts): "images:" + (parts.first?.id ?? "")
+        case .tools(let entries): "tools:" + (entries.first?.id ?? "")
+        case .replySummary(let reply): "summary:" + reply.id
+        case .error(let messageID, _): "error:" + messageID
+        case .changes: "changes"
+        }
+    }
+}
+
+/// A turn's replies as rows, in full and folded. A finished turn opens folded,
+/// as Codex does: the last stretch of prose (the answer), the files and
+/// images it produced, the subagents it started, every file it changed in
+/// one list, and any error. Tool calls, reasoning, narration between them and
+/// step footers wait behind the header.
+struct OpenCodeTurnContent: Equatable, Sendable {
+    let items: [OpenCodeTurnItem]
+    let folded: [OpenCodeTurnItem]
+    /// Whether folding hides anything; a turn that only answered has nothing to open.
+    let canFold: Bool
+
+    init(turn: OpenCodeTranscriptTurn) {
+        var flat: [OpenCodeTurnItem] = []
+        for reply in turn.replies {
+            let modelKey = reply.info.providerID.flatMap { provider in reply.info.modelID.map { "\(provider)/\($0)" } }
+            for item in OpenCodeTranscriptLayout.items(for: reply.parts) {
+                switch item {
+                case .part(let part): flat.append(.part(OpenCodeTurnPart(part: part, modelKey: modelKey)))
+                case .images(let parts): flat.append(.images(parts))
+                }
+            }
+            if OpenCodeStepSummary(reply: reply) != nil { flat.append(.replySummary(reply)) }
+            if let error = reply.info.error { flat.append(.error(messageID: reply.id, error)) }
+        }
+        items = Self.groupingTools(flat)
+
+        var answer = Set<String>()
+        scan: for item in flat.reversed() {
+            switch Self.role(of: item) {
+            case .prose: answer.insert(item.id)
+            case .work where !answer.isEmpty: break scan
+            default: continue
+            }
+        }
+        var kept: [OpenCodeTurnItem] = []
+        var errors: [OpenCodeTurnItem] = []
+        var changed: [String] = []
+        var hidesWork = false
+        for item in flat {
+            switch item {
+            case .error: errors.append(item)
+            case .images: kept.append(item)
+            case .part(let entry) where entry.part.type == "patch":
+                for file in entry.part.files ?? [] where !changed.contains(file) { changed.append(file) }
+            case .part(let entry) where answer.contains(entry.id) || Self.isOutcome(entry.part):
+                kept.append(item)
+            default:
+                hidesWork = true
+            }
+        }
+        if !changed.isEmpty { kept.append(.changes(changed)) }
+        folded = kept + errors
+        canFold = hidesWork
+    }
+
+    private enum Role { case prose, work, quiet }
+
+    /// Prose is the answer's stuff; work interrupts it; everything else (step
+    /// footers, checkpoints, patches, files) can sit inside an answer.
+    private static func role(of item: OpenCodeTurnItem) -> Role {
+        guard case .part(let entry) = item else { return .quiet }
+        return switch entry.part.type {
+        case "text": .prose
+        case "tool", "reasoning", "retry", "subtask": .work
+        default: .quiet
+        }
+    }
+
+    /// What the turn produced, kept in view when it folds. Subagent cards stay
+    /// too: a background subagent can outlive the turn that started it.
+    private static func isOutcome(_ part: OpenCodePart) -> Bool {
+        switch part.type {
+        case "file", "compaction": true
+        case "tool": OpenCodeSubagentTask(part: part) != nil
+        default: false
+        }
+    }
+
+    /// Two or more tool calls with only reasoning, step footers and
+    /// checkpoints between them become one `.tools` row.
+    static func groupingTools(_ flat: [OpenCodeTurnItem]) -> [OpenCodeTurnItem] {
+        func isTool(_ item: OpenCodeTurnItem) -> Bool {
+            guard case .part(let entry) = item else { return false }
+            return entry.part.type == "tool" && OpenCodeSubagentTask(part: entry.part) == nil
+        }
+        func isBetweenTools(_ item: OpenCodeTurnItem) -> Bool {
+            guard case .part(let entry) = item else { return false }
+            return ["reasoning", "step-finish", "snapshot"].contains(entry.part.type)
+        }
+        var result: [OpenCodeTurnItem] = []
+        var index = flat.startIndex
+        while index < flat.endIndex {
+            guard isTool(flat[index]) else {
+                result.append(flat[index])
+                index += 1
+                continue
+            }
+            var lastTool = index
+            var probe = index + 1
+            while probe < flat.endIndex, isTool(flat[probe]) || isBetweenTools(flat[probe]) {
+                if isTool(flat[probe]) { lastTool = probe }
+                probe += 1
+            }
+            let run = flat[index...lastTool]
+            if run.filter(isTool).count >= 2 {
+                result.append(.tools(run.compactMap { item -> OpenCodeTurnPart? in
+                    guard case .part(let entry) = item else { return nil }
+                    return entry
+                }))
+            } else {
+                result.append(contentsOf: run)
+            }
+            index = lastTool + 1
+        }
+        return result
+    }
+}
+
+/// The line that stands for tool calls made back to back:
+/// `Read 3 files · Ran 2 commands`.
+struct OpenCodeToolRunSummary: Equatable, Sendable {
+    let title: String
+    let isRunning: Bool
+    let hasFailure: Bool
+
+    init(tools: [OpenCodePart]) {
+        var counts: [Kind: Int] = [:]
+        var order: [Kind] = []
+        for tool in tools {
+            let kind = Kind(tool: tool.tool)
+            if counts[kind] == nil { order.append(kind) }
+            counts[kind, default: 0] += 1
+        }
+        title = order.map { $0.phrase(count: counts[$0] ?? 0) }.joined(separator: " · ")
+        let statuses = tools.map { $0.state?.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        isRunning = statuses.contains { $0 == "running" || $0 == "pending" }
+        hasFailure = statuses.contains("error")
+    }
+
+    var accessibilityLabel: String {
+        [title, isRunning ? String(localized: "Running") : nil, hasFailure ? String(localized: "Failed") : nil]
+            .compactMap { $0 }
+            .joined(separator: ", ")
+    }
+
+    private enum Kind: Hashable {
+        case command, read, edit, search, fetch, tasks, other
+
+        init(tool: String?) {
+            self = switch tool?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "bash", "shell": .command
+            case "read": .read
+            case "write", "edit", "multiedit", "apply_patch", "patch": .edit
+            case "glob", "grep", "list", "codesearch": .search
+            case "webfetch", "websearch": .fetch
+            case "todoread", "todowrite": .tasks
+            default: .other
+            }
+        }
+
+        func phrase(count: Int) -> String {
+            switch self {
+            case .command: count == 1 ? String(localized: "Ran a command") : String(localized: "Ran \(count) commands")
+            case .read: count == 1 ? String(localized: "Read a file") : String(localized: "Read \(count) files")
+            case .edit: count == 1 ? String(localized: "Edited a file") : String(localized: "Edited \(count) files")
+            case .search: count == 1 ? String(localized: "Searched once") : String(localized: "Searched \(count) times")
+            case .fetch: count == 1 ? String(localized: "Fetched a page") : String(localized: "Fetched \(count) pages")
+            case .tasks: String(localized: "Updated tasks")
+            case .other: count == 1 ? String(localized: "Used a tool") : String(localized: "Used \(count) tools")
+            }
+        }
+    }
+}
