@@ -37,6 +37,24 @@ struct BYOTLocalizationTests {
         #expect(Self.table("InfoPlist")["NSCameraUsageDescription"]?.contains("相机") == true)
     }
 
+    @Test("Compiled permission prompts contain explanations in every shipped language")
+    func permissionPromptsAreReadable() throws {
+        let info = try #require(Bundle.main.infoDictionary)
+        let keys = info.keys.filter { $0.hasSuffix("UsageDescription") }
+        #expect(!keys.isEmpty)
+        for localization in ["en", Self.chinese] {
+            let strings = Self.table("InfoPlist", localization: localization)
+            for key in keys {
+                let value = try #require(strings[key], "Missing \(localization) permission prompt: \(key)")
+                #expect(!value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                #expect(value != key, "A raw key must not replace the permission explanation")
+                if localization == "en" {
+                    #expect(value == info[key] as? String, "English override differs from the base explanation")
+                }
+            }
+        }
+    }
+
     @Test("Every Chinese string keeps the placeholders of its English source")
     func placeholdersMatch() {
         let strings = Self.table("Localizable")
