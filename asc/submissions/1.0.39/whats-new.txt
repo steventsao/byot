@@ -1,0 +1,7 @@
+Fixes for screens that reacted badly to being left mid-load:
+
+- Leaving the projects screen while it was still loading could leave an error message and a blank workspace behind. A cancelled request is no longer treated as a failure, so the last known state stays put.
+- Saved sessions now say "Connecting" while byot reaches your server, instead of "Status unavailable". A sleeping computer could leave every row reading "Status unavailable" for up to a minute. "Status unavailable" is now kept for a server that answered with an error, and that project shows the reason.
+- While the "Showing sessions saved ..." notice is up, rows show no status, since none is known.
+- The camera, microphone, speech recognition and local network prompts now always show their explanation in English as well as Simplified Chinese.
+- If you have anonymous usage data on, leaving the session list mid-load no longer counts as a network error, and the server you connect to is counted correctly when you opt in during that launch.
