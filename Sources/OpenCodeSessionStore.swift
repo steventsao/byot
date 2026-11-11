@@ -1135,6 +1135,14 @@ final class OpenCodeSessionStore: ObservableObject {
     func removeQueuedPrompt(_ id: UUID) {
         promptQueue.remove(id)
         publishPromptQueue()
+        // The pause warning is about queued prompts; with none left it is stale.
+        if promptQueue.prompts.isEmpty, errorMessage == Self.queuePausedMessage {
+            errorMessage = nil
+        }
+    }
+
+    static var queuePausedMessage: String {
+        String(localized: "Live session activity could not be confirmed. Your queued message is paused to avoid sending it twice.")
     }
 
     func retryQueuedPrompt(_ id: UUID) {
@@ -2414,8 +2422,7 @@ final class OpenCodeSessionStore: ObservableObject {
                     promptQueue.pauseAwaitingActivity()
                     publishPromptQueue()
                     if hadQueuedFollowUps {
-                        errorMessage =
-                            String(localized: "Live session activity could not be confirmed. Your queued message is paused to avoid sending it twice.")
+                        errorMessage = Self.queuePausedMessage
                     }
                     await refreshMessages()
                     guard isCurrentQueueRecovery(recoveryID), status.isActive == false

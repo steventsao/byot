@@ -22,10 +22,18 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
             }
             let projects: [Project] = try await transport.get(["api", "project"], query: [])
             if !projects.isEmpty {
-                return projects.map {
-                    OpenCodeProject(
-                        id: $0.id, worktree: $0.canonical, vcs: $0.vcs, name: $0.name, time: $0.time,
-                        sandboxes: $0.sandboxes)
+                // `sandboxes` can omit existing Git worktrees, so the recent
+                // global sessions supply the other directories each project uses.
+                let recent = (try? await recentSessions()) ?? []
+                return projects.map { project in
+                    var seen = Set([project.canonical] + project.sandboxes)
+                    let extra = recent
+                        .filter { $0.projectID == project.id }
+                        .map(\.location.directory)
+                        .filter { seen.insert($0).inserted }
+                    return OpenCodeProject(
+                        id: project.id, worktree: project.canonical, vcs: project.vcs, name: project.name,
+                        time: project.time, sandboxes: project.sandboxes + extra)
                 }
             }
         }
@@ -269,6 +277,15 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
 
     var sessionListEventRoute: OpenCodeEventRoute {
         OpenCodeEventRoute(path: ["api", "event"], query: [])
+    }
+
+    /// The first page of the global session list, newest first.
+    private func recentSessions() async throws -> [OpenCodeV2Session] {
+        let response: OpenCodeV2CursorResponse<OpenCodeV2Session> = try await transport.get(
+            ["api", "session"],
+            query: [URLQueryItem(name: "limit", value: "100"), URLQueryItem(name: "order", value: "desc")]
+        )
+        return response.data
     }
 
     private func allSessions(

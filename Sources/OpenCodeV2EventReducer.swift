@@ -302,6 +302,7 @@ struct OpenCodeV2EventReducer: Sendable {
     private func upsertProjection(
         _ object: [String: OpenCodeJSONValue], sessionID: String, in messages: inout [OpenCodeMessageEnvelope]
     ) -> Outcome {
+        if object["type"]?.stringValue == "idle" { return .unchanged }
         guard let message = OpenCodeV2Normalization.message(object, sessionID: sessionID) else { return .unresolved }
         guard messages.first(where: { $0.id == message.id }) != message else { return .unchanged }
         upsert(message, in: &messages)

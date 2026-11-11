@@ -14,6 +14,29 @@ final class OpenCodePolishUITests: XCTestCase {
         screenshot(app, name: "new-session-composer")
     }
 
+    /// Issue #115: a multiline draft must stay on screen once the keyboard closes.
+    @MainActor
+    func testMultilineDraftStaysOnScreenAfterKeyboardCloses() {
+        let app = launch()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Draft session'")).firstMatch.tap()
+        let field = app.descendants(matching: .any)["opencode-composer-message"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        field.typeText(String(repeating: "A longer draft that wraps across several lines of the composer. ", count: 4))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1)
+        let window = app.windows.firstMatch.frame
+        screenshot(app, name: "multiline-draft-keyboard-closed")
+        XCTAssertLessThanOrEqual(field.frame.maxY, window.maxY, "field \(field.frame), window \(window)")
+        let send = app.buttons["opencode-composer-send"]
+        XCTAssertTrue(send.exists)
+        XCTAssertLessThanOrEqual(send.frame.maxY, window.maxY, "send \(send.frame), window \(window)")
+        XCTAssertTrue(send.isHittable)
+    }
+
     @MainActor
     func testCreationFailureStaysOnListAndAllowsRetry() {
         let app = launch(["--creation-error"])

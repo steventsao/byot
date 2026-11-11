@@ -212,6 +212,9 @@ enum OpenCodeV2Normalization {
             return OpenCodeMessageEnvelope(info: OpenCodeMessageInfo(id: id, sessionID: sessionID, role: "system",
                 time: OpenCodeMessageTime(created: created, completed: nil), agent: nil, modelID: nil, providerID: nil,
                 finish: nil, error: nil), parts: [part])
+        case "idle":
+            // A turn boundary, not content: the session status shows the state.
+            return nil
         case "shell" where (object["shellID"] ?? object["callID"])?.stringValue != nil:
             // The beta record names its shell `shellID` and nests the output;
             // current opencode names it `callID`, keeps the output as text and
