@@ -50,6 +50,18 @@ final class OpenCodeV2BetaTests: XCTestCase {
         XCTAssertEqual(projects.first?.worktree, "/repo")
     }
 
+    func testBetaProjectsAddWorktreesThatSandboxesOmit() async throws {
+        let (client, session) = makeClient()
+        defer { session.invalidateAndCancel() }
+        let projects = try await client.listProjects()
+        XCTAssertEqual(projects.first?.sandboxes, ["/repo-worktree"])
+    }
+
+    func testIdleMarkerIsNotRenderedAsText() throws {
+        let idle: [String: OpenCodeJSONValue] = ["id": .string("msg_idle"), "type": .string("idle"), "outcome": .string("succeeded")]
+        XCTAssertNil(OpenCodeV2Normalization.message(idle, sessionID: "ses_beta"))
+    }
+
     func testBetaFormsKeepOptionValuesAndReplyByFieldKey() async throws {
         let (client, session) = makeClient()
         defer { session.invalidateAndCancel() }
@@ -191,6 +203,9 @@ private final class BetaURLProtocol: URLProtocol, @unchecked Sendable {
                 if query.contains(where: { $0.name == "order" }) {
                     statusCode = 400; body = #"{"message":"order cannot be combined with cursor"}"#
                 } else { body = #"{"data":[],"cursor":{}}"# }
+            } else if !query.contains(where: { $0.name == "directory" }) {
+                // The global list also reports a session in a Git worktree that `sandboxes` omits.
+                body = #"{"data":[{"id":"ses_beta","projectID":"proj_1","time":{"created":1,"updated":1},"location":{"directory":"/repo"}},{"id":"ses_wt","projectID":"proj_1","time":{"created":1,"updated":2},"location":{"directory":"/repo-worktree"}},{"id":"ses_other","projectID":"proj_2","time":{"created":1,"updated":1},"location":{"directory":"/elsewhere"}}],"cursor":{}}"#
             } else { body = #"{"data":[{"id":"ses_beta","projectID":"proj_1","time":{"created":1,"updated":1},"location":{"directory":"/repo"}}],"cursor":{"next":"next-page"}}"# }
         case "/api/session":
             body = #"{"data":{"id":"ses_beta","projectID":"proj_1","time":{"created":1,"updated":1},"location":{"directory":"/repo"}}}"#

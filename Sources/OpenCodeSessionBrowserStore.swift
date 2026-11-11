@@ -352,7 +352,10 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
         var errors: [String] = []
         switch sessions {
         case .success(let sessions):
-            loaded.group.sessions = (sessions + worktrees.sessions).filter { $0.parentID == nil && $0.time.archived == nil }
+            var listed: Set<String> = []
+            loaded.group.sessions = (sessions + worktrees.sessions).filter {
+                $0.parentID == nil && $0.time.archived == nil && listed.insert($0.id).inserted
+            }
             loaded.group.isLoaded = true
             // The project's input snapshot answers only for its own directory;
             // worktree sessions are rechecked one by one when flagged.
