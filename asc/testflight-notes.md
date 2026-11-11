@@ -1,21 +1,21 @@
-BYOT 1.0.40 — Finished turns fold to their answer, with a timer on every turn
+BYOT 1.0.41 — OpenCode 2 fixes: no stray "Idle", sessions from every worktree
 
-Everything in 1.0.39 is here too. This build changes how a conversation reads: each turn now has a header that times it, a finished turn shows its answer and the files it changed with the steps folded away, and tool calls made back to back share one line.
+Everything in 1.0.40 is here too. This build fixes three things reported against OpenCode 2.
 
 Please test:
 
-A turn while it runs
-• Send a prompt that makes OpenCode read files and run commands. A line under your message says "Working for 5s" and counts up every second. Every step stays in view while it works.
-• When OpenCode makes several tool calls in a row, they share one line such as "Read 3 files · Ran 2 commands". The newest of these lines opens by itself so you can watch it; tap it to close or reopen it.
+Finished replies
+• Send a prompt to an OpenCode 2 server and let it finish. The reply ends with its last sentence. It no longer ends with the word "Idle". The header still says "Worked for …", and the session status still says Idle.
+• Fold and unfold the finished turn. "Idle" should not appear in either.
 
-A finished turn
-• When the reply ends, the header changes to "Worked for 1m 20s" and the turn folds to its last paragraph, any files or images it produced, and one "Changed N files" list for the whole turn. Tap a file there to open its changes.
-• Tap "Worked for …" to see every step again: tool calls, reasoning, retries and the token and cost lines. Tap it again to fold.
-• Stop a reply part way with the stop button. Its header says "Stopped after …". A reply that ends in an error says "Failed after …" and still shows the error.
-• A reply that only answered, with no tools, shows "Worked for …" with no arrow, since there is nothing to open.
+Sessions in Git worktrees
+• Use a repository that has an extra Git worktree, with sessions in both the main checkout and the worktree. Leave "Working directory" empty in the connection settings.
+• Open the project. Sessions from the worktree are listed with the main checkout's, without setting a working directory. Each session appears once.
+• Open a worktree session and check that its status (Working or Idle) is right.
+
+Queued prompts
+• While a reply is running, queue a second prompt. If it pauses with "Waiting to retry", remove it. The session goes back to normal, with no "Couldn't load this session" message.
 
 Things that should not change
-• Subagent cards stay visible in a folded turn and still open the subagent.
-• Commands you run yourself with ! still show as their own terminal card.
-• Long-press your own message for Undo and Fork, as before.
+• Sessions on OpenCode 1 servers, and with a working directory set, list as before.
 • Check in English and in Simplified Chinese.
