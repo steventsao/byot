@@ -216,8 +216,51 @@ enum BYOTTelemetryOpenCode {
         error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
-    static func errorOccurred(_ error: any Error, surface: Surface) -> BYOTTelemetry.Properties {
-        ["error_class": errorClass(error), "surface": surface.rawValue]
+    /// Apple's numeric `NSURLErrorDomain` code, such as -1004. `network` is the
+    /// class for every code `errorClass` does not name, so the code is what
+    /// says which one it was. Other domains and cancellations have none.
+    static func urlErrorCode(_ error: any Error) -> Int? {
+        guard !isCancellation(error) else { return nil }
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain ? nsError.code : nil
+    }
+
+    /// An error reduced to what `error_occurred` may carry. Sendable, so a
+    /// failure can travel out of a task group and be reported once.
+    struct ErrorDetail: Equatable, Sendable {
+        let errorClass: String
+        let urlErrorCode: Int?
+
+        init(_ error: any Error) {
+            errorClass = BYOTTelemetryOpenCode.errorClass(error)
+            urlErrorCode = BYOTTelemetryOpenCode.urlErrorCode(error)
+        }
+    }
+
+    /// What an error event may say about its server: the kind of address and,
+    /// once negotiated, the protocol. Never the address.
+    struct Server: Equatable, Sendable {
+        let hostKind: String
+        let serverProtocol: OpenCodeServerProtocol?
+
+        init(profile: OpenCodeServerProfile, serverProtocol: OpenCodeServerProtocol?) {
+            hostKind = BYOTTelemetryOpenCode.hostKind(of: profile.normalizedURL)
+            self.serverProtocol = serverProtocol
+        }
+    }
+
+    static func errorOccurred(_ error: any Error, surface: Surface, server: Server? = nil) -> BYOTTelemetry.Properties {
+        errorOccurred(ErrorDetail(error), surface: surface, server: server)
+    }
+
+    static func errorOccurred(_ detail: ErrorDetail, surface: Surface, server: Server? = nil) -> BYOTTelemetry.Properties {
+        var properties: BYOTTelemetry.Properties = ["error_class": detail.errorClass, "surface": surface.rawValue]
+        if let code = detail.urlErrorCode { properties["url_error_code"] = code }
+        if let server {
+            properties["host_kind"] = server.hostKind
+            if let serverProtocol = server.serverProtocol { properties["server_protocol"] = serverProtocol.rawValue }
+        }
+        return properties
     }
 
     static func turnFailed(_ error: OpenCodeMessageError) -> BYOTTelemetry.Properties {
@@ -240,5 +283,22 @@ extension BYOTTelemetry {
     func recordServerConnected(profile: OpenCodeServerProfile, serverProtocol: OpenCodeServerProtocol) {
         recordServerConnected(serverID: profile.id,
                               BYOTTelemetryOpenCode.serverConnected(profile: profile, serverProtocol: serverProtocol))
+    }
+}
+
+/// A service that can say which kind of server an error came from. Fixtures
+/// and harnesses say nothing; `OpenCodeClient` answers from its profile and
+/// the protocol it has negotiated so far.
+protocol BYOTTelemetryServerDescribing: Sendable {
+    func telemetryServer() async -> BYOTTelemetryOpenCode.Server?
+}
+
+extension BYOTTelemetryServerDescribing {
+    func telemetryServer() async -> BYOTTelemetryOpenCode.Server? { nil }
+}
+
+extension OpenCodeClient: BYOTTelemetryServerDescribing {
+    func telemetryServer() async -> BYOTTelemetryOpenCode.Server? {
+        BYOTTelemetryOpenCode.Server(profile: profile, serverProtocol: await negotiatedProtocol())
     }
 }

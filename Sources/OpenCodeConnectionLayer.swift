@@ -56,6 +56,8 @@ actor OpenCodeConnection {
         adapterWork?.task.cancel()
     }
 
+    var negotiatedProtocol: OpenCodeServerProtocol? { serverProtocol }
+
     /// Concurrent refreshes share an in-flight health probe. A later refresh
     /// starts a new generation, so an older schema cannot repopulate the cache.
     func probe() async throws -> OpenCodeServerProbe {
