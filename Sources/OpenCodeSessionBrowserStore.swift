@@ -74,6 +74,7 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
     private let service: any OpenCodeSessionBrowsing
     private let cache: OpenCodeOfflineCacheScope?
     private let timing: OpenCodeSessionListLiveTiming
+    private let telemetry: BYOTTelemetry
     private var generation = 0
     // Archived from this list. A load already in flight must not bring them back.
     private var archivedIDs: Set<String> = []
@@ -141,11 +142,12 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
 
     init(
         service: any OpenCodeSessionBrowsing, cache: OpenCodeOfflineCacheScope? = nil,
-        timing: OpenCodeSessionListLiveTiming = .standard
+        timing: OpenCodeSessionListLiveTiming = .standard, telemetry: BYOTTelemetry = .shared
     ) {
         self.service = service
         self.cache = cache
         self.timing = timing
+        self.telemetry = telemetry
         // Restore synchronously, so the first frame already lists the last-known sessions.
         if let saved = cache?.sessionList() {
             groups = saved.groups.map { saved in
@@ -281,6 +283,9 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
         defer { if generation == requestGeneration { isLoading = false } }
         let service = service
         var inputCovered = Set<String>()
+        // Every project's fetch fails together when the server is out of
+        // reach. Report the load once, not once per project.
+        var failure: BYOTTelemetryOpenCode.ErrorDetail?
         // Bound fan-out and publish each project as it arrives. A slow project
         // must not hide usable sessions from another project.
         await withTaskGroup(of: Loaded.self) { tasks in
@@ -298,6 +303,7 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
                     tasks.cancelAll()
                     break
                 }
+                if failure == nil { failure = loaded.failure }
                 if let index = groups.firstIndex(where: { $0.id == loaded.group.id }) {
                     var group = loaded.group
                     if !group.isLoaded { group.sessions = groups[index].sessions }
@@ -312,6 +318,11 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
             }
         }
         guard !Task.isCancelled, generation == requestGeneration else { return }
+        if let failure, telemetry.block == nil {
+            let server = await service.telemetryServer()
+            telemetry.record(.errorOccurred, BYOTTelemetryOpenCode.errorOccurred(failure, surface: .sessionList, server: server))
+            guard !Task.isCancelled, generation == requestGeneration else { return }
+        }
         // Reconciled: the list now reflects the server, including removed projects.
         cachedAt = nil
         saveToCache()
@@ -324,6 +335,8 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
         var group: OpenCodeSessionGroup
         var sessionIDs: Set<String> = []
         var pendingInput: [String: Set<String>]?
+        /// Why this project's sessions did not load, for the one usage event per load.
+        var failure: BYOTTelemetryOpenCode.ErrorDetail?
     }
 
     nonisolated private static func fetch(
@@ -349,7 +362,7 @@ final class OpenCodeSessionBrowserStore: ObservableObject {
             // A superseded load, or the list leaving the screen, cancels every
             // project's fetch at once. That is not a failure worth reporting.
             if !Task.isCancelled, !BYOTTelemetryOpenCode.isCancellation(error) {
-                BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.errorOccurred(error, surface: .sessionList))
+                loaded.failure = BYOTTelemetryOpenCode.ErrorDetail(error)
             }
         }
         switch statuses {

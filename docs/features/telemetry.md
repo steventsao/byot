@@ -68,7 +68,7 @@ counted in `droppedEventCount`.
 | `session_started` | `server_protocol` | A session is created from byot (new session, worktree, Siri, share) |
 | `turn_requested` | `kind`: `prompt` / `command` / `skill` / `shell` · `delivery`: `now` / `queued` / `computer_queue` · `agent`: `build` / `plan` / `other` / `none` · `provider`: an OpenCode provider id or `other` / `none` · `model`: a catalog model id, or `other` under a custom provider, or `none` · `variant_set` · `attachment_count` · `file_reference_count` | The person sends a message, a slash command, a skill, or a shell command |
 | `turn_completed` | `result`: `completed` / `failed` / `stopped` · `duration_ms` · `agent` · `provider` · `model` · `input_tokens` · `output_tokens` · `reasoning_tokens` · `reply_count` | A turn byot requested goes idle while its conversation is open |
-| `error_occurred` | `error_class` (see below) · `surface`: `connection` / `session_list` / `send` / `turn` / `shell` | A session list fails to load (not when the load is cancelled because the list left the screen or the app went inactive), a send fails, or the server reports a failed turn |
+| `error_occurred` | `error_class` (see below) · `surface`: `connection` / `session_list` / `send` / `turn` / `shell` · `url_error_code`: Apple's numeric `NSURLErrorDomain` code, such as `-1004`, for URL loading errors only · `host_kind` and `server_protocol`, the same values as on `server_connected`, for session list and send errors (`server_protocol` only once negotiated) | A session list fails to load, reported once per load however many projects failed (not when the load is cancelled because the list left the screen or the app went inactive), a send fails, or the server reports a failed turn |
 | `nudge_outcome` | `kind`: `star_card` / `review_request` · `outcome`: `shown` / `starred` / `later` / `requested` · `completed_turns` · `threshold` | byot asks for a GitHub star or Apple's review prompt after a completed turn, and what the person chose; see [star-nudge.md](star-nudge.md) |
 
 `host_kind` classifies the address and never carries it: `*.ts.net` or a
@@ -88,6 +88,10 @@ OpenCode's primary agents; a custom agent is `other`.
 `other`; and for failed turns `aborted`, `provider_auth`, `output_length`,
 `provider_api`, `context_overflow`, `turn_failed`.
 
+`network` covers every URL loading error the list above does not name, so
+`url_error_code` is what tells those apart. It is one of Apple's fixed
+negative codes and never carries the error's message, host or path.
+
 Token totals cover the replies to the turn's own user message as loaded when
 the turn settles; a reply that has not arrived yet is not counted. A turn
 whose conversation is closed before it ends is not reported at all.
@@ -100,7 +104,7 @@ The bar is "what OpenCode, T3 Code and Orca do, and not more", checked on
 | | OpenCode (`sst/opencode`) | T3 Code (`pingdotgg/t3code`) | Orca (`stablyai/orca`) | BYOT |
 | --- | --- | --- | --- | --- |
 | Product analytics | None in the CLI, server, web or desktop app | PostHog, 5 events, server-side | PostHog, 88 events, desktop only | PostHog, 7 events |
-| Error reporting | Sentry in the web and desktop apps when a DSN is built in (Breadcrumbs off) | None | Local trace file; bundle upload only by hand | None; one coarse `error_class` |
+| Error reporting | Sentry in the web and desktop apps when a DSN is built in (Breadcrumbs off) | None | Local trace file; bundle upload only by hand | None; one coarse `error_class`, plus Apple's numeric code for URL loading errors |
 | Consent | n/a | Opt-out: `T3CODE_TELEMETRY_ENABLED=false` | Opt-in banner, Settings switch, `DO_NOT_TRACK`, `ORCA_TELEMETRY_DISABLED`, CI off | Opt-in question, About switch, `--telemetry-disabled`, `BYOT_TELEMETRY_DISABLED=1`, tests off, forks off |
 | Identity | n/a | Hashed provider account id, else install id | Random install id, no person profile | Random install id, no person profile, deleted on opt-out |
 | Per turn | n/a | provider, model, reasoning effort, permission mode, result, duration, token totals | agent kind, token counts, coarse error class | kind, provider, model, agent (build/plan/other), result, duration, token totals, counts |

@@ -81,10 +81,19 @@ struct BYOTTelemetrySchemaTests {
         telemetry.record(.turnRequested, BYOTTelemetryOpenCode.shellRequested())
         telemetry.record(.turnCompleted, BYOTTelemetryOpenCode.turnCompleted(turn, result: "completed", messages: [], now: .now))
         telemetry.record(.errorOccurred, BYOTTelemetryOpenCode.errorOccurred(URLError(.timedOut), surface: .sessionList))
+        telemetry.record(.errorOccurred, BYOTTelemetryOpenCode.errorOccurred(
+            URLError(.badServerResponse), surface: .send,
+            server: BYOTTelemetryOpenCode.Server(profile: profile, serverProtocol: .v2)))
         telemetry.record(.errorOccurred, BYOTTelemetryOpenCode.turnFailed(details: ["type": .string("APIError"), "status": .number(410)]))
         #expect(telemetry.droppedEventCount == 0)
         #expect(transport.names == ["app_opened", "server_connected", "session_started", "turn_requested",
-                                    "turn_requested", "turn_completed", "error_occurred", "error_occurred"])
+                                    "turn_requested", "turn_completed", "error_occurred", "error_occurred",
+                                    "error_occurred"])
+        let sendFailure = try #require(transport.captured.first { $0.properties["surface"] as? String == "send" }).properties
+        #expect(sendFailure["error_class"] as? String == "network")
+        #expect(sendFailure["url_error_code"] as? Int == NSURLErrorBadServerResponse)
+        #expect(sendFailure["host_kind"] as? String == "tailscale")
+        #expect(sendFailure["server_protocol"] as? String == "v2")
         let connected = try #require(transport.captured.first { $0.name == "server_connected" }).properties
         #expect(connected["host_kind"] as? String == "tailscale")
         #expect(connected["transport"] as? String == "https")
@@ -244,5 +253,61 @@ struct BYOTTelemetryVocabularyTests {
         #expect(cls(URLError(.cancelled)) == "cancelled")
         #expect(BYOTTelemetryOpenCode.failureClass(OpenCodeMessageError(name: "MessageAbortedError", data: nil)) == "aborted")
         #expect(BYOTTelemetryOpenCode.failureClass(OpenCodeMessageError(name: "SomethingElse", data: nil)) == "turn_failed")
+    }
+
+    @Test("URL loading errors keep Apple's numeric code; other errors and cancellations have none")
+    func urlErrorCodes() {
+        #expect(BYOTTelemetryOpenCode.errorClass(URLError(.badServerResponse)) == "network")
+        #expect(BYOTTelemetryOpenCode.urlErrorCode(URLError(.badServerResponse)) == NSURLErrorBadServerResponse)
+        #expect(BYOTTelemetryOpenCode.urlErrorCode(URLError(.cannotConnectToHost)) == NSURLErrorCannotConnectToHost)
+        #expect(BYOTTelemetryOpenCode.urlErrorCode(URLError(.cancelled)) == nil)
+        #expect(BYOTTelemetryOpenCode.urlErrorCode(OpenCodeConnectionError.httpStatus(500, nil)) == nil)
+        #expect(BYOTTelemetryOpenCode.urlErrorCode(CancellationError()) == nil)
+        let plain = BYOTTelemetryOpenCode.errorOccurred(OpenCodeConnectionError.emptyResponse, surface: .send)
+        #expect(Set(plain.keys) == ["error_class", "surface"])
+        let beforeNegotiation = BYOTTelemetryOpenCode.errorOccurred(
+            URLError(.timedOut), surface: .sessionList,
+            server: BYOTTelemetryOpenCode.Server(
+                profile: OpenCodeServerProfile(name: "Studio", baseURL: "http://192.168.1.20:4096"), serverProtocol: nil))
+        #expect(beforeNegotiation["host_kind"] as? String == "local_address")
+        #expect(beforeNegotiation["server_protocol"] == nil)
+    }
+}
+
+@Suite("Usage data from the session list")
+struct BYOTTelemetrySessionListTests {
+    @Test("A load that fails for every project reports one error, with the server's kind and protocol")
+    @MainActor
+    func oneErrorPerFailedLoad() async throws {
+        let (telemetry, transport, _) = try makeTelemetry(consent: .enabled)
+        telemetry.start()
+        let store = OpenCodeSessionBrowserStore(service: UnreachableBrowserService(), telemetry: telemetry)
+        let projects = ["/repo/one", "/repo/two", "/repo/three"].map {
+            OpenCodeProject(id: $0, worktree: $0, vcs: nil, name: nil,
+                            time: OpenCodeProjectTime(created: 0, updated: 0), sandboxes: [])
+        }
+        await store.load(projects: projects)
+        #expect(store.groups.allSatisfy { $0.error != nil })
+        let errors = transport.captured.filter { $0.name == "error_occurred" }
+        #expect(errors.count == 1)
+        let properties = try #require(errors.first).properties
+        #expect(properties["surface"] as? String == "session_list")
+        #expect(properties["error_class"] as? String == "network")
+        #expect(properties["url_error_code"] as? Int == NSURLErrorBadServerResponse)
+        #expect(properties["host_kind"] as? String == "public")
+        #expect(properties["server_protocol"] as? String == "v2")
+        #expect(telemetry.droppedEventCount == 0)
+    }
+}
+
+/// A server whose every list request fails the same way, as when it is out of reach.
+private actor UnreachableBrowserService: OpenCodeSessionBrowsing {
+    func listSessions(directory: String) async throws -> [OpenCodeSession] { throw URLError(.badServerResponse) }
+    func sessionStatuses(directory: String, workspace: String?) async throws -> [String: OpenCodeSessionStatus] {
+        throw URLError(.badServerResponse)
+    }
+    func telemetryServer() async -> BYOTTelemetryOpenCode.Server? {
+        BYOTTelemetryOpenCode.Server(profile: OpenCodeServerProfile(name: "Studio", baseURL: "https://opencode.example.com"),
+                                     serverProtocol: .v2)
     }
 }

@@ -52,6 +52,12 @@ struct OpenCodeClient: Sendable {
         return adapter
     }
 
+    /// The protocol this connection has settled on, without probing; nil
+    /// before the first successful probe or while a refresh re-probes.
+    func negotiatedProtocol() async -> OpenCodeServerProtocol? {
+        await connection.negotiatedProtocol
+    }
+
     func health() async throws -> OpenCodeHealth {
         try await transport.get(["global", "health"], query: [])
     }

@@ -1315,10 +1315,13 @@ final class OpenCodeSessionStore: ObservableObject {
                 telemetryTurn = nil
                 clearOptimisticBusy()
             }
-            BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.errorOccurred(error, surface: .send))
             errorMessage = prompt.command?.kind == .command
                 ? String(localized: "The command may have run before the connection failed. Review the session before choosing Run again. \(error.localizedDescription)")
                 : error.localizedDescription
+            // Last, so asking the service which server this was cannot delay the state above.
+            let detail = BYOTTelemetryOpenCode.ErrorDetail(error)
+            let server = BYOTTelemetry.shared.block == nil ? await service.telemetryServer() : nil
+            BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.errorOccurred(detail, surface: .send, server: server))
         }
     }
 

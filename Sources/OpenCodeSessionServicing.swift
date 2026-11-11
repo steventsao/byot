@@ -1,6 +1,6 @@
 import Foundation
 
-protocol OpenCodeSessionBrowsing: Sendable {
+protocol OpenCodeSessionBrowsing: BYOTTelemetryServerDescribing {
     func listSessions(directory: String) async throws -> [OpenCodeSession]
     func sessionStatuses(directory: String, workspace: String?) async throws -> [String:
         OpenCodeSessionStatus]
@@ -32,7 +32,7 @@ protocol OpenCodeProjectServicing: OpenCodeSessionBrowsing {
 
 /// The session store consumes normalized domain operations. It needs neither
 /// credentials nor knowledge of the selected protocol's routes and wire DTOs.
-protocol OpenCodeSessionServicing: Sendable {
+protocol OpenCodeSessionServicing: BYOTTelemetryServerDescribing {
     func composerCatalog(sessionID: String, directory: String, workspace: String?) async throws -> OpenCodeComposerCatalog
     func sendPrompt(sessionID: String, directory: String, workspace: String?, prompt: OpenCodeQueuedPrompt) async throws
     func capabilities() async throws -> OpenCodeProtocolCapabilities

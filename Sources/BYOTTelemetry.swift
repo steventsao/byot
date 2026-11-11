@@ -28,7 +28,7 @@ enum BYOTTelemetryEvent: String, CaseIterable, Sendable {
         case .turnCompleted:
             ["result", "duration_ms", "agent", "provider", "model", "input_tokens", "output_tokens",
              "reasoning_tokens", "reply_count", "server_protocol"]
-        case .errorOccurred: ["error_class", "surface", "server_protocol"]
+        case .errorOccurred: ["error_class", "surface", "url_error_code", "host_kind", "server_protocol"]
         case .nudgeOutcome: ["kind", "outcome", "completed_turns", "threshold"]
         }
     }
