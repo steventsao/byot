@@ -150,7 +150,7 @@ struct OpenCodeSessionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if dynamicTypeSize.isAccessibilitySize {
-                Text(session.title)
+                Text(OpenCodeSubagentTitle.displayTitle(of: session))
                     .font(.cleanBodySemibold)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -172,7 +172,7 @@ struct OpenCodeSessionRow: View {
                 .foregroundStyle(.secondary)
             } else {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(session.title)
+                    Text(OpenCodeSubagentTitle.displayTitle(of: session))
                         .font(.cleanBodySemibold)
                         .lineLimit(2)
                     Spacer(minLength: 12)

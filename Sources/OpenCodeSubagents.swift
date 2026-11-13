@@ -114,7 +114,14 @@ enum OpenCodeSubagentTitle {
     }
 
     static func displayTitle(of session: OpenCodeSession) -> String {
-        session.parentID == nil ? session.title : parse(session.title).task
+        let title = session.parentID == nil ? session.title : parse(session.title).task
+        return isPlaceholder(title) ? String(localized: "New session") : title
+    }
+
+    /// OpenCode names a session `New session - <ISO 8601 time>` until the first
+    /// reply gives it a real title. The row already shows when it was updated.
+    static func isPlaceholder(_ title: String) -> Bool {
+        title.wholeMatch(of: /(New|Child) session - \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/) != nil
     }
 
     static func agent(of session: OpenCodeSession) -> String? {

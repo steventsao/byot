@@ -1,21 +1,23 @@
-BYOT 1.0.41 — OpenCode 2 fixes: no stray "Idle", sessions from every worktree
+BYOT 1.0.42 — small polish: session names, prompt menu, haptics
 
-Everything in 1.0.40 is here too. This build fixes three things reported against OpenCode 2.
+Everything in 1.0.41 is here too. This build has three small changes and no new features.
 
 Please test:
 
-Finished replies
-• Send a prompt to an OpenCode 2 server and let it finish. The reply ends with its last sentence. It no longer ends with the word "Idle". The header still says "Worked for …", and the session status still says Idle.
-• Fold and unfold the finished turn. "Idle" should not appear in either.
+Session names
+• Create a session and go back to the list before sending anything. It is listed as "New session", not "New session - 2026-…" with a timestamp. The time it was updated is still on the row.
+• Send a prompt. Once OpenCode names the session, the list shows that name.
 
-Sessions in Git worktrees
-• Use a repository that has an extra Git worktree, with sessions in both the main checkout and the worktree. Leave "Working directory" empty in the connection settings.
-• Open the project. Sessions from the worktree are listed with the main checkout's, without setting a working directory. Each session appears once.
-• Open a worktree session and check that its status (Working or Idle) is right.
+Long-press on your prompt
+• Long-press the words of a prompt you sent. The menu has Select text, Copy prompt, Undo to this prompt and Fork before this prompt.
+• Copy prompt puts only what you typed on the clipboard.
+• Long-press a reply. Its menu still says Copy response.
 
-Queued prompts
-• While a reply is running, queue a second prompt. If it pauses with "Waiting to retry", remove it. The session goes back to normal, with no "Couldn't load this session" message.
+Haptics
+• Sending a prompt gives a light tap.
+• When OpenCode asks for a permission or an answer while the session is open, the phone gives a warning buzz.
+• When a turn finishes while the session is open, the phone gives a soft tap.
 
 Things that should not change
-• Sessions on OpenCode 1 servers, and with a working directory set, list as before.
+• The session screen, the composer and the Worktrees screen look and behave as in 1.0.41. Their code was rearranged so the app builds on an older Xcode.
 • Check in English and in Simplified Chinese.

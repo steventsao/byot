@@ -3157,6 +3157,16 @@
         }
       }
     },
+    "Copy prompt" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拷贝提示词"
+          }
+        }
+      }
+    },
     "Copy response" : {
       "localizations" : {
         "zh-Hans" : {

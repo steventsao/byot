@@ -108,6 +108,10 @@ struct OpenCodeSubagentTests {
         #expect(OpenCodeSubagentTitle.agent(of: child) == "explore")
         // A root session keeps its whole title, even one shaped like a subagent's.
         #expect(OpenCodeSubagentTitle.displayTitle(of: session("ses_r", parent: nil, title: "A (@b subagent)")) == "A (@b subagent)")
+        // OpenCode's placeholder name loses its timestamp; a real title that only resembles it stays.
+        #expect(OpenCodeSubagentTitle.displayTitle(of: session("ses_n", parent: nil, title: "New session - 2026-09-28T03:53:12.345Z")) == "New session")
+        #expect(OpenCodeSubagentTitle.displayTitle(of: session("ses_k", parent: "ses_p", title: "Child session - 2026-09-28T03:53:12Z")) == "New session")
+        #expect(OpenCodeSubagentTitle.displayTitle(of: session("ses_t", parent: nil, title: "New session - billing rewrite")) == "New session - billing rewrite")
     }
 
     @Test("Siblings step in creation order without wrapping, and only a subagent has a family")

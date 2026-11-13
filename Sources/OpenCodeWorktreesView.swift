@@ -101,7 +101,7 @@ struct OpenCodeWorktreesScreen<SessionView: View>: View {
             Text("OpenCode checks out a new branch, opencode/<name>, in its own folder on the server. Leave the name empty for a random one.")
         }
         .confirmationDialog(
-            pendingReset.map { "Reset “\($0.name)”?" } ?? "Reset worktree?",
+            resetTitle,
             isPresented: Binding(get: { pendingReset != nil }, set: { if !$0 { pendingReset = nil } }),
             titleVisibility: .visible, presenting: pendingReset
         ) { worktree in
@@ -111,7 +111,7 @@ struct OpenCodeWorktreesScreen<SessionView: View>: View {
             Text(OpenCodeWorktreeCopy.resetMessage(worktree, summary: store.summaries[worktree.directory]))
         }
         .confirmationDialog(
-            pendingRemoval.map { "Delete “\($0.name)”?" } ?? "Delete worktree?",
+            removalTitle,
             isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
             titleVisibility: .visible, presenting: pendingRemoval
         ) { worktree in
@@ -131,6 +131,15 @@ struct OpenCodeWorktreesScreen<SessionView: View>: View {
             if phase == .active && isOnScreen { Task { await store.load() } }
         }
         .accessibilityIdentifier("worktrees")
+    }
+
+    // Typed here so the compiler doesn't weigh every title overload inside `body`.
+    private var resetTitle: LocalizedStringKey {
+        if let pendingReset { "Reset “\(pendingReset.name)”?" } else { "Reset worktree?" }
+    }
+
+    private var removalTitle: LocalizedStringKey {
+        if let pendingRemoval { "Delete “\(pendingRemoval.name)”?" } else { "Delete worktree?" }
     }
 
     @ViewBuilder private var stateOverlay: some View {

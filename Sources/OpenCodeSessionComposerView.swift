@@ -62,6 +62,62 @@ struct OpenCodeSessionComposerView: View {
     }
 
     var body: some View {
+        composerState
+        .sheet(item: $previewAttachment) { attachment in
+            OpenCodeAttachmentPreview(attachment: attachment)
+        }
+        .sheet(isPresented: $isShowingModelPicker) {
+            OpenCodeModelPickerView(store: store)
+        }
+        .sheet(isPresented: $isShowingAgentPicker) {
+            OpenCodeAgentPickerView(store: store)
+        }
+        .onChange(of: restoredMessage) { _, message in
+            guard let message else { return }
+            restore(message)
+            onRestoreConsumed?()
+        }
+        .photosPicker(
+            isPresented: $isShowingPhotoPicker,
+            selection: $selectedPhotos,
+            maxSelectionCount: max(
+                1,
+                OpenCodePromptAttachment.maximumCount - attachments.count
+            ),
+            matching: .images,
+            preferredItemEncoding: .current
+        )
+        .fileImporter(
+            isPresented: $isShowingFileImporter,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: true,
+            onCompletion: importFiles
+        )
+        .onChange(of: selectedPhotos) { _, items in
+            guard !items.isEmpty else { return }
+            importPhotos(items)
+        }
+        .onChange(of: store.modelFailure) { _, failure in
+            if failure != nil { isFocused = false }
+        }
+        .alert(
+            "Couldn’t Add Attachment",
+            isPresented: Binding(
+                get: { attachmentErrorMessage != nil },
+                set: { if !$0 { attachmentErrorMessage = nil } }
+            ),
+            actions: {
+                Button("OK", role: .cancel) { attachmentErrorMessage = nil }
+            },
+            message: {
+                Text(attachmentErrorMessage ?? String(localized: "The attachment couldn’t be read."))
+            }
+        )
+    }
+
+    // `body` is cut in three: as a single chain of modifiers the compiler
+    // cannot type-check it in reasonable time.
+    private var composerPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let draftErrorMessage {
                 Text(draftErrorMessage)
@@ -190,6 +246,10 @@ struct OpenCodeSessionComposerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(BYOTBrand.canvas)
+    }
+
+    private var composerState: some View {
+        composerPanel
         .onAppear {
             loadDraft()
             isOnScreen = true
@@ -240,56 +300,6 @@ struct OpenCodeSessionComposerView: View {
             guard !Task.isCancelled else { return }
             isFocused = true
         }
-        .sheet(item: $previewAttachment) { attachment in
-            OpenCodeAttachmentPreview(attachment: attachment)
-        }
-        .sheet(isPresented: $isShowingModelPicker) {
-            OpenCodeModelPickerView(store: store)
-        }
-        .sheet(isPresented: $isShowingAgentPicker) {
-            OpenCodeAgentPickerView(store: store)
-        }
-        .onChange(of: restoredMessage) { _, message in
-            guard let message else { return }
-            restore(message)
-            onRestoreConsumed?()
-        }
-        .photosPicker(
-            isPresented: $isShowingPhotoPicker,
-            selection: $selectedPhotos,
-            maxSelectionCount: max(
-                1,
-                OpenCodePromptAttachment.maximumCount - attachments.count
-            ),
-            matching: .images,
-            preferredItemEncoding: .current
-        )
-        .fileImporter(
-            isPresented: $isShowingFileImporter,
-            allowedContentTypes: [.item],
-            allowsMultipleSelection: true,
-            onCompletion: importFiles
-        )
-        .onChange(of: selectedPhotos) { _, items in
-            guard !items.isEmpty else { return }
-            importPhotos(items)
-        }
-        .onChange(of: store.modelFailure) { _, failure in
-            if failure != nil { isFocused = false }
-        }
-        .alert(
-            "Couldn’t Add Attachment",
-            isPresented: Binding(
-                get: { attachmentErrorMessage != nil },
-                set: { if !$0 { attachmentErrorMessage = nil } }
-            ),
-            actions: {
-                Button("OK", role: .cancel) { attachmentErrorMessage = nil }
-            },
-            message: {
-                Text(attachmentErrorMessage ?? String(localized: "The attachment couldn’t be read."))
-            }
-        )
     }
 
     private var draftStore: OpenCodeComposerDraftStore {
@@ -764,6 +774,7 @@ struct OpenCodeSessionComposerView: View {
         let promptAttachments = attachments
         let promptReferences = remoteReferences
         if store.send(prompt, attachments: promptAttachments, remoteReferences: promptReferences) {
+            AgentHaptics.send()
             text = ""
             attachments = []
             remoteReferences = []
