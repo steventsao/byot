@@ -1,0 +1,23 @@
+{
+  "command": "asc versions release --version-id 49c3f5b7-fdca-475c-b4f2-842e4f640b74 --confirm",
+  "releasedOn": "2026-10-20",
+  "reviewSubmission": {
+    "id": "238f6465-1f46-4072-b0a0-398c1d78bcbc",
+    "submittedDate": "2026-10-19T01:49:19.094Z",
+    "state": "COMPLETE"
+  },
+  "phasedRelease": false,
+  "response": {
+    "releaseRequestId": "49c3f5b7-fdca-475c-b4f2-842e4f640b74",
+    "versionId": "49c3f5b7-fdca-475c-b4f2-842e4f640b74"
+  },
+  "stateAfterRelease": {
+    "versionId": "49c3f5b7-fdca-475c-b4f2-842e4f640b74",
+    "version": "1.0.35",
+    "appStoreState": "READY_FOR_SALE",
+    "appVersionState": "READY_FOR_DISTRIBUTION",
+    "releaseType": "MANUAL",
+    "buildId": "75839cb4-4a9f-4a72-b741-1d7f06d8638b",
+    "buildVersion": "20261018125249"
+  }
+}
