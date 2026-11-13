@@ -281,9 +281,29 @@ enum AgentInlineMarkdown {
     }
 }
 
+/// An extra long-press action for the text it wraps. The text's own menu is
+/// the one that opens, so a row's actions have to travel down to it.
+struct AgentTextMenuAction: Identifiable {
+    let title: String
+    let symbol: String
+    var isDisabled = false
+    let run: @MainActor () -> Void
+    var id: String { title }
+}
+
+struct AgentTextMenu {
+    var copyTitle = String(localized: "Copy response")
+    var actions: [AgentTextMenuAction] = []
+}
+
+extension EnvironmentValues {
+    @Entry var agentTextMenu = AgentTextMenu()
+}
+
 struct AgentMarkdownText: View {
     let text: String
     @State private var selection: AgentTextSelection?
+    @Environment(\.agentTextMenu) private var menu
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -296,8 +316,16 @@ struct AgentMarkdownText: View {
             Button("Select text", systemImage: "text.cursor") {
                 selection = AgentTextSelection(text: text)
             }
-            Button("Copy response", systemImage: "doc.on.doc") {
+            Button(menu.copyTitle, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = text
+                AgentHaptics.send()
+            }
+            if !menu.actions.isEmpty {
+                Divider()
+                ForEach(menu.actions) { action in
+                    Button(action.title, systemImage: action.symbol) { action.run() }
+                        .disabled(action.isDisabled)
+                }
             }
         }
         .accessibilityAction(named: "Select text") {

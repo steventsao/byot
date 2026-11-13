@@ -146,6 +146,228 @@ struct OpenCodeSessionScreen: View {
     }
 
     var body: some View {
+        sessionSheets
+        .sheet(item: $diffRequest) { request in
+            OpenCodeDiffReviewView(
+                store: diffReview,
+                request: request,
+                latestTurnMessageID: store.messages.last { $0.info.role == "user" }?.id,
+                sessionDiffs: store.diffs
+            )
+        }
+        .sheet(isPresented: $isShowingRecoveryModelPicker) {
+            OpenCodeModelPickerView(store: store)
+                .task { await store.reloadModels() }
+        }
+        .onAppear {
+            push.activeRoute = BYOTPushRoute(serverID: client.profile.id, sessionID: store.session.id, directory: store.session.directory, workspace: store.session.workspaceID)
+            visibleSessions?.update(visibility, OpenCodeSessionSelection(client: client, session: store.session, attention: attention))
+        }
+        .alert("Couldn’t update notifications", isPresented: Binding(get: { notificationError != nil }, set: { if !$0 { notificationError = nil } })) {
+            Button("OK") { notificationError = nil }
+        } message: { Text(verbatim: notificationError ?? "") }
+        .task { await store.start() }
+        .task { canOpenTerminal = await terminalService.isAvailable() }
+        .task { canReviewChanges = await diffReview.isReviewAvailable() }
+        .task {
+            canOpenStatus = await contextService.isAvailable()
+            await refreshBranch()
+        }
+        .onChange(of: store.reportedBranch) { _, reported in
+            guard let reported else { return }
+            branchGeneration &+= 1
+            branch = reported.name
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                store.refreshAfterForeground()
+                Task { await refreshBranch() }
+            } else if phase == .background {
+                store.saveOfflineTranscriptNow()
+            }
+        }
+        .onChange(of: store.errorMessage) { _, _ in rememberAttention() }
+        .onChange(of: liveTurn, initial: true) { _, turn in publishLiveTurn(turn) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { publishLiveTurn(liveTurn) }
+        }
+        .onDisappear {
+            visibleSessions?.update(visibility, nil)
+            if push.activeRoute?.serverID == client.profile.id && push.activeRoute?.sessionID == store.session.id { push.activeRoute = nil }
+            rememberAttention()
+            BYOTLiveActivityController.shared.release(serverID: client.profile.id, sessionID: store.session.id)
+            store.stop()
+        }
+    }
+
+    // `body` is cut in three: as a single chain of modifiers the compiler
+    // cannot type-check it in reasonable time.
+    private var sessionChrome: some View {
+        transcript
+        .background(BYOTBrand.canvas)
+        .navigationTitle(OpenCodeSubagentTitle.displayTitle(of: store.session))
+        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    sessionHeader
+                    Spacer(minLength: 8)
+                    contextMeter
+                    sessionStatus
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    sessionHeader
+                    HStack(spacing: 12) {
+                        contextMeter
+                        sessionStatus
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+            .background(BYOTBrand.canvas)
+        }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 8) {
+                if store.nudge == .star {
+                    BYOTStarNudgeCard(
+                        star: {
+                            openURL(BYOTNudgeGate.repoURL)
+                            store.answerNudge(.starred)
+                        },
+                        later: { store.answerNudge(.later) }
+                    )
+                    .padding(.horizontal, 12)
+                }
+                if let family = store.subagentFamily {
+                    OpenCodeSubagentBar(
+                        agentLabel: OpenCodeSubagentTitle.agentLabel(OpenCodeSubagentTitle.agent(of: store.session)),
+                        family: family,
+                        canStop: store.canStopTurn,
+                        isStopping: store.isStoppingTurn,
+                        stop: { Task { await store.stopTurn() } },
+                        open: replaceSession
+                    )
+                } else {
+                    composer
+                }
+            }
+        }
+        .onChange(of: store.nudge) { _, ask in
+            // Apple shows its prompt at most three times a year; the ask is
+            // recorded whether or not a dialog appears.
+            guard ask == .review else { return }
+            requestReview()
+            store.answerNudge(.reviewRequested)
+        }
+        .environment(\.openCodeRemoteFiles, store.remoteFiles)
+        .environment(\.openCodeContextLimits, store.modelContextLimits)
+        .environment(\.openCodeSubagents, OpenCodeSubagentLinks(
+            activity: store.subagents.activity,
+            children: store.childSessions,
+            openingSessionID: store.openingSubagentID,
+            canOpenUnlisted: store.sessionFeatures.details
+        ) { sessionID in
+            openSubagent(sessionID)
+        })
+        .environment(\.openCodeDiffNavigator, OpenCodeDiffNavigator(diffs: store.diffs, directory: store.directory))
+        .environment(\.openCodeReviewChanges, reviewChangesAction)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu { sessionMenuItems
+                } label: { Image(systemName: "ellipsis.circle") }
+                .tint(BYOTBrand.chromeTint)
+                .accessibilityLabel("Session actions")
+                .accessibilityIdentifier("session-actions")
+            }
+            if isReviewChangesVisible {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Changes", systemImage: "plusminus") {
+                        diffRequest = OpenCodeDiffReviewRequest()
+                    }
+                    .labelStyle(.iconOnly)
+                    .tint(BYOTBrand.chromeTint)
+                    .accessibilityHint("Review files changed in this session")
+                }
+            }
+        }
+    }
+
+    private var sessionSheets: some View {
+        sessionChrome
+        .sheet(isPresented: $isShowingQueue) {
+            if let queue = store.durableQueue { BYOTDurableQueueView(queue: queue) }
+        }
+        .sheet(isPresented: $isShowingDetails) {
+            OpenCodeSessionDetailsView(store: store) { session in
+                isShowingDetails = false
+                open(session)
+            }
+        }
+        .sheet(isPresented: $isShowingUsage) {
+            OpenCodeSessionUsageView(store: store)
+        }
+        .sheet(isPresented: $isShowingShare) {
+            OpenCodeSessionShareView(store: store)
+        }
+        .sheet(isPresented: $isShowingTasks) {
+            OpenCodeTaskProgressView(progress: store.todoProgress, supportsSnapshot: store.sessionFeatures.todoSnapshot)
+        }
+        .sheet(isPresented: $isShowingExport) {
+            OpenCodeTranscriptExportView(export: store.transcriptExport)
+        }
+        .openCodeAgentsSetupAlert(isPresented: $isShowingAgentsSetup, store: store)
+        .overlay(alignment: .top) {
+            if showsTranscriptCopied {
+                Label("Transcript copied", systemImage: "checkmark.circle.fill")
+                    .font(.cleanCaptionBold)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay { Capsule().strokeBorder(BYOTBrand.hairline, lineWidth: 1) }
+                    .padding(.top, 8)
+                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("transcript-copied")
+            }
+        }
+        .task(id: transcriptCopies) {
+            guard transcriptCopies > 0 else { return }
+            try? await Task.sleep(for: .seconds(2.4))
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick)) { showsTranscriptCopied = false }
+        }
+        .navigationDestination(item: $nextSession) { route in
+            OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory,
+                                attention: attention, presentingSessionID: store.session.id)
+        }
+        .navigationDestination(item: $terminalRoute) { route in
+            OpenCodeTerminalScreen(client: client, route: route)
+        }
+        .navigationDestination(item: $statusRoute) { route in
+            OpenCodeProjectStatusScreen(client: client, route: route)
+        }
+        .navigationDestination(isPresented: $isShowingNewSession) {
+            OpenCodeNewSessionView(profiles: [client.profile], initialProfile: client.profile, makeClient: { _ in client })
+        }
+        .onChange(of: store.forkedSession) { _, session in
+            if let session {
+                isShowingDetails = false
+                nextSession = OpenCodeSessionRoute(session: session)
+                store.consumeForkedSession()
+            }
+        }
+        .onChange(of: store.didDeleteSession) { _, deleted in
+            guard deleted else { return }
+            isShowingDetails = false
+            if let onDelete { onDelete() } else { dismiss() }
+        }
+    }
+
+    // The transcript and the menu are checked on their own; as one expression
+    // with the screen's modifiers the compiler gives up on `body`.
+    private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
@@ -369,11 +591,8 @@ struct OpenCodeSessionScreen: View {
                     Button {
                         scrollToBottom(proxy)
                     } label: {
-                        Label(
-                            store.pendingActionCount > 0 ? "Response needed" : "Jump to latest",
-                            systemImage: store.pendingActionCount > 0
-                                ? "bubble.left.and.exclamationmark.bubble.right" : "arrow.down"
-                        )
+                        Label(jumpTitle, systemImage: store.pendingActionCount > 0
+                            ? "bubble.left.and.exclamationmark.bubble.right" : "arrow.down")
                         .font(.cleanCaptionBold)
                         .padding(.horizontal, 16)
                         .frame(minHeight: 44)
@@ -405,8 +624,14 @@ struct OpenCodeSessionScreen: View {
                 }
                 scrollToConversationBottomIfNeeded(proxy)
             }
+            .onChange(of: store.status.isActive) { wasActive, isActive in
+                // The turn finished while this conversation was on screen.
+                guard wasActive, !isActive, scenePhase == .active, store.pendingActionCount == 0 else { return }
+                AgentHaptics.replyArrived()
+            }
             .onChange(of: store.pendingActionCount) { oldValue, newValue in
                 guard newValue > oldValue else { return }
+                if scenePhase == .active { AgentHaptics.responseNeeded() }
                 AccessibilityNotification.Announcement(
                     String(localized: "Response required")
                 ).post()
@@ -429,265 +654,73 @@ struct OpenCodeSessionScreen: View {
                 proxy.scrollTo("opencode-queued-prompts")
             }
         }
-        .background(BYOTBrand.canvas)
-        .navigationTitle(OpenCodeSubagentTitle.displayTitle(of: store.session))
-        .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) {
-                    sessionHeader
-                    Spacer(minLength: 8)
-                    contextMeter
-                    sessionStatus
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    sessionHeader
-                    HStack(spacing: 12) {
-                        contextMeter
-                        sessionStatus
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-            .background(BYOTBrand.canvas)
+    }
+
+    private var jumpTitle: LocalizedStringKey {
+        store.pendingActionCount > 0 ? "Response needed" : "Jump to latest"
+    }
+
+    private var muteTitle: LocalizedStringKey {
+        push.isMuted(serverID: client.profile.id, sessionID: store.session.id) ? "Unmute notifications" : "Mute notifications"
+    }
+
+    private var reviewChangesAction: OpenCodeReviewChangesAction? {
+        guard isReviewChangesVisible else { return nil }
+        return OpenCodeReviewChangesAction { request in diffRequest = request }
+    }
+
+    @ViewBuilder private var sessionMenuItems: some View {
+        Button("Message queue", systemImage: "list.bullet.rectangle") { isShowingQueue = true }
+            .accessibilityIdentifier("session-queue")
+        Button("Session details", systemImage: "info.circle") { isShowingDetails = true }
+        Button("Context and usage", systemImage: "chart.pie") { isShowingUsage = true }
+            .accessibilityIdentifier("session-usage")
+        Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
+        if isReviewChangesVisible {
+            Button("Review changes", systemImage: "plusminus") { diffRequest = OpenCodeDiffReviewRequest() }
+                .accessibilityIdentifier("session-menu-review-changes")
         }
-        .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 8) {
-                if store.nudge == .star {
-                    BYOTStarNudgeCard(
-                        star: {
-                            openURL(BYOTNudgeGate.repoURL)
-                            store.answerNudge(.starred)
-                        },
-                        later: { store.answerNudge(.later) }
-                    )
-                    .padding(.horizontal, 12)
-                }
-                if let family = store.subagentFamily {
-                    OpenCodeSubagentBar(
-                        agentLabel: OpenCodeSubagentTitle.agentLabel(OpenCodeSubagentTitle.agent(of: store.session)),
-                        family: family,
-                        canStop: store.canStopTurn,
-                        isStopping: store.isStoppingTurn,
-                        stop: { Task { await store.stopTurn() } },
-                        open: replaceSession
-                    )
-                } else {
-                    composer
-                }
+        if canOpenTerminal {
+            Button("Terminal", systemImage: "apple.terminal") {
+                terminalRoute = OpenCodeTerminalRoute(
+                    directory: terminalService.directory, workspace: terminalService.workspace)
             }
+            .accessibilityIdentifier("session-menu-terminal")
         }
-        .onChange(of: store.nudge) { _, ask in
-            // Apple shows its prompt at most three times a year; the ask is
-            // recorded whether or not a dialog appears.
-            guard ask == .review else { return }
-            requestReview()
-            store.answerNudge(.reviewRequested)
+        if canOpenStatus {
+            Button("Project status", systemImage: "gauge.with.dots.needle.33percent", action: openStatus)
+                .accessibilityIdentifier("session-menu-status")
         }
-        .environment(\.openCodeRemoteFiles, store.remoteFiles)
-        .environment(\.openCodeContextLimits, store.modelContextLimits)
-        .environment(\.openCodeSubagents, OpenCodeSubagentLinks(
-            activity: store.subagents.activity,
-            children: store.childSessions,
-            openingSessionID: store.openingSubagentID,
-            canOpenUnlisted: store.sessionFeatures.details
-        ) { sessionID in
-            openSubagent(sessionID)
-        })
-        .environment(\.openCodeDiffNavigator, OpenCodeDiffNavigator(diffs: store.diffs, directory: store.directory))
-        .environment(\.openCodeReviewChanges, isReviewChangesVisible ? OpenCodeReviewChangesAction { request in
-            diffRequest = request
-        } : nil)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button("Message queue", systemImage: "list.bullet.rectangle") { isShowingQueue = true }
-                        .accessibilityIdentifier("session-queue")
-                    Button("Session details", systemImage: "info.circle") { isShowingDetails = true }
-                    Button("Context and usage", systemImage: "chart.pie") { isShowingUsage = true }
-                        .accessibilityIdentifier("session-usage")
-                    Button("Tasks", systemImage: "checklist") { isShowingTasks = true }
-                    if isReviewChangesVisible {
-                        Button("Review changes", systemImage: "plusminus") { diffRequest = OpenCodeDiffReviewRequest() }
-                            .accessibilityIdentifier("session-menu-review-changes")
-                    }
-                    if canOpenTerminal {
-                        Button("Terminal", systemImage: "apple.terminal") {
-                            terminalRoute = OpenCodeTerminalRoute(
-                                directory: terminalService.directory, workspace: terminalService.workspace)
-                        }
-                        .accessibilityIdentifier("session-menu-terminal")
-                    }
-                    if canOpenStatus {
-                        Button("Project status", systemImage: "gauge.with.dots.needle.33percent", action: openStatus)
-                            .accessibilityIdentifier("session-menu-status")
-                    }
-                    if store.sharePresentation.isAvailable {
-                        Button(store.sharePresentation.menuTitle, systemImage: store.sharePresentation.menuSymbol) { isShowingShare = true }
-                            .accessibilityIdentifier("session-menu-share")
-                    }
-                    if push.credentials[client.profile.id] != nil {
-                        Button(push.isMuted(serverID: client.profile.id, sessionID: store.session.id) ? "Unmute notifications" : "Mute notifications", systemImage: "bell.slash") {
-                            Task {
-                                do { try await push.toggleMute(serverID: client.profile.id, sessionID: store.session.id) }
-                                catch { notificationError = error.localizedDescription }
-                            }
-                        }
-                    }
-                    ForEach(OpenCodeSessionAction.allCases) { action in
-                        Button(action.title, systemImage: action.symbol) {
-                            Task { await store.performSessionAction(action) }
-                        }.disabled(store.actionUnavailableReason(action) != nil)
-                            .accessibilityIdentifier("session-menu-\(action.rawValue)")
-                    }
-                    Section {
-                        if store.supportsAgentsSetup {
-                            Button("Set up AGENTS.md…", systemImage: "doc.badge.gearshape") { isShowingAgentsSetup = true }
-                                .disabled(store.agentsSetupUnavailableReason != nil)
-                                .accessibilityIdentifier("session-menu-init")
-                        }
-                        Button("Export transcript…", systemImage: "square.and.arrow.up") { isShowingExport = true }
-                            .disabled(store.transcriptUnavailableReason != nil)
-                            .accessibilityIdentifier("session-menu-export")
-                        Button("Copy transcript", systemImage: "doc.on.doc", action: copyTranscript)
-                            .disabled(store.transcriptUnavailableReason != nil)
-                            .accessibilityIdentifier("session-menu-copy")
-                    }
-                } label: { Image(systemName: "ellipsis.circle") }
-                .tint(BYOTBrand.chromeTint)
-                .accessibilityLabel("Session actions")
-                .accessibilityIdentifier("session-actions")
-            }
-            if isReviewChangesVisible {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Changes", systemImage: "plusminus") {
-                        diffRequest = OpenCodeDiffReviewRequest()
-                    }
-                    .labelStyle(.iconOnly)
-                    .tint(BYOTBrand.chromeTint)
-                    .accessibilityHint("Review files changed in this session")
+        if store.sharePresentation.isAvailable {
+            Button(store.sharePresentation.menuTitle, systemImage: store.sharePresentation.menuSymbol) { isShowingShare = true }
+                .accessibilityIdentifier("session-menu-share")
+        }
+        if push.credentials[client.profile.id] != nil {
+            Button(muteTitle, systemImage: "bell.slash") {
+                Task {
+                    do { try await push.toggleMute(serverID: client.profile.id, sessionID: store.session.id) }
+                    catch { notificationError = error.localizedDescription }
                 }
             }
         }
-        .sheet(isPresented: $isShowingQueue) {
-            if let queue = store.durableQueue { BYOTDurableQueueView(queue: queue) }
+        ForEach(OpenCodeSessionAction.allCases) { action in
+            Button(action.title, systemImage: action.symbol) {
+                Task { await store.performSessionAction(action) }
+            }.disabled(store.actionUnavailableReason(action) != nil)
+                .accessibilityIdentifier("session-menu-\(action.rawValue)")
         }
-        .sheet(isPresented: $isShowingDetails) {
-            OpenCodeSessionDetailsView(store: store) { session in
-                isShowingDetails = false
-                open(session)
+        Section {
+            if store.supportsAgentsSetup {
+                Button("Set up AGENTS.md…", systemImage: "doc.badge.gearshape") { isShowingAgentsSetup = true }
+                    .disabled(store.agentsSetupUnavailableReason != nil)
+                    .accessibilityIdentifier("session-menu-init")
             }
-        }
-        .sheet(isPresented: $isShowingUsage) {
-            OpenCodeSessionUsageView(store: store)
-        }
-        .sheet(isPresented: $isShowingShare) {
-            OpenCodeSessionShareView(store: store)
-        }
-        .sheet(isPresented: $isShowingTasks) {
-            OpenCodeTaskProgressView(progress: store.todoProgress, supportsSnapshot: store.sessionFeatures.todoSnapshot)
-        }
-        .sheet(isPresented: $isShowingExport) {
-            OpenCodeTranscriptExportView(export: store.transcriptExport)
-        }
-        .openCodeAgentsSetupAlert(isPresented: $isShowingAgentsSetup, store: store)
-        .overlay(alignment: .top) {
-            if showsTranscriptCopied {
-                Label("Transcript copied", systemImage: "checkmark.circle.fill")
-                    .font(.cleanCaptionBold)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(.regularMaterial, in: Capsule())
-                    .overlay { Capsule().strokeBorder(BYOTBrand.hairline, lineWidth: 1) }
-                    .padding(.top, 8)
-                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
-                    .allowsHitTesting(false)
-                    .accessibilityIdentifier("transcript-copied")
-            }
-        }
-        .task(id: transcriptCopies) {
-            guard transcriptCopies > 0 else { return }
-            try? await Task.sleep(for: .seconds(2.4))
-            guard !Task.isCancelled else { return }
-            withAnimation(reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick)) { showsTranscriptCopied = false }
-        }
-        .navigationDestination(item: $nextSession) { route in
-            OpenCodeSessionView(client: client, session: route.session, directory: route.session.directory,
-                                attention: attention, presentingSessionID: store.session.id)
-        }
-        .navigationDestination(item: $terminalRoute) { route in
-            OpenCodeTerminalScreen(client: client, route: route)
-        }
-        .navigationDestination(item: $statusRoute) { route in
-            OpenCodeProjectStatusScreen(client: client, route: route)
-        }
-        .navigationDestination(isPresented: $isShowingNewSession) {
-            OpenCodeNewSessionView(profiles: [client.profile], initialProfile: client.profile, makeClient: { _ in client })
-        }
-        .onChange(of: store.forkedSession) { _, session in
-            if let session {
-                isShowingDetails = false
-                nextSession = OpenCodeSessionRoute(session: session)
-                store.consumeForkedSession()
-            }
-        }
-        .onChange(of: store.didDeleteSession) { _, deleted in
-            guard deleted else { return }
-            isShowingDetails = false
-            if let onDelete { onDelete() } else { dismiss() }
-        }
-        .sheet(item: $diffRequest) { request in
-            OpenCodeDiffReviewView(
-                store: diffReview,
-                request: request,
-                latestTurnMessageID: store.messages.last { $0.info.role == "user" }?.id,
-                sessionDiffs: store.diffs
-            )
-        }
-        .sheet(isPresented: $isShowingRecoveryModelPicker) {
-            OpenCodeModelPickerView(store: store)
-                .task { await store.reloadModels() }
-        }
-        .onAppear {
-            push.activeRoute = BYOTPushRoute(serverID: client.profile.id, sessionID: store.session.id, directory: store.session.directory, workspace: store.session.workspaceID)
-            visibleSessions?.update(visibility, OpenCodeSessionSelection(client: client, session: store.session, attention: attention))
-        }
-        .alert("Couldn’t update notifications", isPresented: Binding(get: { notificationError != nil }, set: { if !$0 { notificationError = nil } })) {
-            Button("OK") { notificationError = nil }
-        } message: { Text(notificationError ?? "") }
-        .task { await store.start() }
-        .task { canOpenTerminal = await terminalService.isAvailable() }
-        .task { canReviewChanges = await diffReview.isReviewAvailable() }
-        .task {
-            canOpenStatus = await contextService.isAvailable()
-            await refreshBranch()
-        }
-        .onChange(of: store.reportedBranch) { _, reported in
-            guard let reported else { return }
-            branchGeneration &+= 1
-            branch = reported.name
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                store.refreshAfterForeground()
-                Task { await refreshBranch() }
-            } else if phase == .background {
-                store.saveOfflineTranscriptNow()
-            }
-        }
-        .onChange(of: store.errorMessage) { _, _ in rememberAttention() }
-        .onChange(of: liveTurn, initial: true) { _, turn in publishLiveTurn(turn) }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { publishLiveTurn(liveTurn) }
-        }
-        .onDisappear {
-            visibleSessions?.update(visibility, nil)
-            if push.activeRoute?.serverID == client.profile.id && push.activeRoute?.sessionID == store.session.id { push.activeRoute = nil }
-            rememberAttention()
-            BYOTLiveActivityController.shared.release(serverID: client.profile.id, sessionID: store.session.id)
-            store.stop()
+            Button("Export transcript…", systemImage: "square.and.arrow.up") { isShowingExport = true }
+                .disabled(store.transcriptUnavailableReason != nil)
+                .accessibilityIdentifier("session-menu-export")
+            Button("Copy transcript", systemImage: "doc.on.doc", action: copyTranscript)
+                .disabled(store.transcriptUnavailableReason != nil)
+                .accessibilityIdentifier("session-menu-copy")
         }
     }
 
@@ -716,18 +749,50 @@ struct OpenCodeSessionScreen: View {
     @ViewBuilder
     private func messageRow(_ message: OpenCodeMessageEnvelope) -> some View {
         if message.info.role == "user" {
+            let actions = promptActions(for: message)
+            let promptText = Self.promptText(of: message)
             OpenCodeMessageView(message: message)
+                // Long-pressing the words opens the text's menu, not this one,
+                // so the same actions are handed to both.
+                .environment(\.agentTextMenu, AgentTextMenu(copyTitle: String(localized: "Copy prompt"), actions: actions))
                 .contextMenu {
-                    Button("Undo to this prompt", systemImage: "arrow.uturn.backward") {
-                        Task { await store.performSessionAction(.undo, messageID: message.id) }
-                    }.disabled(store.actionUnavailableReason(.undo) != nil)
-                    Button("Fork before this prompt", systemImage: "arrow.triangle.branch") {
-                        Task { await store.performSessionAction(.fork, messageID: message.id) }
-                    }.disabled(store.actionUnavailableReason(.fork) != nil)
+                    if let promptText {
+                        Button("Copy prompt", systemImage: "doc.on.doc") {
+                            UIPasteboard.general.string = promptText
+                            AgentHaptics.send()
+                        }
+                        Divider()
+                    }
+                    ForEach(actions) { action in
+                        Button(action.title, systemImage: action.symbol) { action.run() }
+                            .disabled(action.isDisabled)
+                    }
                 }
         } else {
             OpenCodeMessageView(message: message, turnMessageID: turnMessageID(for: message))
         }
+    }
+
+    private func promptActions(for message: OpenCodeMessageEnvelope) -> [AgentTextMenuAction] {
+        [
+            AgentTextMenuAction(title: String(localized: "Undo to this prompt"), symbol: "arrow.uturn.backward",
+                                isDisabled: store.actionUnavailableReason(.undo) != nil) {
+                Task { await store.performSessionAction(.undo, messageID: message.id) }
+            },
+            AgentTextMenuAction(title: String(localized: "Fork before this prompt"), symbol: "arrow.triangle.branch",
+                                isDisabled: store.actionUnavailableReason(.fork) != nil) {
+                Task { await store.performSessionAction(.fork, messageID: message.id) }
+            },
+        ]
+    }
+
+    /// What the user typed, without the context OpenCode attached to it.
+    nonisolated static func promptText(of message: OpenCodeMessageEnvelope) -> String? {
+        message.parts
+            .filter { $0.type == "text" && $0.synthetic != true }
+            .compactMap { $0.text?.trimmedNonEmpty }
+            .joined(separator: "\n\n")
+            .trimmedNonEmpty
     }
 
     /// The TUI's `/copy`: the whole conversation as Markdown, with the
@@ -854,7 +919,7 @@ struct OpenCodeSessionScreen: View {
         BYOTLiveActivityController.shared.drive(
             BYOTTurnActivityAttributes(
                 serverID: profile.id, serverName: serverName, sessionID: session.id,
-                sessionTitle: session.title.trimmedWidgetText ?? String(localized: "Untitled session"),
+                sessionTitle: OpenCodeSubagentTitle.displayTitle(of: session).trimmedWidgetText ?? String(localized: "Untitled session"),
                 projectName: URL(fileURLWithPath: session.directory).lastPathComponent,
                 directory: session.directory, workspace: session.workspaceID),
             snapshot: turn, canStart: scenePhase == .active)

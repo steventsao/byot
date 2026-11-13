@@ -69,6 +69,12 @@ enum AgentHaptics {
         let generator = UIImpactFeedbackGenerator(style: .soft)
         generator.impactOccurred(intensity: 0.7)
     }
+
+    /// OpenCode stopped to ask for a permission or an answer.
+    @MainActor
+    static func responseNeeded() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
 }
 
 extension String {
