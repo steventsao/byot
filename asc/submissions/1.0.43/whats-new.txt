@@ -1,0 +1,5 @@
+The conversation now stays on the latest line while OpenCode works:
+
+- As tool steps and long paragraphs arrive, the screen keeps the newest line in view. It no longer stops partway through a turn and shows "Jump to latest".
+- Scroll up to read earlier messages and the screen stays where you put it.
+- Tap "Jump to latest" or scroll back to the end, and it follows the turn again.
