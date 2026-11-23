@@ -373,75 +373,82 @@ struct OpenCodeSessionScreen: View {
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
-                    if let offline = store.offlineTranscript, let errorMessage = store.errorMessage {
-                        // One notice covers the failed load and the dropped event stream.
-                        OpenCodeOfflineNotice(
-                            subject: .transcript,
-                            savedAt: offline.savedAt,
-                            detail: errorMessage,
-                            isTruncated: offline.isTruncated,
-                            isRetrying: store.isLoading,
-                            retry: refreshSession
-                        )
-                    } else if let errorMessage = store.errorMessage, hasConversationContent {
-                        ErrorBanner(
-                            message: errorMessage,
-                            actionTitle: String(localized: "Refresh"),
-                            action: refreshSession
-                        )
-                    }
-
-                    if let eventErrorMessage = store.eventErrorMessage,
-                       store.offlineTranscript == nil || store.errorMessage == nil,
-                       eventErrorMessage != store.errorMessage {
-                        ErrorBanner(
-                            message: eventErrorMessage,
-                            actionTitle: String(localized: "Refresh"),
-                            action: refreshSession
-                        )
-                    }
-
-                    if let actionErrorMessage = store.actionErrorMessage,
-                       actionErrorMessage != store.errorMessage,
-                       actionErrorMessage != store.eventErrorMessage {
-                        ErrorBanner(
-                            message: actionErrorMessage,
-                            actionTitle: String(localized: "Refresh"),
-                            action: refreshSession
-                        )
-                    }
-
-                    if store.revertMessageID != nil {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Conversation rewound", systemImage: "arrow.uturn.backward")
-                                .font(.cleanBodySemibold)
-                            Text("Edit the restored prompt to take a different direction, or redo the turn. Queued prompts are paused for review.")
-                                .font(.cleanCaption).foregroundStyle(.secondary)
-                            Button("Redo turn") { Task { await store.performSessionAction(.redo) } }
-                                .disabled(store.actionUnavailableReason(.redo) != nil)
+                VStack(alignment: .leading, spacing: 20) {
+                    LazyVStack(alignment: .leading, spacing: 20) {
+                        if let offline = store.offlineTranscript, let errorMessage = store.errorMessage {
+                            // One notice covers the failed load and the dropped event stream.
+                            OpenCodeOfflineNotice(
+                                subject: .transcript,
+                                savedAt: offline.savedAt,
+                                detail: errorMessage,
+                                isTruncated: offline.isTruncated,
+                                isRetrying: store.isLoading,
+                                retry: refreshSession
+                            )
+                        } else if let errorMessage = store.errorMessage, hasConversationContent {
+                            ErrorBanner(
+                                message: errorMessage,
+                                actionTitle: String(localized: "Refresh"),
+                                action: refreshSession
+                            )
                         }
-                        .padding(12)
-                        .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
-                    }
 
-                    let rows = OpenCodeConversationRow.rows(
-                        OpenCodeShellTranscript.rows(for: store.messages, local: store.localShell))
-                    let runningID = runningTurnID(in: rows)
-                    ForEach(rows) { row in
-                        switch row {
-                        case .turn(let turn):
-                            messageRow(turn.prompt).id(turn.prompt.id)
-                            if !turn.replies.isEmpty || turn.id == runningID {
-                                OpenCodeTurnRepliesView(turn: turn, isRunning: turn.id == runningID,
-                                                        isExpanded: expansion(ofTurn: turn.id))
-                                    .id("replies:" + turn.id)
+                        if let eventErrorMessage = store.eventErrorMessage,
+                           store.offlineTranscript == nil || store.errorMessage == nil,
+                           eventErrorMessage != store.errorMessage {
+                            ErrorBanner(
+                                message: eventErrorMessage,
+                                actionTitle: String(localized: "Refresh"),
+                                action: refreshSession
+                            )
+                        }
+
+                        if let actionErrorMessage = store.actionErrorMessage,
+                           actionErrorMessage != store.errorMessage,
+                           actionErrorMessage != store.eventErrorMessage {
+                            ErrorBanner(
+                                message: actionErrorMessage,
+                                actionTitle: String(localized: "Refresh"),
+                                action: refreshSession
+                            )
+                        }
+
+                        if store.revertMessageID != nil {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Conversation rewound", systemImage: "arrow.uturn.backward")
+                                    .font(.cleanBodySemibold)
+                                Text("Edit the restored prompt to take a different direction, or redo the turn. Queued prompts are paused for review.")
+                                    .font(.cleanCaption).foregroundStyle(.secondary)
+                                Button("Redo turn") { Task { await store.performSessionAction(.redo) } }
+                                    .disabled(store.actionUnavailableReason(.redo) != nil)
                             }
-                        case .reply(let message): messageRow(message).id(message.id)
-                        case .shell(let run): shellRow(run).id(run.id)
+                            .padding(12)
+                            .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
+                        }
+
+                        let rows = OpenCodeConversationRow.rows(
+                            OpenCodeShellTranscript.rows(for: store.messages, local: store.localShell))
+                        let runningID = runningTurnID(in: rows)
+                        ForEach(rows) { row in
+                            switch row {
+                            case .turn(let turn):
+                                messageRow(turn.prompt).id(turn.prompt.id)
+                                if !turn.replies.isEmpty || turn.id == runningID {
+                                    OpenCodeTurnRepliesView(turn: turn, isRunning: turn.id == runningID,
+                                                            isExpanded: expansion(ofTurn: turn.id))
+                                        .id("replies:" + turn.id)
+                                }
+                            case .reply(let message): messageRow(message).id(message.id)
+                            case .shell(let run): shellRow(run).id(run.id)
+                            }
                         }
                     }
 
+                    // What follows the conversation stays out of the lazy stack. There,
+                    // rows built ahead of the screen took heights estimated from a turn
+                    // several screens tall; with the reader resting just above them,
+                    // the stack kept building and dropping them and held the main
+                    // thread at 100%.
                     if store.todoProgress.totalCount > 0 && !showsTranscriptLoading {
                         Button { isShowingTasks = true } label: {
                             HStack {
@@ -1182,16 +1189,16 @@ private struct OpenCodeTranscriptFollowing: ViewModifier {
                     // a lazy list can also stop short as its rows take their real heights.
                     if phase == .idle, oldPhase != .idle, followsLatest { catchUp() }
                 }
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    OpenCodeTranscriptFollow.distanceFromEnd(
+                .onScrollGeometryChange(for: OpenCodeTranscriptFollow.Position.self) { geometry in
+                    OpenCodeTranscriptFollow.Position(
                         contentHeight: geometry.contentSize.height,
-                        bottomInset: geometry.contentInsets.bottom,
+                        topInset: geometry.contentInsets.top,
                         offset: geometry.contentOffset.y,
                         viewportHeight: geometry.containerSize.height
                     )
-                } action: { _, distance in
+                } action: { old, new in
                     followsLatest = OpenCodeTranscriptFollow.follows(
-                        followsLatest, distanceFromEnd: distance, readerIsScrolling: isReaderScrolling
+                        followsLatest, from: old, to: new, readerIsScrolling: isReaderScrolling
                     )
                 }
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in

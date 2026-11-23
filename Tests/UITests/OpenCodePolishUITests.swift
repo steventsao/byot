@@ -210,7 +210,9 @@ final class OpenCodePolishUITests: XCTestCase {
                   let composerFrame = elements.first(where: { $0.identifier == "opencode-composer-message" })?.frame
             else { return XCTFail("\(message): no live update or composer on screen", line: line) }
             let latest = newest.frame
-            XCTAssertLessThanOrEqual(latest.maxY, composerFrame.minY + 2,
+            // At least its first line shows above the composer. A paragraph that
+            // grew a moment ago can still be a few points short of fully in view.
+            XCTAssertLessThanOrEqual(latest.minY + 16, composerFrame.minY,
                                      "\(message): update \(updateNumber(newest)) \(latest) sits under the composer \(composerFrame)", line: line)
             XCTAssertGreaterThan(latest.maxY, screen.frame.midY / 2,
                                  "\(message): update \(updateNumber(newest)) \(latest) is off the top", line: line)
@@ -239,13 +241,59 @@ final class OpenCodePolishUITests: XCTestCase {
         jump.tap()
         XCTAssertTrue(jump.waitForNonExistence(timeout: 5))
         assertFollowing(40, "The transcript should follow again after Jump to latest")
-        assertFollowing(56, "The transcript should keep following to the end of the turn")
         screenshot(app, name: "live-turn-following-again")
-        // Scrolling back to the end by hand is covered by
-        // OpenCodeTranscriptPartTests.followsUntilReaderScrollsBack. Here a swipe
-        // would stop inside this one turn, taller than several screens, where
-        // SwiftUI's lazy stack keeps relaying out on the main thread; the old
-        // follow rule does the same, so it is left for its own fix.
+
+        // A swipe from the end stops inside this turn, which is taller than
+        // several screens. The app comes to rest there while output arrives
+        // below the screen, and scrolling back to the end follows again.
+        let swipeStarted = Date()
+        transcript.swipeDown()
+        let swipeSeconds = Date().timeIntervalSince(swipeStarted)
+        XCTAssertLessThan(swipeSeconds, 10, "The app never came to rest after the swipe (\(swipeSeconds) s)")
+        XCTAssertTrue(jump.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 2)
+        let queryStarted = Date()
+        XCTAssertTrue(jump.isHittable)
+        let querySeconds = Date().timeIntervalSince(queryStarted)
+        XCTAssertLessThan(querySeconds, 5, "The app stayed busy while output arrived below the screen (\(querySeconds) s)")
+        screenshot(app, name: "live-turn-inside-turn")
+        for _ in 0..<4 where jump.exists { transcript.swipeUp() }
+        XCTAssertTrue(jump.waitForNonExistence(timeout: 5), "Scrolling back to the end should follow again")
+        assertFollowing(58, "The transcript should follow again after scrolling back to the end")
+        assertFollowing(66, "The transcript should keep following to the end of the turn")
+    }
+
+    /// Comes to rest at a run of places in and above a running turn several
+    /// screens tall. Stopping just above its end once held the main thread at
+    /// 100% with "Jump to latest" on screen, and nothing else got through.
+    @MainActor
+    func testRestingInsideARunningTurnSettles() {
+        let app = launch(["--live-turn"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Live turn'")).firstMatch.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Live update 30."))
+            .firstMatch.waitForExistence(timeout: 30))
+        Thread.sleep(forTimeInterval: 0.6)
+        let transcript = app.scrollViews.firstMatch
+        for step in 0..<12 {
+            // Each gesture returns once the app is idle, or after XCTest gives up at 60 s.
+            let started = Date()
+            switch step % 3 {
+            case 0: transcript.swipeDown()
+            case 1: transcript.swipeDown(velocity: .slow)
+            default:
+                let from = transcript.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+                from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: 60 + 50 * Double(step % 4))))
+            }
+            let seconds = Date().timeIntervalSince(started)
+            XCTAssertLessThan(seconds, 10, "The app never came to rest after scroll \(step) (\(seconds) s)")
+            Thread.sleep(forTimeInterval: 0.4)
+            // Back to the newest output, so the next stops land just above the end again.
+            if step == 5 {
+                app.buttons["jump-to-latest"].tap()
+                Thread.sleep(forTimeInterval: 1)
+            }
+        }
+        screenshot(app, name: "live-turn-resting")
     }
 
     @MainActor
