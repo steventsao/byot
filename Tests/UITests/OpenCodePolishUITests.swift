@@ -175,6 +175,79 @@ final class OpenCodePolishUITests: XCTestCase {
         screenshot(app, name: "streaming-follows-latest")
     }
 
+    /// TestFlight feedback, 2026-11-22: "Should auto anchor to bottom until user
+    /// starts scrolling back to history". A live turn adds tool rows and long
+    /// paragraphs; the transcript keeps its latest line in view until the reader
+    /// scrolls back, leaves them where they are while they read, and follows
+    /// again once they return to the end.
+    @MainActor
+    func testLiveTurnFollowsUntilReaderScrollsBack() {
+        let app = launch(["--live-turn"])
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'Live turn'")).firstMatch.tap()
+        let jump = app.buttons["jump-to-latest"]
+        let composer = app.descendants(matching: .any).matching(identifier: "opencode-composer-message").firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        func update(_ number: Int) -> XCUIElement {
+            app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Live update \(number).")).firstMatch
+        }
+        /// Waits for update `number`, then checks the newest update so far is in view above the composer.
+        func assertFollowing(_ number: Int, _ message: String, line: UInt = #line) {
+            XCTAssertTrue(update(number).waitForExistence(timeout: 25), "Live update \(number) never arrived", line: line)
+            // Let a Jump to latest animation come to rest.
+            Thread.sleep(forTimeInterval: 0.6)
+            XCTAssertFalse(jump.exists, message, line: line)
+            // One snapshot, so the newest update and every frame are read at the same moment.
+            guard let screen = try? app.snapshot() else { return XCTFail("No accessibility snapshot", line: line) }
+            func flattened(_ element: XCUIElementSnapshot) -> [XCUIElementSnapshot] {
+                [element] + element.children.flatMap(flattened)
+            }
+            let elements = flattened(screen)
+            func updateNumber(_ element: XCUIElementSnapshot) -> Int {
+                Int(element.label.dropFirst("Live update ".count).prefix { $0.isNumber }) ?? 0
+            }
+            guard let newest = elements.filter({ $0.elementType == .staticText && $0.label.hasPrefix("Live update ") })
+                    .max(by: { updateNumber($0) < updateNumber($1) }),
+                  let composerFrame = elements.first(where: { $0.identifier == "opencode-composer-message" })?.frame
+            else { return XCTFail("\(message): no live update or composer on screen", line: line) }
+            let latest = newest.frame
+            XCTAssertLessThanOrEqual(latest.maxY, composerFrame.minY + 2,
+                                     "\(message): update \(updateNumber(newest)) \(latest) sits under the composer \(composerFrame)", line: line)
+            XCTAssertGreaterThan(latest.maxY, screen.frame.midY / 2,
+                                 "\(message): update \(updateNumber(newest)) \(latest) is off the top", line: line)
+        }
+
+        // Tool rows and long paragraphs keep arriving; the transcript keeps up.
+        assertFollowing(9, "The transcript should follow the reply")
+        assertFollowing(18, "The transcript should still follow after the tool rows and long paragraphs")
+        screenshot(app, name: "live-turn-following")
+
+        // Scrolling back stops following and holds the reader's place.
+        let transcript = app.scrollViews.firstMatch
+        transcript.swipeDown()
+        transcript.swipeDown()
+        XCTAssertTrue(jump.waitForExistence(timeout: 5))
+        let reading = app.staticTexts.allElementsBoundByIndex.first {
+            $0.label.hasPrefix("Earlier answer") && $0.isHittable
+        }!
+        let readingY = reading.frame.minY
+        Thread.sleep(forTimeInterval: 2.5)
+        XCTAssertTrue(jump.exists, "New output must not pull the reader back down")
+        XCTAssertEqual(reading.frame.minY, readingY, accuracy: 3)
+        screenshot(app, name: "live-turn-reading-history")
+
+        // Jumping back resumes following for the rest of the turn.
+        jump.tap()
+        XCTAssertTrue(jump.waitForNonExistence(timeout: 5))
+        assertFollowing(40, "The transcript should follow again after Jump to latest")
+        assertFollowing(56, "The transcript should keep following to the end of the turn")
+        screenshot(app, name: "live-turn-following-again")
+        // Scrolling back to the end by hand is covered by
+        // OpenCodeTranscriptPartTests.followsUntilReaderScrollsBack. Here a swipe
+        // would stop inside this one turn, taller than several screens, where
+        // SwiftUI's lazy stack keeps relaying out on the main thread; the old
+        // follow rule does the same, so it is left for its own fix.
+    }
+
     @MainActor
     func testTranscriptPartsRenderAndOpenViewers() {
         let app = launch(["--transcript-parts"])

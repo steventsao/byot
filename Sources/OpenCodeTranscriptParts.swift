@@ -79,6 +79,36 @@ enum OpenCodeTranscriptLayout {
     }
 }
 
+/// When a transcript keeps its latest line in view. Following stops only when
+/// the reader scrolls back to history: a tool row or a long paragraph arriving
+/// pushes the end down but is not the reader moving, so the transcript catches up.
+enum OpenCodeTranscriptFollow {
+    /// How far above the end still counts as being at the end.
+    static let endTolerance: CGFloat = 32
+
+    /// How far the visible part of the transcript sits above its end. Zero or
+    /// less is at the end, as is a transcript shorter than the screen.
+    static func distanceFromEnd(
+        contentHeight: CGFloat, bottomInset: CGFloat, offset: CGFloat, viewportHeight: CGFloat
+    ) -> CGFloat {
+        contentHeight + bottomInset - (offset + viewportHeight)
+    }
+
+    /// Whether to follow after the scroll position moves. While the reader
+    /// scrolls, where they leave it decides; otherwise only reaching the end
+    /// turns following back on, so content that grows never turns it off.
+    static func follows(_ current: Bool, distanceFromEnd: CGFloat, readerIsScrolling: Bool) -> Bool {
+        let isAtEnd = distanceFromEnd <= endTolerance
+        return readerIsScrolling ? isAtEnd : current || isAtEnd
+    }
+
+    /// Whether to scroll to the end once the content changes size. Never under
+    /// the reader's finger: they catch up when they let go at the end.
+    static func catchesUp(follows: Bool, readerIsScrolling: Bool, oldHeight: CGFloat, newHeight: CGFloat) -> Bool {
+        follows && !readerIsScrolling && oldHeight != newHeight
+    }
+}
+
 // MARK: - Compaction
 
 struct OpenCodeCompactionPresentation: Equatable, Sendable {

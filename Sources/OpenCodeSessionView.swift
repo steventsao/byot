@@ -70,7 +70,10 @@ struct OpenCodeSessionScreen: View {
     @ObservedObject private var push = BYOTPushNotifications.shared
     @State private var notificationError: String?
     @State private var isShowingRecoveryModelPicker = false
-    @State private var isAtBottom = true
+    /// Keeps the latest line in view until the reader scrolls back to history.
+    @State private var followsLatest = true
+    /// The reader is dragging the transcript or it is still coasting from their flick.
+    @State private var isReaderScrolling = false
     /// Finished turns opened to show their work; they open folded.
     @State private var expandedTurnIDs: Set<String> = []
     @State private var transcriptViewportHeight = CGFloat.infinity
@@ -582,12 +585,21 @@ struct OpenCodeSessionScreen: View {
                 guard let bottomY = metrics.bottomY,
                       let height = metrics.viewportHeight else { return }
                 transcriptViewportHeight = height
-                isAtBottom = bottomY <= height + 32 && bottomY >= 0
+                // iOS 18 tells a reader's scroll from growing content; see
+                // OpenCodeTranscriptFollowing. Before it, follow while the end shows.
+                if #unavailable(iOS 18.0) {
+                    followsLatest = bottomY <= height + OpenCodeTranscriptFollow.endTolerance && bottomY >= 0
+                }
             }
+            .modifier(OpenCodeTranscriptFollowing(
+                followsLatest: $followsLatest,
+                isReaderScrolling: $isReaderScrolling,
+                catchUp: { revealConversationBottom(proxy) }
+            ))
             .overlay(alignment: .bottom) {
                 // With the keyboard and slash suggestions up, the transcript can
                 // shrink to a sliver where the pill would sit clipped under the header.
-                if !isAtBottom && hasConversationContent && transcriptViewportHeight >= 160 {
+                if !followsLatest && hasConversationContent && transcriptViewportHeight >= 160 {
                     Button {
                         scrollToBottom(proxy)
                     } label: {
@@ -610,6 +622,7 @@ struct OpenCodeSessionScreen: View {
                 rememberAttention()
                 if !hasPositionedTranscript && !store.messages.isEmpty {
                     hasPositionedTranscript = true
+                    followsLatest = true
                     revealConversationBottom(proxy)
                     return
                 }
@@ -640,6 +653,7 @@ struct OpenCodeSessionScreen: View {
             .onChange(of: store.localShell) { _, newValue in
                 guard let newValue else { return }
                 // Follow a new command and its outcome, even from an older scroll position.
+                followsLatest = true
                 revealConversationBottom(proxy)
                 switch newValue.phase {
                 case .sending: break
@@ -1095,7 +1109,7 @@ struct OpenCodeSessionScreen: View {
     }
 
     private func scrollToConversationBottomIfNeeded(_ proxy: ScrollViewProxy) {
-        guard isAtBottom else { return }
+        guard followsLatest, !isReaderScrolling else { return }
         // Streaming can update faster than an animation completes. Follow immediately;
         // reserve animation for the user's explicit jump.
         revealConversationBottom(proxy)
@@ -1109,6 +1123,7 @@ struct OpenCodeSessionScreen: View {
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        followsLatest = true
         if reduceMotion {
             proxy.scrollTo(bottomAnchorID, anchor: .bottom)
         } else {
@@ -1145,6 +1160,53 @@ struct OpenCodeSessionScreen: View {
         store.retryQueuedPrompt(id)
     }
 
+}
+
+/// Follows a live transcript until the reader scrolls back to history, and
+/// again once they return to the end. Only the reader's own scrolling stops
+/// it: a tool row or a long paragraph that pushes the end off screen is
+/// caught up with as soon as it lays out.
+private struct OpenCodeTranscriptFollowing: ViewModifier {
+    @Binding var followsLatest: Bool
+    @Binding var isReaderScrolling: Bool
+    let catchUp: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .onScrollPhaseChange { oldPhase, phase in
+                    // A programmatic scroll animates; the reader tracks, drags and coasts.
+                    isReaderScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+                    // A scroll that comes to rest while following, the reader's or Jump to
+                    // latest's, picks up what arrived meanwhile. An animated jump through
+                    // a lazy list can also stop short as its rows take their real heights.
+                    if phase == .idle, oldPhase != .idle, followsLatest { catchUp() }
+                }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    OpenCodeTranscriptFollow.distanceFromEnd(
+                        contentHeight: geometry.contentSize.height,
+                        bottomInset: geometry.contentInsets.bottom,
+                        offset: geometry.contentOffset.y,
+                        viewportHeight: geometry.containerSize.height
+                    )
+                } action: { _, distance in
+                    followsLatest = OpenCodeTranscriptFollow.follows(
+                        followsLatest, distanceFromEnd: distance, readerIsScrolling: isReaderScrolling
+                    )
+                }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentSize.height
+                } action: { oldHeight, newHeight in
+                    guard OpenCodeTranscriptFollow.catchesUp(
+                        follows: followsLatest, readerIsScrolling: isReaderScrolling,
+                        oldHeight: oldHeight, newHeight: newHeight
+                    ) else { return }
+                    catchUp()
+                }
+        } else {
+            content
+        }
+    }
 }
 
 private struct OpenCodeScrollMetrics: Equatable {

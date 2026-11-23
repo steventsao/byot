@@ -105,6 +105,41 @@ struct OpenCodeTranscriptPartTests {
     }
 
     @Test(
+        "A live transcript follows until the reader scrolls back, whatever the reply adds",
+        .bug(id: "ASC-ACcetZD227lYVBerP72GSVM")
+    )
+    func followsUntilReaderScrollsBack() {
+        typealias Follow = OpenCodeTranscriptFollow
+        // The reported screen: a 393 x 852 pt iPhone, a tool row and a long
+        // paragraph arrive while the end of the transcript is in view.
+        let atEnd = Follow.distanceFromEnd(contentHeight: 4_000, bottomInset: 90, offset: 3_238, viewportHeight: 852)
+        #expect(atEnd == 0)
+        let grown = Follow.distanceFromEnd(contentHeight: 4_160, bottomInset: 90, offset: 3_238, viewportHeight: 852)
+        #expect(grown == 160)
+
+        // Growing content pushes the end down without the reader moving: keep following and catch up.
+        #expect(Follow.follows(true, distanceFromEnd: grown, readerIsScrolling: false))
+        #expect(Follow.catchesUp(follows: true, readerIsScrolling: false, oldHeight: 4_000, newHeight: 4_160))
+
+        // The reader drags back into history: stop, and leave them where they are as the reply grows.
+        #expect(!Follow.follows(true, distanceFromEnd: 400, readerIsScrolling: true))
+        #expect(!Follow.follows(false, distanceFromEnd: 560, readerIsScrolling: false))
+        #expect(!Follow.catchesUp(follows: false, readerIsScrolling: false, oldHeight: 4_160, newHeight: 4_320))
+
+        // A small nudge near the end, or scrolling back to it, keeps or resumes following.
+        #expect(Follow.follows(true, distanceFromEnd: Follow.endTolerance, readerIsScrolling: true))
+        #expect(Follow.follows(false, distanceFromEnd: -12, readerIsScrolling: true))
+        #expect(Follow.follows(false, distanceFromEnd: 0, readerIsScrolling: false))
+
+        // Never scroll under the reader's finger; they catch up when they let go.
+        #expect(!Follow.catchesUp(follows: true, readerIsScrolling: true, oldHeight: 4_000, newHeight: 4_160))
+        #expect(!Follow.catchesUp(follows: true, readerIsScrolling: false, oldHeight: 4_160, newHeight: 4_160))
+
+        // A transcript shorter than the screen is always at its end.
+        #expect(Follow.distanceFromEnd(contentHeight: 600, bottomInset: 90, offset: -100, viewportHeight: 852) < 0)
+    }
+
+    @Test(
         "A reply with nothing to show yet takes no transcript row",
         .bug(id: "ASC-AAqE8eljRs3pWq5_qSfEZ0I"),
         .bug(id: "ASC-AL-iOayl1hthD-usBql8OKE")
