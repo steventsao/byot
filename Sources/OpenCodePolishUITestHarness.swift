@@ -74,6 +74,23 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
                     }
                 }
             }
+            if ProcessInfo.processInfo.arguments.contains("--live-turn") {
+                eventLock.withLock {
+                    eventTask = Task { @Sendable [weak self] in
+                        // A turn as OpenCode streams it: reasoning, tool rows that
+                        // appear and finish, and a reply that grows a paragraph at a time.
+                        for (tick, event) in Self.liveTurnEvents().enumerated() {
+                            do { try await Task.sleep(for: .milliseconds(tick == 0 ? 1_500 : 400)) } catch { return }
+                            guard let self else { return }
+                            let data = try! JSONSerialization.data(withJSONObject: event)
+                            eventLock.withLock {
+                                guard !Task.isCancelled else { return }
+                                client?.urlProtocol(self, didLoad: Data("data: ".utf8) + data + Data("\n\n".utf8))
+                            }
+                        }
+                    }
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("--short-streaming") {
                 eventLock.withLock {
                     eventTask = Task { @Sendable [weak self] in
@@ -136,6 +153,9 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             if ProcessInfo.processInfo.arguments.contains("--short-streaming") {
                 sessions.append(Self.session("ses_short", title: "Short conversation"))
             }
+            if ProcessInfo.processInfo.arguments.contains("--live-turn") {
+                sessions.append(Self.session("ses_live", title: "Live turn"))
+            }
             body = sessions
         case let path where ProcessInfo.processInfo.arguments.contains("--subagents")
             && (path.hasPrefix("/session/ses_team") || path.hasPrefix("/session/ses_sub_")):
@@ -146,6 +166,8 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             body = Self.usageTranscript()
         case "/session/ses_short/message":
             body = Self.shortTranscript()
+        case "/session/ses_live/message":
+            body = Self.liveTranscript()
         case "/session/ses_parts/diff":
             body = [["file": "Sources/App.swift", "additions": 3, "deletions": 1, "status": "modified",
                      "patch": "@@ -1,3 +1,5 @@\n import SwiftUI\n+// Guard the empty state.\n+let isEmpty = items.isEmpty\n"]]
@@ -153,6 +175,8 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
             body = ["ses_sub_tests": ["type": "busy"]]
         case "/session/status" where ProcessInfo.processInfo.arguments.contains("--short-streaming"):
             body = ["ses_short": ["type": "busy"]]
+        case "/session/status" where ProcessInfo.processInfo.arguments.contains("--live-turn"):
+            body = ["ses_live": ["type": "busy"]]
         case "/session/status":
             body = [String: String]()
         case "/session/ses_history/message":
@@ -331,6 +355,81 @@ private final class OpenCodePolishURLProtocol: URLProtocol, @unchecked Sendable 
                 ["id": "short_next_start", "type": "step-start"],
             ]),
         ]
+    }
+
+    /// Twelve finished turns, then a prompt OpenCode started on five seconds ago.
+    private static func liveTranscript() -> [[String: Any]] {
+        let start = liveTurnStart
+        func message(_ id: String, role: String, time: [String: Int], _ parts: [[String: Any]]) -> [String: Any] {
+            ["info": ["id": id, "sessionID": "ses_live", "role": role, "agent": "build",
+                      "time": time.mapValues { start + $0 }],
+             "parts": parts.map { $0.merging(["sessionID": "ses_live", "messageID": id]) { $1 } }]
+        }
+        let history = (1...12).flatMap { turn -> [[String: Any]] in
+            let at = turn * 1_000 - 20_000
+            return [
+                message("msg_live_q\(turn)", role: "user", time: ["created": at], [
+                    ["id": "live_q\(turn)_text", "type": "text", "text": "Earlier question \(turn) about the deploy"],
+                ]),
+                message("msg_live_a\(turn)", role: "assistant", time: ["created": at + 100, "completed": at + 900], [
+                    ["id": "live_a\(turn)_text", "type": "text",
+                     "text": "Earlier answer \(turn). Checked the branch, compared it with production and listed what differs."],
+                ]),
+            ]
+        }
+        return history + [
+            message("msg_live_prompt", role: "user", time: ["created": 0], [
+                ["id": "live_prompt_text", "type": "text", "text": "Pull latest main to see what's in prod"],
+            ]),
+            message("msg_live_reply", role: "assistant", time: ["created": 100], [
+                ["id": "live_reply_start", "type": "step-start"],
+            ]),
+        ]
+    }
+
+    /// When the live turn's prompt went out, so its running timer reads as it would live.
+    private static let liveTurnStart = Int(Date().timeIntervalSince1970 * 1_000) - 5_000
+
+    /// The live turn's stream, one event every 400 ms for about 30 seconds.
+    private static func liveTurnEvents() -> [[String: Any]] {
+        func part(_ fields: [String: Any]) -> [String: Any] {
+            ["id": "evt_\(UUID().uuidString)", "type": "message.part.updated",
+             "properties": ["part": fields.merging(["sessionID": "ses_live", "messageID": "msg_live_reply"]) { $1 }]]
+        }
+        func tool(_ id: String, command: String, status: String, output: String? = nil) -> [String: Any] {
+            var state: [String: Any] = ["status": status, "input": ["command": command], "title": command,
+                                        "metadata": [:], "time": ["start": liveTurnStart + 1_000]]
+            if let output {
+                state["output"] = output
+                state["metadata"] = ["output": output]
+                state["time"] = ["start": liveTurnStart + 1_000, "end": liveTurnStart + 2_000]
+            }
+            return part(["id": id, "type": "tool", "callID": "call_\(id)", "tool": "bash", "state": state])
+        }
+        var events: [[String: Any]] = [
+            part(["id": "live_reasoning", "type": "reasoning", "text": "Fetching origin to compare main with what is deployed.",
+                  "time": ["start": liveTurnStart + 500]]),
+            tool("live_fetch", command: "git fetch origin && git log --oneline -5 origin/main", status: "running"),
+            tool("live_fetch", command: "git fetch origin && git log --oneline -5 origin/main", status: "completed",
+                 output: (1...5).map { "abc12\($0) Commit \($0) on main" }.joined(separator: "\n")),
+        ]
+        var paragraphs: [String] = []
+        for update in 1...70 {
+            if update == 20 {
+                events.append(tool("live_diff", command: "git diff --stat origin/main", status: "running"))
+            }
+            if update == 22 {
+                events.append(tool("live_diff", command: "git diff --stat origin/main", status: "completed",
+                                   output: (1...8).map { "src/page\($0).ts | \($0 * 2) +-" }.joined(separator: "\n")))
+            }
+            // Every third update adds a long paragraph, the rest a short one.
+            let filler = update.isMultiple(of: 3)
+                ? String(repeating: "The deployed build matches this commit, so nothing is waiting to ship. ", count: 4)
+                : "Checked another file."
+            paragraphs.append("Live update \(update). \(filler)")
+            events.append(part(["id": "live_text", "type": "text", "text": paragraphs.joined(separator: "\n\n")]))
+        }
+        return events
     }
 
     private static func session(
