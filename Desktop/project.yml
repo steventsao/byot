@@ -1,0 +1,247 @@
+name: BYOTDesktop
+options:
+  bundleIdPrefix: com.steventsao
+  developmentLanguage: en
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    SWIFT_VERSION: 6.0
+    DEVELOPMENT_TEAM: 449BD89VDV
+    ENABLE_HARDENED_RUNTIME: YES
+  configs:
+    Release:
+      SWIFT_OPTIMIZATION_LEVEL: -Osize
+      DEAD_CODE_STRIPPING: YES
+      DEPLOYMENT_POSTPROCESSING: YES
+      STRIP_INSTALLED_PRODUCT: YES
+      STRIP_STYLE: all
+      COPY_PHASE_STRIP: YES
+packages:
+  # Same pinned dependencies as the iOS target, both natively supporting macOS.
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.10.1
+  PostHog:
+    url: https://github.com/PostHog/posthog-ios
+    exactVersion: 3.89.0
+targets:
+  BYOTDesktop:
+    type: application
+    platform: macOS
+    sources:
+      # Desktop-only shell, AppKit bridges, and native macOS SwiftUI views.
+      - path: Sources
+      # macOS icon and assets.
+      - path: Resources/Assets.xcassets
+      # Only OpenRunde-Bold is used (strictly for the lowercase `byot` wordmark).
+      - path: ../Sources/Resources/Fonts/OpenRunde-Bold.otf
+        buildPhase: resources
+      # Shared headless BYOT core (pure Foundation: OpenCode v1/v2 client,
+      # transport, SSE streaming, stores, reducers, terminal/diff/worktree/file
+      # engines, syntax highlighter, Keychain, pairing, telemetry).
+      # Kept read-only from ../Sources so the iPhone target remains untouched.
+      - path: ../Shared/BYOTWidgetLink.swift
+        group: Core
+      - path: ../Sources/BYOTDurableQueue.swift
+        group: Core
+      - path: ../Sources/BYOTNudge.swift
+        group: Core
+      - path: ../Sources/BYOTPushClient.swift
+        group: Core
+      - path: ../Sources/BYOTPushModels.swift
+        group: Core
+      - path: ../Sources/BYOTSyntaxHighlighter.swift
+        group: Core
+      - path: ../Sources/BYOTSyntaxLanguage.swift
+        group: Core
+      - path: ../Sources/BYOTTelemetry.swift
+        group: Core
+      - path: ../Sources/BYOTTelemetryOpenCode.swift
+        group: Core
+      - path: ../Sources/KeychainStore.swift
+        group: Core
+      - path: ../Sources/OpenCodeActions.swift
+        group: Core
+      - path: ../Sources/OpenCodeBonjourBrowser.swift
+        group: Core
+      - path: ../Sources/OpenCodeCapabilities.swift
+        group: Core
+      - path: ../Sources/OpenCodeClient.swift
+        group: Core
+      - path: ../Sources/OpenCodeCompatibility.swift
+        group: Core
+      - path: ../Sources/OpenCodeCompatibilitySummary.swift
+        group: Core
+      - path: ../Sources/OpenCodeComposerCatalog.swift
+        group: Core
+      - path: ../Sources/OpenCodeComposerDispatch.swift
+        group: Core
+      - path: ../Sources/OpenCodeComposerDraft.swift
+        group: Core
+      - path: ../Sources/OpenCodeConnection.swift
+        group: Core
+      - path: ../Sources/OpenCodeConnectionLayer.swift
+        group: Core
+      - path: ../Sources/OpenCodeDiffReview.swift
+        group: Core
+      - path: ../Sources/OpenCodeDiffReviewStore.swift
+        group: Core
+      - path: ../Sources/OpenCodeDiscovery.swift
+        group: Core
+      - path: ../Sources/OpenCodeDiscoveryStore.swift
+        group: Core
+      - path: ../Sources/OpenCodeEventStream.swift
+        group: Core
+      - path: ../Sources/OpenCodeFailure.swift
+        group: Core
+      - path: ../Sources/OpenCodeFeatureContext.swift
+        group: Core
+      - path: ../Sources/OpenCodeForms.swift
+        group: Core
+      - path: ../Sources/OpenCodeHTTPTransport.swift
+        group: Core
+      - path: ../Sources/OpenCodeHealth.swift
+        group: Core
+      - path: ../Sources/OpenCodeModelOption.swift
+        group: Core
+      - path: ../Sources/OpenCodeModels.swift
+        group: Core
+      - path: ../Sources/OpenCodeOfflineCache.swift
+        group: Core
+      - path: ../Sources/OpenCodeOneTimePairing.swift
+        group: Core
+      - path: ../Sources/OpenCodePairing.swift
+        group: Core
+      - path: ../Sources/OpenCodeProjectStore.swift
+        group: Core
+      - path: ../Sources/OpenCodePromptAttachment.swift
+        group: Core
+      - path: ../Sources/OpenCodePromptFileReference.swift
+        group: Core
+      - path: ../Sources/OpenCodePromptQueue.swift
+        group: Core
+      - path: ../Sources/OpenCodePromptSubmission.swift
+        group: Core
+      - path: ../Sources/OpenCodeProtocolAdapter.swift
+        group: Core
+      - path: ../Sources/OpenCodeProtocolCapabilities.swift
+        group: Core
+      - path: ../Sources/OpenCodeProviderCatalog.swift
+        group: Core
+      - path: ../Sources/OpenCodeProviderModels.swift
+        group: Core
+      - path: ../Sources/OpenCodeQuestionResponseState.swift
+        group: Core
+      - path: ../Sources/OpenCodeQueuedPrompt.swift
+        group: Core
+      - path: ../Sources/OpenCodeRedirectDelegate.swift
+        group: Core
+      - path: ../Sources/OpenCodeRemoteFileStore.swift
+        group: Core
+      - path: ../Sources/OpenCodeRemoteFiles.swift
+        group: Core
+      - path: ../Sources/OpenCodeServerAuthentication.swift
+        group: Core
+      - path: ../Sources/OpenCodeServerContext.swift
+        group: Core
+      - path: ../Sources/OpenCodeServerContextStore.swift
+        group: Core
+      - path: ../Sources/OpenCodeServerProtocol.swift
+        group: Core
+      - path: ../Sources/OpenCodeServerSettings.swift
+        group: Core
+      - path: ../Sources/OpenCodeServerVersion.swift
+        group: Core
+      - path: ../Sources/OpenCodeSessionAttentionStore.swift
+        group: Core
+      - path: ../Sources/OpenCodeSessionBrowserStore.swift
+        group: Core
+      - path: ../Sources/OpenCodeSessionFeatureService.swift
+        group: Core
+      - path: ../Sources/OpenCodeSessionFeatures.swift
+        group: Core
+      - path: ../Sources/OpenCodeSessionListEvent.swift
+        group: Core
+      - path: ../Sources/OpenCodeSessionServicing.swift
+        group: Core
+      - path: ../Sources/OpenCodeSessionSharing.swift
+        group: Core
+      - path: ../Sources/OpenCodeSessionStore.swift
+        group: Core
+      - path: ../Sources/OpenCodeSessionUsage.swift
+        group: Core
+      - path: ../Sources/OpenCodeShellCommand.swift
+        group: Core
+      - path: ../Sources/OpenCodeShellTranscript.swift
+        group: Core
+      - path: ../Sources/OpenCodeStoreComposition.swift
+        group: Core
+      - path: ../Sources/OpenCodeSubagents.swift
+        group: Core
+      - path: ../Sources/OpenCodeTerminal.swift
+        group: Core
+      - path: ../Sources/OpenCodeTerminalStore.swift
+        group: Core
+      - path: ../Sources/OpenCodeToolPresentation.swift
+        group: Core
+      - path: ../Sources/OpenCodeTranscriptExport.swift
+        group: Core
+      - path: ../Sources/OpenCodeTranscriptParts.swift
+        group: Core
+      - path: ../Sources/OpenCodeTranscriptReducer.swift
+        group: Core
+      - path: ../Sources/OpenCodeTransport.swift
+        group: Core
+      - path: ../Sources/OpenCodeV1Adapter.swift
+        group: Core
+      - path: ../Sources/OpenCodeV2Adapter.swift
+        group: Core
+      - path: ../Sources/OpenCodeV2Contract.swift
+        group: Core
+      - path: ../Sources/OpenCodeV2EventReducer.swift
+        group: Core
+      - path: ../Sources/OpenCodeV2Support.swift
+        group: Core
+      - path: ../Sources/OpenCodeWorkspaceServicing.swift
+        group: Core
+      - path: ../Sources/OpenCodeWorkspaceStore.swift
+        group: Core
+      - path: ../Sources/OpenCodeWorktree.swift
+        group: Core
+      - path: ../Sources/OpenCodeWorktreeStore.swift
+        group: Core
+    dependencies:
+      - package: SwiftTerm
+      - package: PostHog
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleDisplayName: byot
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.developer-tools
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSHighResolutionCapable: true
+        ATSApplicationFontsPath: "."
+        CFBundleURLTypes:
+          - CFBundleURLName: app.byot.pair
+            CFBundleURLSchemes:
+              - byot
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSBonjourServices:
+          - _http._tcp
+        NSLocalNetworkUsageDescription: byot finds OpenCode servers on your network and connects to servers running on this Mac or over Tailscale.
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Resources/BYOTDesktop.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.steventsao.byot.desktop
+        PRODUCT_NAME: byot
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES

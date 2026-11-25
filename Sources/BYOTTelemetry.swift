@@ -297,8 +297,10 @@ struct BYOTPostHogTransport: BYOTTelemetryTransport {
             config.personProfiles = .never
             config.setDefaultPersonProperties = false
             config.errorTrackingConfig.autoCapture = false
+            #if os(iOS)
             config.sessionReplay = false
             config.surveys = false
+            #endif
             config.flushAt = 10
             config.propertiesSanitizer = BYOTTelemetrySanitizer()
             // The install id is the distinct id. Read it each time so a reset
