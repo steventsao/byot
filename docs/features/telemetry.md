@@ -67,7 +67,7 @@ counted in `droppedEventCount`.
 | `server_connected` | `transport`: `https` / `http` · `host_kind`: `tailscale` / `local_address` / `local_name` / `public` / `unknown` · `server_protocol`: `v1` / `v2` · `server_version`: `major.minor` or `unknown` · `compatibility`: `compatible` / `degraded` / `unsupported` / `unknown` | The first successful protocol negotiation per saved server per launch. A negotiation before the person answers the question is held in memory and sent only if they opt in during that launch |
 | `session_started` | `server_protocol` | A session is created from byot (new session, worktree, Siri, share) |
 | `turn_requested` | `kind`: `prompt` / `command` / `skill` / `shell` · `delivery`: `now` / `queued` / `computer_queue` · `agent`: `build` / `plan` / `other` / `none` · `provider`: an OpenCode provider id or `other` / `none` · `model`: a catalog model id, or `other` under a custom provider, or `none` · `variant_set` · `attachment_count` · `file_reference_count` | The person sends a message, a slash command, a skill, or a shell command |
-| `turn_completed` | `result`: `completed` / `failed` / `stopped` · `duration_ms` · `agent` · `provider` · `model` · `input_tokens` · `output_tokens` · `reasoning_tokens` · `reply_count` | A turn byot requested goes idle while its conversation is open |
+| `turn_completed` | `result`: `completed` / `failed` / `stopped` · `duration_ms` · `agent` · `provider` · `model` · `input_tokens` · `output_tokens` · `reasoning_tokens` · `reply_count` · `failure_class` (failed turns only; the failed-turn `error_class` values below) · `http_status_bucket`: `4xx` / `429` / `5xx`, when the failed turn's error carried an HTTP status | A turn byot requested goes idle while its conversation is open |
 | `error_occurred` | `error_class` (see below) · `surface`: `connection` / `session_list` / `send` / `turn` / `shell` · `url_error_code`: Apple's numeric `NSURLErrorDomain` code, such as `-1004`, for URL loading errors only · `host_kind` and `server_protocol`, the same values as on `server_connected`, for session list and send errors (`server_protocol` only once negotiated) | A session list fails to load, reported once per load however many projects failed (not when the load is cancelled because the list left the screen or the app went inactive), a send fails, or the server reports a failed turn |
 | `nudge_outcome` | `kind`: `star_card` / `review_request` · `outcome`: `shown` / `starred` / `later` / `requested` · `completed_turns` · `threshold` | byot asks for a GitHub star or Apple's review prompt after a completed turn, and what the person chose; see [star-nudge.md](star-nudge.md) |
 
@@ -76,9 +76,12 @@ counted in `droppedEventCount`.
 `local_address`; a `.local` or bare name is `local_name`; anything else is
 `public`.
 
-`provider` and `model` are reported only for provider ids OpenCode ships
-(`BYOTTelemetryOpenCode.knownProviders`). A self-named provider, and every
-model under it, reports as `other`. `agent` is `build` or `plan` for
+`provider` and `model` are reported only for public provider ids: the
+models.dev catalog plus the ones OpenCode ships
+(`BYOTTelemetryOpenCode.knownProviders`, BYOTTelemetryProviderCatalog.swift).
+OpenCode 2's provider list does not say whether a provider is from the
+catalog or the user's config, so the list is kept in the app. A self-named
+provider, and every model under it, reports as `other`. `agent` is `build` or `plan` for
 OpenCode's primary agents; a custom agent is `other`.
 
 `error_class` values: `authentication`, `not_found`, `throttled`,
@@ -86,7 +89,11 @@ OpenCode's primary agents; a custom agent is `other`.
 `event_stream`, `server_message`, `model_unavailable`, `timeout`,
 `unreachable`, `tls`, `app_transport_security`, `network`, `cancelled`,
 `other`; and for failed turns `aborted`, `provider_auth`, `output_length`,
-`provider_api`, `context_overflow`, `turn_failed`.
+`provider_api`, `context_overflow`, `model_unavailable`, `throttled`,
+`turn_failed`. Failed-turn classes come from the server's error name (v1) or
+`SessionError` `type` (OpenCode 2); `throttled` is any failed turn with status
+429 or a `retryAfterMs`, and OpenCode 2's rate and usage limit types. The
+error's message and response body are never sent.
 
 `network` covers every URL loading error the list above does not name, so
 `url_error_code` is what tells those apart. It is one of Apple's fixed

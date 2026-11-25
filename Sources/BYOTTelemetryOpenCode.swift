@@ -22,17 +22,9 @@ enum BYOTTelemetryOpenCode {
         case shell
     }
 
-    /// Provider ids OpenCode ships. Anything else, including a self-named
-    /// custom provider, reports as `other`, and so does its model id.
-    static let knownProviders: Set<String> = [
-        "anthropic", "openai", "google", "google-vertex", "google-vertex-anthropic", "openrouter",
-        "github-copilot", "amazon-bedrock", "azure", "azure-cognitive-services", "groq", "xai", "mistral",
-        "deepseek", "togetherai", "fireworks-ai", "cerebras", "ollama", "lmstudio", "llama", "opencode",
-        "zai", "zhipuai", "moonshotai", "alibaba", "vercel", "huggingface", "perplexity", "cohere",
-        "deepinfra", "baseten", "v0", "morph", "inception", "venice", "requesty", "minimax", "nvidia",
-        "sambanova", "upstage", "cloudflare-workers-ai", "cortecs", "nebius", "io-net", "scaleway",
-        "vultr", "gitlab", "zenmux", "iflowcn", "synthetic", "chutes",
-    ]
+    // `knownProviders` lives in BYOTTelemetryProviderCatalog.swift. Anything
+    // outside it, including a self-named custom provider, reports as `other`,
+    // and so does its model id.
 
     /// OpenCode's built-in primary agents. Custom agent names are the user's.
     static let primaryAgents: Set<String> = ["build", "plan"]
@@ -128,11 +120,15 @@ enum BYOTTelemetryOpenCode {
     /// Token totals come from the replies after the turn's own user message,
     /// as far as the transcript has loaded when the turn settles. A reply
     /// that has not arrived yet is simply not counted.
-    static func turnCompleted(_ turn: BYOTTelemetryTurn, result: String,
+    ///
+    /// A failed turn also says why: `failure_class` from the server's error
+    /// (`failure`, else the last reply error), or `turn_failed` when there is
+    /// none, and `http_status_bucket` when the error carried a status.
+    static func turnCompleted(_ turn: BYOTTelemetryTurn, result: String, failure: OpenCodeMessageError? = nil,
                               messages: [OpenCodeMessageEnvelope], now: Date) -> BYOTTelemetry.Properties {
         let replies = replies(in: messages, after: turn.prompt.messageID)
         let tokens = replies.compactMap { OpenCodeReplyUsage($0)?.tokens }.reduce(.zero, +)
-        return [
+        var properties: BYOTTelemetry.Properties = [
             "result": result,
             "duration_ms": Int(max(0, now.timeIntervalSince(turn.startedAt)) * 1_000),
             "agent": agent(turn.prompt.agent),
@@ -143,6 +139,12 @@ enum BYOTTelemetryOpenCode {
             "reasoning_tokens": Int(tokens.reasoning),
             "reply_count": replies.count,
         ]
+        if result == "failed" {
+            let failure = failure ?? replies.last { $0.info.error != nil }?.info.error
+            properties["failure_class"] = failure.map(failureClass) ?? "turn_failed"
+            if let bucket = failure.flatMap(httpStatusBucket) { properties["http_status_bucket"] = bucket }
+        }
+        return properties
     }
 
     /// True when a reply to this turn carries a provider or server error.
@@ -197,17 +199,64 @@ enum BYOTTelemetryOpenCode {
         }
     }
 
-    /// A class for a failed turn from the server's error envelope.
+    /// A class for a failed turn from the server's error envelope: a v1 error
+    /// `name`, or an OpenCode 2 `SessionError.Error` `type` (decoded into
+    /// `name`, with the whole object as `data`). The v2 types are the ones
+    /// upstream constructs in packages/core/src/session/to-session-error.ts,
+    /// runner/step.ts, runner/llm.ts and compaction.ts. v2 has no overflow
+    /// type: an overflow it cannot compact away arrives as
+    /// `provider.invalid-request` and reports as `provider_api`.
     static func failureClass(_ error: OpenCodeMessageError) -> String {
+        if abortedTypes.contains(error.name) { return "aborted" }
+        if status(of: error) == 429 || error.data?["retryAfterMs"]?.numberValue != nil { return "throttled" }
         if error.failure.isModelUnavailable { return "model_unavailable" }
         switch error.name {
         case "MessageAbortedError": return "aborted"
-        case "ProviderAuthError": return "provider_auth"
-        case "MessageOutputLengthError": return "output_length"
+        case "ProviderAuthError", "provider.auth": return "provider_auth"
+        case "MessageOutputLengthError", "output-limit": return "output_length"
         case "APIError", "APICallError": return "provider_api"
         case "ContextOverflowError": return "context_overflow"
+        case "provider.no-route", "provider.unknown": return "model_unavailable"
+        case let type where throttledTypes.contains(type): return "throttled"
+        case let type where type.hasPrefix("provider."): return "provider_api"
         default: return "turn_failed"
         }
+    }
+
+    /// v2 types for a stopped step, tool or compaction.
+    static let abortedTypes: Set<String> = ["aborted", "compaction.interrupted"]
+
+    /// v2 rate and usage limits. Each is also throttled by status 429 or a
+    /// `retryAfterMs`, but a quota refusal may carry neither.
+    static let throttledTypes: Set<String> = [
+        "provider.rate-limit", "provider.quota", "provider.free-limit", "provider.budget-limit",
+        "provider.model-budget-limit", "provider.go-limit", "provider.chatgpt-limit",
+        "provider.chatgpt-workspace-limit",
+    ]
+
+    /// `4xx`, `429` or `5xx` for the HTTP status an error carried (v2
+    /// `status`, v1 `statusCode`), else nil.
+    static func httpStatusBucket(_ error: OpenCodeMessageError) -> String? {
+        guard let status = status(of: error) else { return nil }
+        return switch status {
+        case 429: "429"
+        case 400...499: "4xx"
+        case 500...599: "5xx"
+        default: nil
+        }
+    }
+
+    private static func status(of error: OpenCodeMessageError) -> Int? {
+        guard let value = error.data?["status"]?.numberValue ?? error.data?["statusCode"]?.numberValue,
+              (100...599).contains(value) else { return nil }
+        return Int(value)
+    }
+
+    /// The server's error object (`session.error` in v1, the v2
+    /// `session.execution.failed` payload) as an envelope.
+    static func messageError(details: [String: OpenCodeJSONValue]?) -> OpenCodeMessageError {
+        OpenCodeMessageError(name: details?["type"]?.stringValue ?? details?["name"]?.stringValue ?? "unknown",
+                             data: details)
     }
 
     /// URLSession throws `URLError(.cancelled)`, not `CancellationError`, when
@@ -268,8 +317,7 @@ enum BYOTTelemetryOpenCode {
     }
 
     static func turnFailed(details: [String: OpenCodeJSONValue]?) -> BYOTTelemetry.Properties {
-        turnFailed(OpenCodeMessageError(name: details?["type"]?.stringValue ?? details?["name"]?.stringValue ?? "unknown",
-                                        data: details))
+        turnFailed(messageError(details: details))
     }
 }
 
