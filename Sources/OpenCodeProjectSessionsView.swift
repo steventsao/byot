@@ -319,6 +319,14 @@ struct OpenCodeStatusLabel: View {
         Self.title(status: status, eventConnected: eventConnected, isStatusKnown: isStatusKnown)
     }
 
+    /// Whether the session header names the status. While a turn runs the
+    /// status line at the end of the transcript says so, as OpenCode's app
+    /// does, so the header keeps only idle and connection trouble.
+    nonisolated static func showsInSessionHeader(status: OpenCodeSessionStatus, eventConnected: Bool?,
+                                                 isStatusKnown: Bool = true) -> Bool {
+        eventConnected == false || !isStatusKnown || !status.isActive
+    }
+
     // A status that hasn't arrived is named here, never shown as idle, so the
     // composer needs no spinner of its own (TestFlight AEk0EYWkKW0QGxg8A34z3r0).
     nonisolated static func title(status: OpenCodeSessionStatus, eventConnected: Bool?,

@@ -673,6 +673,30 @@ struct OpenCodeTranscriptTurnTests {
         #expect(OpenCodeTurnHeader(turn: OpenCodeTranscriptTurn(prompt: prompt), isRunning: false) == nil)
     }
 
+    @Test(
+        "A running turn has one working indicator: the status line, timed, and the running tool's own row",
+        .bug(id: "ASC-AMpP1fBN8wzsj2qZ2Ai94so")
+    )
+    func oneWorkingIndicator() throws {
+        let prompt = try message("u1", role: "user", created: 1_000, ["text": "Go"])
+        let turn = OpenCodeTranscriptTurn(prompt: prompt)
+        let running = try #require(OpenCodeTurnHeader(turn: turn, isRunning: true))
+        #expect(!running.showsAboveReplies)
+        let now = running.startedAt.addingTimeInterval(428)
+        #expect(OpenCodeTurnHeader.statusLine(phase: .working, runningTurn: turn, now: now) == "Working for 7m 8s")
+        #expect(OpenCodeTurnHeader.statusLine(phase: .thinking, runningTurn: turn, now: now) == nil)
+        #expect(OpenCodeTurnHeader.statusLine(phase: .working, runningTurn: nil, now: now) == nil)
+
+        let finished = OpenCodeTranscriptTurn(prompt: prompt, replies: [
+            try message("a1", role: "assistant", created: 2_000, completed: 30_000, ["text": "Done"]),
+        ])
+        #expect(try #require(OpenCodeTurnHeader(turn: finished, isRunning: false)).showsAboveReplies)
+
+        let summary = OpenCodeToolRunSummary(tools: [try part(tool("r", "read", status: "running"))])
+        #expect(summary.showsRunningIndicator(isExpanded: false))
+        #expect(!summary.showsRunningIndicator(isExpanded: true))
+    }
+
     // MARK: Fixtures
 
     private let tokens: [String: Any] = ["input": 900, "output": 40, "reasoning": 0, "cache": ["read": 0, "write": 0]]

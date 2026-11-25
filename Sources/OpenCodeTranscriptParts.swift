@@ -554,9 +554,23 @@ struct OpenCodeTurnHeader: Equatable, Sendable {
         }
     }
 
+    /// A running turn's time shows on the status line under it, the one live
+    /// sign that OpenCode works (as in OpenCode's app); the header above the
+    /// replies shows once the turn ends.
+    var showsAboveReplies: Bool { ending != nil }
+
+    /// What the status line under a running turn says while OpenCode works:
+    /// how long the turn has run. Nil keeps the phase's own title.
+    static func statusLine(phase: BYOTActivityPhase, runningTurn: OpenCodeTranscriptTurn?,
+                           now: Date = .now) -> String? {
+        guard phase == .working, let runningTurn,
+              let header = OpenCodeTurnHeader(turn: runningTurn, isRunning: true) else { return nil }
+        return header.title(now: now)
+    }
+
     /// The running header counts from the prompt on this device's clock, so
     /// a server clock a day or more away shows no time rather than a wrong
-    /// one; a running turn then has no header, as the activity row says it works.
+    /// one; the status line then just says it works.
     func title(now: Date = .now) -> String? {
         let elapsed = (finishedAt ?? now).timeIntervalSince(startedAt)
         guard elapsed < 86_400 else {
@@ -748,6 +762,10 @@ struct OpenCodeToolRunSummary: Equatable, Sendable {
         isRunning = statuses.contains { $0 == "running" || $0 == "pending" }
         hasFailure = statuses.contains("error")
     }
+
+    /// The run's line shows its own working glyph only while folded; open, the
+    /// running tool's row shows it, so one tool never shows two.
+    func showsRunningIndicator(isExpanded: Bool) -> Bool { isRunning && !isExpanded }
 
     var accessibilityLabel: String {
         [title, isRunning ? String(localized: "Running") : nil, hasFailure ? String(localized: "Failed") : nil]
