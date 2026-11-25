@@ -1,0 +1,34 @@
+name: Desktop Build
+
+on:
+  pull_request:
+    paths:
+      - "Desktop/**"
+      - "Sources/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label for the packaged DMG (e.g. 0.1.0-beta.1)"
+        required: true
+        default: "0.1.0-beta.1"
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build and package macOS DMG
+        working-directory: Desktop
+        run: ./Scripts/package-dmg.sh --version "${{ inputs.version || 'ci' }}"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BYOT-Desktop-${{ inputs.version || 'ci' }}-arm64
+          path: |
+            Desktop/.build/dist/*.dmg
+            Desktop/.build/dist/*.sha256
