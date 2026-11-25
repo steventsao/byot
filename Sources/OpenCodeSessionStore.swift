@@ -62,6 +62,8 @@ final class OpenCodeSessionStore: ObservableObject {
     /// The turn byot asked for most recently, for the anonymous
     /// `turn_completed` event. Turns started elsewhere are not reported.
     private var telemetryTurn: BYOTTelemetryTurn?
+    /// The server's error for the running turn, kept for `turn_completed`.
+    private var telemetryTurnFailure: OpenCodeMessageError?
     /// What byot asks for after this turn finished well, if anything.
     @Published private(set) var nudge: BYOTNudgeAsk?
     private let nudgeGate: BYOTNudgeGate
@@ -1769,6 +1771,7 @@ final class OpenCodeSessionStore: ObservableObject {
         case "session.error":
             if let sessionError: OpenCodeMessageError = decode(event.properties["error"]) {
                 errorMessage = sessionError.displayMessage
+                telemetryTurnFailure = sessionError
                 BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.turnFailed(sessionError))
             }
             // OpenCode normally follows session.error with idle, but clients
@@ -1796,7 +1799,9 @@ final class OpenCodeSessionStore: ObservableObject {
         case "session.execution.failed", "session.execution.interrupted":
             if event.type == "session.execution.failed" {
                 errorMessage = OpenCodeFailure(message: String(localized: "The turn failed."), details: event.properties["error"]?.objectValue).message
-                BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.turnFailed(details: event.properties["error"]?.objectValue))
+                let failure = BYOTTelemetryOpenCode.messageError(details: event.properties["error"]?.objectValue)
+                telemetryTurnFailure = failure
+                BYOTTelemetry.shared.record(.errorOccurred, BYOTTelemetryOpenCode.turnFailed(failure))
             }
             settleTurnLocally(dismissingUnansweredPrompt: false)
             scheduleMessageRefresh()
@@ -2271,6 +2276,8 @@ final class OpenCodeSessionStore: ObservableObject {
     private func recordTurnCompletionIfNeeded(from previous: OpenCodeSessionStatus) {
         guard previous.isActive, status.isActive == false, let turn = telemetryTurn else { return }
         telemetryTurn = nil
+        let failure = telemetryTurnFailure
+        telemetryTurnFailure = nil
         guard isRunning else { return }
         let result = if isStoppingTurn {
             "stopped"
@@ -2280,7 +2287,7 @@ final class OpenCodeSessionStore: ObservableObject {
             "completed"
         }
         BYOTTelemetry.shared.record(.turnCompleted, BYOTTelemetryOpenCode.turnCompleted(
-            turn, result: result, messages: messages, now: .now))
+            turn, result: result, failure: failure, messages: messages, now: .now))
         // A finished turn is the value moment the star or review ask waits for.
         if result == "completed", nudge == nil, let ask = nudgeGate.recordValueMoment() {
             nudge = ask
@@ -2345,6 +2352,7 @@ final class OpenCodeSessionStore: ObservableObject {
         didStatusProbeFailWithFreshTranscript = false
         beginCurrentTurnActivityTracking()
         telemetryTurn = BYOTTelemetryTurn(prompt: prompt, startedAt: .now)
+        telemetryTurnFailure = nil
         markOptimisticBusy()
         isSending = true
         let dispatchID = UUID()
