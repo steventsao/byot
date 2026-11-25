@@ -88,18 +88,35 @@ enum OpenCodeTranscriptFollow {
 
     /// How far the visible part of the transcript sits above its end. Zero or
     /// less is at the end, as is a transcript shorter than the screen.
+    /// `offset` is the scroll view's own content offset, which starts at minus
+    /// the top inset, and `viewportHeight` is the part between the insets.
     static func distanceFromEnd(
-        contentHeight: CGFloat, bottomInset: CGFloat, offset: CGFloat, viewportHeight: CGFloat
+        contentHeight: CGFloat, topInset: CGFloat, offset: CGFloat, viewportHeight: CGFloat
     ) -> CGFloat {
-        contentHeight + bottomInset - (offset + viewportHeight)
+        contentHeight - (offset + topInset + viewportHeight)
     }
 
-    /// Whether to follow after the scroll position moves. While the reader
-    /// scrolls, where they leave it decides; otherwise only reaching the end
-    /// turns following back on, so content that grows never turns it off.
-    static func follows(_ current: Bool, distanceFromEnd: CGFloat, readerIsScrolling: Bool) -> Bool {
-        let isAtEnd = distanceFromEnd <= endTolerance
-        return readerIsScrolling ? isAtEnd : current || isAtEnd
+    /// The scroll geometry following depends on.
+    struct Position: Equatable {
+        var contentHeight: CGFloat
+        var topInset: CGFloat
+        var offset: CGFloat
+        var viewportHeight: CGFloat
+
+        var distanceFromEnd: CGFloat {
+            OpenCodeTranscriptFollow.distanceFromEnd(
+                contentHeight: contentHeight, topInset: topInset, offset: offset, viewportHeight: viewportHeight)
+        }
+    }
+
+    /// Whether to follow after the scroll position moves. Reaching the end turns
+    /// following on. Only the reader turns it off, by scrolling toward history
+    /// past the tolerance: output that arrives moves the end, not the reader, so
+    /// it never turns following off, even while a fling to the end settles.
+    static func follows(_ current: Bool, from old: Position, to new: Position, readerIsScrolling: Bool) -> Bool {
+        if new.distanceFromEnd <= endTolerance { return true }
+        guard readerIsScrolling, new.contentHeight == old.contentHeight else { return current }
+        return new.offset < old.offset ? false : current
     }
 
     /// Whether to scroll to the end once the content changes size. Never under

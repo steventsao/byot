@@ -110,33 +110,53 @@ struct OpenCodeTranscriptPartTests {
     )
     func followsUntilReaderScrollsBack() {
         typealias Follow = OpenCodeTranscriptFollow
-        // The reported screen: a 393 x 852 pt iPhone, a tool row and a long
-        // paragraph arrive while the end of the transcript is in view.
-        let atEnd = Follow.distanceFromEnd(contentHeight: 4_000, bottomInset: 90, offset: 3_238, viewportHeight: 852)
-        #expect(atEnd == 0)
-        let grown = Follow.distanceFromEnd(contentHeight: 4_160, bottomInset: 90, offset: 3_238, viewportHeight: 852)
-        #expect(grown == 160)
+        // An iPhone 17 Pro as the UI test measures it: 148 pt of header inset
+        // above the transcript and 604 pt of transcript between header and
+        // composer. A tool row and a long paragraph arrive while the end is in view.
+        func at(_ contentHeight: CGFloat, _ offset: CGFloat) -> Follow.Position {
+            .init(contentHeight: contentHeight, topInset: 148, offset: offset, viewportHeight: 604)
+        }
+        // At the end, the offset is the content height less the viewport and the top inset.
+        let end = at(4_000, 3_248)
+        #expect(end.distanceFromEnd == 0)
+        let grown = at(4_160, 3_248)
+        #expect(grown.distanceFromEnd == 160)
 
         // Growing content pushes the end down without the reader moving: keep following and catch up.
-        #expect(Follow.follows(true, distanceFromEnd: grown, readerIsScrolling: false))
+        #expect(Follow.follows(true, from: end, to: grown, readerIsScrolling: false))
         #expect(Follow.catchesUp(follows: true, readerIsScrolling: false, oldHeight: 4_000, newHeight: 4_160))
 
         // The reader drags back into history: stop, and leave them where they are as the reply grows.
-        #expect(!Follow.follows(true, distanceFromEnd: 400, readerIsScrolling: true))
-        #expect(!Follow.follows(false, distanceFromEnd: 560, readerIsScrolling: false))
+        let dragged = at(4_000, 2_848)
+        #expect(!Follow.follows(true, from: end, to: dragged, readerIsScrolling: true))
+        let reading = at(4_160, 2_848)
+        #expect(!Follow.follows(false, from: dragged, to: reading, readerIsScrolling: false))
         #expect(!Follow.catchesUp(follows: false, readerIsScrolling: false, oldHeight: 4_160, newHeight: 4_320))
+        // Coasting back down without reaching the end does not follow yet.
+        #expect(!Follow.follows(false, from: reading, to: at(4_160, 3_010), readerIsScrolling: true))
 
-        // A small nudge near the end, or scrolling back to it, keeps or resumes following.
-        #expect(Follow.follows(true, distanceFromEnd: Follow.endTolerance, readerIsScrolling: true))
-        #expect(Follow.follows(false, distanceFromEnd: -12, readerIsScrolling: true))
-        #expect(Follow.follows(false, distanceFromEnd: 0, readerIsScrolling: false))
+        // A small nudge near the end keeps following.
+        #expect(Follow.follows(true, from: end, to: at(4_000, 3_216), readerIsScrolling: true))
+
+        // Scrolling back to the end resumes following, bounce included. Output that
+        // lands while the fling settles moves the end, not the reader: keep
+        // following, and catch up once the scroll comes to rest.
+        let bounced = at(4_160, 3_420)
+        #expect(bounced.distanceFromEnd == -12)
+        #expect(Follow.follows(false, from: reading, to: bounced, readerIsScrolling: true))
+        let landed = at(4_320, 3_420)
+        #expect(landed.distanceFromEnd == 148)
+        #expect(Follow.follows(true, from: bounced, to: landed, readerIsScrolling: true))
+        // Then the reader heads back into history.
+        #expect(!Follow.follows(true, from: landed, to: at(4_320, 3_310), readerIsScrolling: true))
 
         // Never scroll under the reader's finger; they catch up when they let go.
         #expect(!Follow.catchesUp(follows: true, readerIsScrolling: true, oldHeight: 4_000, newHeight: 4_160))
         #expect(!Follow.catchesUp(follows: true, readerIsScrolling: false, oldHeight: 4_160, newHeight: 4_160))
 
         // A transcript shorter than the screen is always at its end.
-        #expect(Follow.distanceFromEnd(contentHeight: 600, bottomInset: 90, offset: -100, viewportHeight: 852) < 0)
+        #expect(at(500, -148).distanceFromEnd < 0)
+        #expect(Follow.follows(false, from: at(500, -148), to: at(540, -148), readerIsScrolling: false))
     }
 
     @Test(
