@@ -539,7 +539,7 @@ struct OpenCodeSessionComposerView: View {
             Group {
                 if density.showsModelName {
                     HStack(spacing: 6) {
-                        Text(store.selectedModel?.modelName ?? String(localized: "Automatic"))
+                        Text(store.selectedModel?.modelName ?? store.automaticModelName ?? String(localized: "Automatic"))
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                             .truncationMode(.tail)
                             // Beside icon-only knobs a long name ellipsizes in the
@@ -565,7 +565,7 @@ struct OpenCodeSessionComposerView: View {
         .accessibilityIdentifier("opencode-model-picker")
         .accessibilityValue(store.selectedModel.map {
             "\($0.modelName), \($0.providerName)"
-        } ?? "Automatic")
+        } ?? store.automaticModelName.map { String(localized: "Automatic, \($0)") } ?? String(localized: "Automatic"))
     }
 
     private var attachmentButton: some View {

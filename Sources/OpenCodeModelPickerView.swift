@@ -8,6 +8,11 @@ struct OpenCodeModelPickerView: View {
     @ObservedObject var store: OpenCodeSessionStore
     @State private var searchText = ""
 
+    private var automaticDetail: String {
+        guard let name = store.automaticModelName else { return String(localized: "Server default") }
+        return String(localized: "Server default · last reply used \(name)")
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -19,7 +24,7 @@ struct OpenCodeModelPickerView: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("Automatic")
                                         .font(.cleanBodySemibold)
-                                    Text("Server default")
+                                    Text(automaticDetail)
                                         .font(.cleanCaption)
                                         .foregroundStyle(.secondary)
                                 }

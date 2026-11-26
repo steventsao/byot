@@ -281,6 +281,19 @@ final class OpenCodeSessionStore: ObservableObject {
         return recoverablePrompt(in: [messages[userIndex]])
     }
 
+    /// The model the server ran this session's latest reply on, to name what
+    /// Automatic means here. OpenCode resolves a prompt that names no model on
+    /// the server (agent model, then config `model`, then recent, then a
+    /// provider default), so the last reply is the honest answer. Nil before
+    /// the first reply.
+    var automaticModelName: String? {
+        guard let info = messages.last(where: {
+            $0.info.role == "assistant" && $0.info.modelID?.trimmedNonEmpty != nil
+        })?.info, let modelID = info.modelID else { return nil }
+        return catalogModels.first { $0.providerID == info.providerID && $0.modelID == modelID }?.modelName
+            ?? modelID
+    }
+
     var canRetryWithSelectedModel: Bool {
         guard canSubmitPrompt, !status.isActive, !isSending,
               let selectedModel, modelFailurePrompt != nil else { return false }
