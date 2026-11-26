@@ -115,7 +115,12 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
         async let modelRequest: OpenCodeV2LocationDataResponse<[OpenCodeV2Model]> =
             transport.get(["api", "model"], query: query)
         let (providerResponse, modelResponse) = try await (providerRequest, modelRequest)
-        let modelsByProvider = Dictionary(grouping: modelResponse.data.filter(\.enabled), by: \.providerID)
+        let enabledModels = modelResponse.data.filter(\.enabled)
+        let modelsByProvider = Dictionary(grouping: enabledModels, by: \.providerID)
+        // `Model.default()` without a configured model runs the first available
+        // text model, in the order `/api/model` lists them.
+        let fallback = enabledModels.firstIndex(where: \.supportsText)
+            .map { (rank: $0, model: enabledModels[$0]) }
 
         return providerResponse.data
             .filter { $0.disabled != true && $0.activation != "disabled" }
@@ -140,7 +145,9 @@ struct OpenCodeV2Adapter: OpenCodeProtocolAdapting {
                     providerID: provider.id,
                     providerName: provider.name,
                     models: models,
-                    connectionState: .unreported
+                    connectionState: .unreported,
+                    fallbackRank: fallback?.model.providerID == provider.id ? fallback?.rank : nil,
+                    fallbackModelID: fallback?.model.providerID == provider.id ? fallback?.model.id : nil
                 )
             }
             .sorted {
@@ -452,13 +459,32 @@ private struct OpenCodeV2Model: Decodable {
             context = try? decoder.container(keyedBy: CodingKeys.self).decodeIfPresent(Double.self, forKey: .context)
         }
     }
+    /// Lenient like `Limit`: an unexpected shape reads as no capability list.
+    struct Capabilities: Decodable {
+        let input: [String]
+        let output: [String]
+        private enum CodingKeys: String, CodingKey { case input, output }
+        init(from decoder: Decoder) throws {
+            let container = try? decoder.container(keyedBy: CodingKeys.self)
+            input = (try? container?.decodeIfPresent([String].self, forKey: .input)) ?? []
+            output = (try? container?.decodeIfPresent([String].self, forKey: .output)) ?? []
+        }
+    }
     let variants: [Variant]?
     let limit: Limit?
+    let capabilities: Capabilities?
     let id: String
     let providerID: String
     let name: String
     let status: String?
     let enabled: Bool
+
+    /// Upstream `supportsText`: an empty list places no restriction.
+    var supportsText: Bool {
+        let input = capabilities?.input ?? [], output = capabilities?.output ?? []
+        return (input.isEmpty || input.contains { $0.hasPrefix("text") })
+            && (output.isEmpty || output.contains { $0.hasPrefix("text") })
+    }
 }
 
 private struct OpenCodeV2ModelReference: Codable {

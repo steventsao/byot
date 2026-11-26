@@ -4,6 +4,8 @@ struct OpenCodeAgentOption: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
     let description: String?
+    /// The agent's own `model`, which the server runs before its configured default.
+    var modelID: String? = nil
 
     static func parse(_ value: OpenCodeJSONValue) -> Self? {
         // Legacy agents carry only `name`; current v2 `AgentV2.Info` carries only `id`.
@@ -13,7 +15,8 @@ struct OpenCodeAgentOption: Identifiable, Equatable, Sendable {
               mode == "primary" || mode == "all",
               let name = object["name"]?.stringValue ?? object["id"]?.stringValue else { return nil }
         return Self(id: object["id"]?.stringValue ?? name, name: name,
-                    description: object["description"]?.stringValue)
+                    description: object["description"]?.stringValue,
+                    modelID: OpenCodeAutomaticModel.referenceID(object["model"]))
     }
 
     /// Title-cased like the TUI prompt footer, so `build` reads as "Build".
@@ -87,6 +90,9 @@ struct OpenCodeComposerCatalog: Equatable, Sendable {
     var defaultAgentID: String?
     var inheritedModelID: String?
     var inheritedVariant: String?
+    /// The config's `model`, the server default when neither session nor agent names one.
+    var configuredModelID: String?
+    var serverProtocol: OpenCodeServerProtocol?
     var supportsVariants = false
     var unavailableReason: String?
 
@@ -132,6 +138,7 @@ extension OpenCodeClient {
     static func loadComposerCatalog(_ context: OpenCodeFeatureContext, sessionID: String,
                                    directory: String, workspace: String?) async throws -> OpenCodeComposerCatalog {
         var catalog = OpenCodeComposerCatalog(supportsVariants: context.supportsModelVariants)
+        catalog.serverProtocol = context.serverProtocol
         let isV2 = context.serverProtocol == .v2
         let prefix = isV2 ? ["api"] : []
         let query = context.composerQuery(directory: directory, workspace: workspace)
@@ -175,6 +182,15 @@ extension OpenCodeClient {
                 // the reserved "default" reference, not an advertised effort choice.
                 catalog.inheritedVariant = model["variant"]?.stringValue.flatMap { $0 == "default" ? nil : $0 }
             }
+        }
+        // Only names the Automatic model; a server without a readable config keeps "Server default".
+        if !isV2 {
+            let config: OpenCodeJSONValue? = try? await context.transport.get(["config"], query: query)
+            catalog.configuredModelID = OpenCodeAutomaticModel.configuredModelID(config?.objectValue?["model"])
+        } else if context.supports("/api/config") {
+            let config: OpenCodeJSONValue? = try? await context.transport.get(["api", "config"], query: query)
+            catalog.configuredModelID = OpenCodeAutomaticModel.configuredModelID(
+                v2Entries: config?.objectValue?["data"]?.arrayValue ?? config?.arrayValue ?? [])
         }
         catalog.defaultAgentID = isV2
             ? (catalog.agents.first { $0.id == "build" } ?? catalog.agents.first)?.id

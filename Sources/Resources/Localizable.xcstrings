@@ -1887,12 +1887,32 @@
         }
       }
     },
+    "Automatic · %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动 · %@"
+          }
+        }
+      }
+    },
     "Automatic · context limit reached" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "自动 · 已达到上下文上限"
+          }
+        }
+      }
+    },
+    "Automatic, %@, %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动，%1$@，%2$@"
           }
         }
       }

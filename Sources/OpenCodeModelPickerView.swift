@@ -17,11 +17,19 @@ struct OpenCodeModelPickerView: View {
                             HStack(alignment: .top, spacing: 12) {
                                 selectionIndicator(selected: store.selectedModel == nil)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("Automatic")
-                                        .font(.cleanBodySemibold)
-                                    Text("Server default")
-                                        .font(.cleanCaption)
-                                        .foregroundStyle(.secondary)
+                                    if let automatic = store.automaticModel {
+                                        Text("Automatic · \(automatic.modelName)")
+                                            .font(.cleanBodySemibold)
+                                        Text(automatic.qualifiedID)
+                                            .font(.cleanCaption)
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        Text("Automatic")
+                                            .font(.cleanBodySemibold)
+                                        Text("Server default")
+                                            .font(.cleanCaption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                                 .fixedSize(horizontal: false, vertical: true)
                                 Spacer(minLength: 8)
@@ -149,6 +157,9 @@ struct OpenCodeModelPickerView: View {
     private var automaticMatchesSearch: Bool {
         normalizedSearchText.isEmpty
             || String(localized: "automatic server default").contains(normalizedSearchText)
+            || store.automaticModel.map {
+                "\($0.modelName) \($0.qualifiedID)".localizedStandardContains(normalizedSearchText)
+            } == true
     }
 
     private func modelStatus(_ status: String) -> some View {

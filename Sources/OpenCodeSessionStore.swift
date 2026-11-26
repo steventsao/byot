@@ -1426,6 +1426,19 @@ final class OpenCodeSessionStore: ObservableObject {
     /// The agent this session's composer shows and cycles from.
     var currentAgentID: String? { effectiveAgentID ?? composerCatalog.defaultAgentID }
 
+    /// The model the server runs when the prompt names none, if it can be told;
+    /// `nil` keeps the plain "Server default" wording.
+    var automaticModel: OpenCodeModelOption? {
+        OpenCodeAutomaticModel.resolve(
+            serverProtocol: composerCatalog.serverProtocol,
+            sessionModelID: composerCatalog.serverProtocol == .v1
+                ? OpenCodeAutomaticModel.lastUserModelID(messages)
+                : composerCatalog.inheritedModelID,
+            agentModelID: currentAgent?.modelID,
+            configuredModelID: composerCatalog.configuredModelID,
+            providers: providerModels)
+    }
+
     /// This session's pick, excluding the server-wide preference seeded into it.
     var explicitAgentID: String? { isAgentSelectionExplicit ? selectedAgentID : nil }
 
