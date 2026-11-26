@@ -159,7 +159,7 @@ struct OpenCodeSessionUsage: Equatable, Sendable {
 
 // MARK: - Presentation
 
-/// The session header's compact gauge. Hidden until a reply reports usage.
+/// The usage sheet's context gauge. Nil until a reply reports usage.
 struct OpenCodeContextMeterPresentation: Equatable, Sendable {
     let label: String
     /// Ring fill, 0...1.

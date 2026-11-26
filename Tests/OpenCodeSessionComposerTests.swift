@@ -94,6 +94,19 @@ struct OpenCodeSessionComposerTests {
         // Session list rows only draw a status they have.
         #expect(OpenCodeStatusLabel.title(status: .idle, eventConnected: nil) == "Idle")
     }
+
+    @Test(
+        "The header leaves a running turn to the transcript's status line",
+        .bug(id: "ASC-AMpP1fBN8wzsj2qZ2Ai94so")
+    )
+    func headerLeavesWorkingToStatusLine() {
+        #expect(!OpenCodeStatusLabel.showsInSessionHeader(status: .busy, eventConnected: true))
+        #expect(!OpenCodeStatusLabel.showsInSessionHeader(status: .retry(attempt: 2, message: "", next: 0), eventConnected: true))
+        #expect(OpenCodeStatusLabel.showsInSessionHeader(status: .idle, eventConnected: true))
+        // Connection trouble still shows there, as the status line can't speak for it.
+        #expect(OpenCodeStatusLabel.showsInSessionHeader(status: .busy, eventConnected: false))
+        #expect(OpenCodeStatusLabel.showsInSessionHeader(status: .busy, eventConnected: true, isStatusKnown: false))
+    }
 }
 
 private struct IdleFileService: OpenCodeRemoteFileServicing {

@@ -45,38 +45,6 @@ struct OpenCodeContextRing: View {
     }
 }
 
-/// The session header's gauge: how full the model's context is. Opens the
-/// usage details.
-struct OpenCodeContextMeter: View {
-    let presentation: OpenCodeContextMeterPresentation
-    let action: () -> Void
-    @ScaledMetric(relativeTo: .footnote) private var ringSize: CGFloat = 13
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                OpenCodeContextRing(fill: presentation.fill, level: presentation.level, lineWidth: max(2, ringSize * 0.18))
-                    .frame(width: ringSize, height: ringSize)
-                Text(presentation.label)
-                    .font(.cleanCaptionBold)
-                    .monospacedDigit()
-                    .foregroundStyle(presentation.level == .critical ? .primary : .secondary)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(BYOTBrand.surface, in: Capsule())
-            // The capsule stays compact in the header; the tap target reaches 44pt.
-            .contentShape(Rectangle().inset(by: -8))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Context")
-        .accessibilityValue(presentation.accessibilityValue)
-        .accessibilityHint("Shows token use and cost for this session")
-        .accessibilityIdentifier("session-context-meter")
-    }
-}
-
 /// Context and spend sections, shared by the usage sheet and session details.
 struct OpenCodeSessionUsageSections: View {
     let usage: OpenCodeSessionUsage

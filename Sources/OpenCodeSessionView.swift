@@ -215,15 +215,11 @@ struct OpenCodeSessionScreen: View {
                 HStack(spacing: 12) {
                     sessionHeader
                     Spacer(minLength: 8)
-                    contextMeter
                     sessionStatus
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     sessionHeader
-                    HStack(spacing: 12) {
-                        contextMeter
-                        sessionStatus
-                    }
+                    sessionStatus
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -373,6 +369,9 @@ struct OpenCodeSessionScreen: View {
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
+                let rows = OpenCodeConversationRow.rows(
+                    OpenCodeShellTranscript.rows(for: store.messages, local: store.localShell))
+                let runningID = runningTurnID(in: rows)
                 VStack(alignment: .leading, spacing: 20) {
                     LazyVStack(alignment: .leading, spacing: 20) {
                         if let offline = store.offlineTranscript, let errorMessage = store.errorMessage {
@@ -426,9 +425,6 @@ struct OpenCodeSessionScreen: View {
                             .background(BYOTBrand.elevatedSurface, in: RoundedRectangle(cornerRadius: BYOTBrand.controlRadius))
                         }
 
-                        let rows = OpenCodeConversationRow.rows(
-                            OpenCodeShellTranscript.rows(for: store.messages, local: store.localShell))
-                        let runningID = runningTurnID(in: rows)
                         ForEach(rows) { row in
                             switch row {
                             case .turn(let turn):
@@ -495,13 +491,9 @@ struct OpenCodeSessionScreen: View {
                     }
 
                     if showsSessionActivity && !showsTranscriptLoading {
-                        BYOTActivityView(
-                            sessionActivityPhase,
-                            title: sessionActivityTitle,
-                            detail: sessionActivityDetail,
-                            layout: sessionActivityPhase == .thinking || sessionActivityPhase == .working ? .indicator : .inline,
-                            accessibilityLabel: sessionActivityAccessibilityLabel
-                        )
+                        sessionActivityRow(runningTurn: rows.last.flatMap { row -> OpenCodeTranscriptTurn? in
+                            if case .turn(let turn) = row, turn.id == runningID { turn } else { nil }
+                        })
                         .id("opencode-session-activity")
                     }
 
@@ -1008,13 +1000,6 @@ struct OpenCodeSessionScreen: View {
     }
 
     @ViewBuilder
-    private var contextMeter: some View {
-        if let meter = OpenCodeContextMeterPresentation(usage: store.usage) {
-            OpenCodeContextMeter(presentation: meter) { isShowingUsage = true }
-        }
-    }
-
-    @ViewBuilder
     private var sharedIndicator: some View {
         if store.sharePresentation.isAvailable {
             Button { isShowingShare = true } label: {
@@ -1031,10 +1016,17 @@ struct OpenCodeSessionScreen: View {
         }
     }
 
+    // While a turn runs, the status line at the end of the transcript is the
+    // one sign it works (TestFlight AMpP1fBN8wzsj2qZ2Ai94so).
+    @ViewBuilder
     private var sessionStatus: some View {
-        OpenCodeStatusLabel(status: store.status, eventConnected: store.isEventConnected,
-                            isStatusKnown: store.isStatusReady || store.status.isActive)
-            .fixedSize()
+        let isStatusKnown = store.isStatusReady || store.status.isActive
+        if OpenCodeStatusLabel.showsInSessionHeader(status: store.status, eventConnected: store.isEventConnected,
+                                                    isStatusKnown: isStatusKnown) {
+            OpenCodeStatusLabel(status: store.status, eventConnected: store.isEventConnected,
+                                isStatusKnown: isStatusKnown)
+                .fixedSize()
+        }
     }
 
     private var isPresentingSheet: Bool {
@@ -1077,6 +1069,33 @@ struct OpenCodeSessionScreen: View {
                 : .working
         case .retry:
             return .retrying
+        }
+    }
+
+    /// The status line at the end of the transcript, where the turn's next row
+    /// will land, as in OpenCode's app. Working, it counts how long the turn
+    /// has run; the count is not announced, so VoiceOver hears the state once.
+    @ViewBuilder
+    private func sessionActivityRow(runningTurn: OpenCodeTranscriptTurn?) -> some View {
+        let phase = sessionActivityPhase
+        if phase == .thinking || phase == .working {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                BYOTActivityView(
+                    phase,
+                    title: OpenCodeTurnHeader.statusLine(phase: phase, runningTurn: runningTurn, now: context.date),
+                    layout: .compact
+                )
+                .monospacedDigit()
+                .padding(.vertical, 4)
+            }
+        } else {
+            BYOTActivityView(
+                phase,
+                title: sessionActivityTitle,
+                detail: sessionActivityDetail,
+                layout: .inline,
+                accessibilityLabel: sessionActivityAccessibilityLabel
+            )
         }
     }
 
@@ -1301,8 +1320,8 @@ private struct OpenCodeTurnRepliesView: View {
         let content = OpenCodeTurnContent(turn: turn)
         let items = isRunning || isExpanded || !content.canFold ? content.items : content.folded
         VStack(alignment: .leading, spacing: 12) {
-            if let header = OpenCodeTurnHeader(turn: turn, isRunning: isRunning) {
-                headerRow(header, canFold: !isRunning && content.canFold)
+            if let header = OpenCodeTurnHeader(turn: turn, isRunning: isRunning), header.showsAboveReplies {
+                headerRow(header, canFold: content.canFold)
             }
             ForEach(items) { item in
                 itemView(item, isNewest: isRunning && item.id == items.last?.id)
@@ -1314,13 +1333,7 @@ private struct OpenCodeTurnRepliesView: View {
 
     @ViewBuilder
     private func headerRow(_ header: OpenCodeTurnHeader, canFold: Bool) -> some View {
-        if header.ending == nil {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                if let title = header.title(now: context.date) {
-                    headerLabel(title, canFold: false)
-                }
-            }
-        } else if let title = header.title() {
+        if let title = header.title() {
             if canFold {
                 Button {
                     withAnimation(reduceMotion ? nil : .easeOut(duration: BYOTBrand.Motion.quick)) { isExpanded.toggle() }
@@ -1398,6 +1411,7 @@ private struct OpenCodeToolRunView: View {
 
     var body: some View {
         let summary = OpenCodeToolRunSummary(tools: entries.map(\.part).filter { $0.type == "tool" })
+        let isExpanded = chosenExpansion ?? opensByItself
         DisclosureGroup(isExpanded: Binding {
             chosenExpansion ?? opensByItself
         } set: {
@@ -1417,7 +1431,7 @@ private struct OpenCodeToolRunView: View {
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if summary.isRunning {
+                if summary.showsRunningIndicator(isExpanded: isExpanded) {
                     BYOTActivityGlyph(phase: .working, size: 14, tint: .secondary)
                         .frame(width: 14, height: 14)
                 } else if summary.hasFailure {
