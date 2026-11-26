@@ -530,7 +530,7 @@ struct OpenCodeSessionComposerView: View {
     private var dictationVocabulary: [String] {
         var terms = ["OpenCode", URL(fileURLWithPath: store.directory).lastPathComponent]
         terms += store.composerCatalog.agents.map(\.displayName)
-        if let model = store.selectedModel?.modelName { terms.append(model) }
+        if let model = (store.selectedModel ?? store.automaticModel)?.modelName { terms.append(model) }
         return terms.filter { !$0.isEmpty }
     }
 
@@ -539,7 +539,7 @@ struct OpenCodeSessionComposerView: View {
             Group {
                 if density.showsModelName {
                     HStack(spacing: 6) {
-                        Text(store.selectedModel?.modelName ?? String(localized: "Automatic"))
+                        Text(store.selectedModel?.modelName ?? store.automaticModel?.modelName ?? String(localized: "Automatic"))
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                             .truncationMode(.tail)
                             // Beside icon-only knobs a long name ellipsizes in the
@@ -565,7 +565,9 @@ struct OpenCodeSessionComposerView: View {
         .accessibilityIdentifier("opencode-model-picker")
         .accessibilityValue(store.selectedModel.map {
             "\($0.modelName), \($0.providerName)"
-        } ?? "Automatic")
+        } ?? store.automaticModel.map {
+            String(localized: "Automatic, \($0.modelName), \($0.providerName)")
+        } ?? String(localized: "Automatic"))
     }
 
     private var attachmentButton: some View {

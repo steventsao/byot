@@ -6,14 +6,16 @@ struct OpenCodeProviderCatalog: Decodable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case all
         case connected
+        case `default`
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let rawProviders = try container.decode([OpenCodeJSONValue].self, forKey: .all)
-        let connectedProviderIDs = Set(
-            try container.decode([String].self, forKey: .connected)
-        )
+        let connectedOrder = try container.decode([String].self, forKey: .connected)
+        let connectedProviderIDs = Set(connectedOrder)
+        // v1 `Provider.defaultModel()` runs the first connected provider's default.
+        let defaults = (try? container.decodeIfPresent([String: String].self, forKey: .default)) ?? [:]
 
         connectedProviders = rawProviders.compactMap { rawProvider -> OpenCodeProviderModels? in
             guard case .object(let provider) = rawProvider,
@@ -42,10 +44,13 @@ struct OpenCodeProviderCatalog: Decodable, Equatable, Sendable {
                 $0.modelName.localizedStandardCompare($1.modelName) == .orderedAscending
             }
             guard !models.isEmpty else { return nil }
+            let fallbackModelID = defaults[providerID].flatMap { id in models.contains { $0.modelID == id } ? id : nil }
             return OpenCodeProviderModels(
                 providerID: providerID,
                 providerName: providerName,
-                models: models
+                models: models,
+                fallbackRank: fallbackModelID == nil ? nil : connectedOrder.firstIndex(of: providerID),
+                fallbackModelID: fallbackModelID
             )
         }
         .sorted {

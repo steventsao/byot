@@ -10,17 +10,25 @@ struct OpenCodeProviderModels: Identifiable, Equatable, Sendable {
     let providerName: String
     let models: [OpenCodeModelOption]
     let connectionState: ConnectionState
+    /// Where this provider stands in the server's own fallback when a prompt names
+    /// no model, with the model it would run; lowest rank wins. See `OpenCodeAutomaticModel`.
+    var fallbackRank: Int? = nil
+    var fallbackModelID: String? = nil
 
     init(
         providerID: String,
         providerName: String,
         models: [OpenCodeModelOption],
-        connectionState: ConnectionState = .confirmed
+        connectionState: ConnectionState = .confirmed,
+        fallbackRank: Int? = nil,
+        fallbackModelID: String? = nil
     ) {
         self.providerID = providerID
         self.providerName = providerName
         self.models = models
         self.connectionState = connectionState
+        self.fallbackRank = fallbackRank
+        self.fallbackModelID = fallbackModelID
     }
 
     var id: String { providerID }
@@ -42,7 +50,9 @@ struct OpenCodeProviderModels: Identifiable, Equatable, Sendable {
             providerID: providerID,
             providerName: providerName,
             models: matchingModels,
-            connectionState: connectionState
+            connectionState: connectionState,
+            fallbackRank: fallbackRank,
+            fallbackModelID: fallbackModelID
         )
     }
 }
